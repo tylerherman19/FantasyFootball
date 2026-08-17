@@ -1,0 +1,27 @@
+{
+  "name": "fantasy-football-edge",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --build --verbose",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke:sleeper": "tsx scripts/smoke-sleeper.ts",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

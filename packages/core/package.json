@@ -1,0 +1,13 @@
+{
+  "name": "@ffe/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain": "./src/domain/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --build"
+  }
+}

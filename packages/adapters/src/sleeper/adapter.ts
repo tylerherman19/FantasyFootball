@@ -56,7 +56,7 @@ const toSlot = (raw: string): LineupSlot => {
  * 3 guillotine. Missing means redraft — plenty of old leagues predate the field.
  * Some guillotine leagues only set `last_chopped_leg`, so we check both.
  */
-const toFormat = (league: SleeperLeague): LeagueFormat => {
+export const toFormat = (league: SleeperLeague): LeagueFormat => {
   if (league.settings.type === 3 || league.settings.last_chopped_leg !== undefined) return 'guillotine';
   switch (league.settings.type) {
     case 2:
@@ -75,7 +75,7 @@ const toFormat = (league: SleeperLeague): LeagueFormat => {
  * playoffs at all — `playoff_week_start` is 0 — and run until the last chop,
  * so a naive `playoffStartWeek - 1` yields -1 and silently fetches no matchups.
  */
-const regularSeasonWeeks = (league: SleeperLeague): number => {
+export const regularSeasonWeeks = (league: SleeperLeague): number => {
   const playoffStart = league.settings.playoff_week_start ?? 0;
   if (playoffStart > 0) return playoffStart - 1;
 
@@ -119,6 +119,23 @@ const toTransactionKind = (raw: string): TransactionKind => {
   }
 };
 
+/**
+ * Which week the simulation should start from.
+ *
+ * Sleeper's `state.week` counts preseason weeks too, so in August it happily
+ * reports week 2 of a season that hasn't kicked off. Starting a season sim from
+ * "week 2" then silently skips week 1 — so preseason and offseason both mean
+ * "start from week 1".
+ */
+export const currentWeekFor = (
+  league: Pick<League, 'season' | 'regularSeasonWeeks'>,
+  state: { season: string; week: number; season_type: string },
+): number => {
+  if (Number(league.season) !== Number(state.season)) return league.regularSeasonWeeks;
+  if (state.season_type !== 'regular') return 1;
+  return Math.max(1, state.week);
+};
+
 /** Sleeper reports points as an int part plus a decimal part in roster settings. */
 const combineFpts = (whole: number | undefined, decimal: number | undefined): number =>
   (whole ?? 0) + (decimal ?? 0) / 100;
@@ -153,7 +170,7 @@ export class SleeperAdapter implements PlatformAdapter {
     ]);
 
     const league = this.#toLeague(raw);
-    const currentWeek = asOfWeek ?? (Number(raw.season) === Number(state.season) ? state.week : league.regularSeasonWeeks);
+    const currentWeek = asOfWeek ?? currentWeekFor(league, state);
 
     // Sleeper exposes matchups and transactions one week at a time. Fetch the
     // full regular season plus playoff weeks in parallel, bounded by the

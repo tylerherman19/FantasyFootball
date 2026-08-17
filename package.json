@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "smoke:sleeper": "tsx scripts/smoke-sleeper.ts",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "snapshot": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/snapshot.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

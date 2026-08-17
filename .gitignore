@@ -30,3 +30,6 @@ data/parquet/
 
 # vercel
 .vercel
+
+# local snapshot mirror — Postgres is the source of truth
+data/snapshots/

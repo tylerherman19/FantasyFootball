@@ -1,0 +1,77 @@
+/**
+ * Weekly snapshot job — the accuracy moat.
+ *
+ * Captures what every source believed BEFORE kickoff. Must run weekly starting
+ * before Week 1; the history it builds cannot be reconstructed later.
+ *
+ *   node --env-file=.env.local node_modules/.bin/tsx scripts/snapshot.ts [week]
+ */
+import {
+  JsonlSnapshotStore,
+  PostgrestSnapshotStore,
+  TeeSnapshotStore,
+  fetchOdds,
+  fetchSleeperProjections,
+  scoringKey,
+} from '../packages/ingest/src/index.js';
+import { SleeperClient } from '../packages/adapters/src/index.js';
+
+/** Full PPR superflex — Tyler's leagues. Other scoring systems get their own rows. */
+const SCORING = {
+  rec: 1,
+  passYd: 0.04,
+  passTd: 4,
+  passInt: -1,
+  rushYd: 0.1,
+  rushTd: 6,
+  recYd: 0.1,
+  recTd: 6,
+  fumbleLost: -2,
+};
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+const supabaseSecret = process.env.SUPABASE_SECRET_KEY?.trim();
+
+// Always write locally; add Postgres when configured. If Supabase is down, the
+// week's snapshot still survives on disk and can be backfilled.
+const stores = [new JsonlSnapshotStore('data/snapshots')];
+if (supabaseUrl !== undefined && supabaseUrl !== '' && supabaseSecret !== undefined && supabaseSecret !== '') {
+  stores.push(new PostgrestSnapshotStore(supabaseUrl, supabaseSecret));
+} else {
+  console.log('warning: Supabase not configured, writing local files only');
+}
+const store = new TeeSnapshotStore(stores);
+const state = await new SleeperClient().getNflState();
+const season = Number(state.season);
+
+// Preseason reports its own week numbering; snapshot Week 1 until games count.
+const week = Number(process.argv[2] ?? (state.season_type === 'regular' ? state.week : 1));
+
+console.log(`snapshot: ${season} week ${week} (nfl state: ${state.season_type} wk ${state.week})`);
+console.log(`scoring key: ${scoringKey(SCORING)}`);
+
+const projections = await fetchSleeperProjections(season, week, SCORING);
+const wrote = await store.writeProjections(projections);
+console.log(`projections: ${wrote} rows from sleeper`);
+
+if (projections.length > 0) {
+  const top = [...projections].sort((a, b) => b.points - a.points).slice(0, 5);
+  console.log(`  top: ${top.map((p) => `${p.playerId}=${p.points}`).join(', ')}`);
+}
+
+const apiKey = process.env.ODDS_API_KEY;
+if (apiKey === undefined || apiKey === '') {
+  console.log('odds: skipped (ODDS_API_KEY not set)');
+} else {
+  const { snapshots, creditsRemaining } = await fetchOdds(apiKey, season);
+  const thisWeek = snapshots.filter((s) => s.week === week);
+  const wroteOdds = await store.writeOdds(thisWeek);
+  console.log(`odds: ${wroteOdds} rows for week ${week} (${snapshots.length} total, ${creditsRemaining} credits left)`);
+
+  const sample = thisWeek.find((s) => s.total !== undefined && s.homeSpread !== undefined);
+  if (sample !== undefined) {
+    console.log(
+      `  sample: ${sample.awayTeam} @ ${sample.homeTeam} total ${sample.total} spread ${sample.homeSpread} homeWin ${sample.homeWinProb?.toFixed(3)}`,
+    );
+  }
+}

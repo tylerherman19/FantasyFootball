@@ -1,0 +1,32 @@
+name: Weekly snapshot
+
+# Tuesday noon ET — after Monday Night Football closes the previous week and
+# well before Thursday's kickoff opens the next one.
+#
+# Exactly one capture per week, on purpose. Projections upsert on their unique
+# key, so a second run would overwrite the pre-kickoff capture with post-kickoff
+# data and quietly contaminate the accuracy record.
+on:
+  schedule:
+    - cron: '0 16 * * 2'
+  workflow_dispatch:
+    inputs:
+      week:
+        description: 'NFL week to snapshot (blank = current)'
+        required: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run snapshot:ci -- ${{ github.event.inputs.week }}
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}

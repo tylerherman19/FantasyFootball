@@ -33,3 +33,6 @@ data/parquet/
 
 # local snapshot mirror — Postgres is the source of truth
 data/snapshots/
+
+# nflverse mirror — 150MB+, regenerable via model/ingest/nflverse.py
+data/lake/

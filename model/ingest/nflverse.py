@@ -131,6 +131,12 @@ def sync(
                 if frame is None:
                     continue
 
+                # Some releases (pbp_participation) carry no season column, only
+                # a game id. Without one, every as-of filter silently matches
+                # everything — a leak that looks protected. Stamp it at ingest.
+                if season is not None and "season" not in frame.columns:
+                    frame = frame.with_columns(pl.lit(season).cast(pl.Int32).alias("season"))
+
                 frame.write_parquet(path, compression="zstd")
                 total += frame.height
                 print(f"  {dataset.name}/{label}: {frame.height:,} rows, {frame.width} cols")

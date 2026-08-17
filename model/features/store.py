@@ -94,8 +94,17 @@ class FeatureStore:
         look at, so a feature can't quietly depend on 2016 while claiming to be
         a three-year rolling average.
         """
-        relation = self.raw(dataset, allow_train_only=allow_train_only)
+        # Train-time-only data is published once a season ends — so *prior*
+        # seasons are legitimately knowable today, and only the current season is
+        # off limits. Blocking the dataset outright would throw away the single
+        # best source of defensive scheme tendencies, which persist year to year.
+        # So: allow completed seasons, hard-stop the in-flight one.
+        is_train_only = dataset in TRAIN_TIME_ONLY
+        relation = self.raw(dataset, allow_train_only=is_train_only or allow_train_only)
         columns = set(relation.columns)
+
+        if is_train_only and not allow_train_only and "season" in columns:
+            relation = relation.filter(f"season < {as_of.season}")
 
         if "season" not in columns:
             # Reference tables (players, combine, draft picks) carry no season.

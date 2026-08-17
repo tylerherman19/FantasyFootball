@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from model.features.store import AsOf, FeatureStore, LeakageError
+from model.ingest.nflverse import TRAIN_TIME_ONLY
 
 LAKE = Path(__file__).resolve().parents[2] / "data" / "lake"
 
@@ -53,14 +54,28 @@ def test_as_of_bounds_history(store: FeatureStore) -> None:
     assert min(seasons) >= 2022
 
 
-def test_train_time_only_datasets_are_refused(store: FeatureStore) -> None:
-    """FTN charting doesn't exist until the season ends. It must not be reachable
-    from anything that could run in the serving path."""
+@pytest.mark.parametrize("dataset", sorted(TRAIN_TIME_ONLY))
+def test_train_only_datasets_carry_a_season_column(store: FeatureStore, dataset: str) -> None:
+    """Without a season column the as-of filter matches everything and silently
+    leaks. The guard must not be able to no-op."""
+    assert "season" in store.raw(dataset, allow_train_only=True).columns
+
+
+@pytest.mark.parametrize("dataset", sorted(TRAIN_TIME_ONLY))
+def test_train_only_data_is_limited_to_completed_seasons(store: FeatureStore, dataset: str) -> None:
+    """Prior seasons are published and legal; the in-flight season is not."""
+    relation = store.as_of(dataset, AsOf(2024, 8))
+    seasons = {r[relation.columns.index("season")] for r in relation.fetchall()}
+    assert seasons, f"expected some pre-2024 {dataset} rows"
+    assert max(seasons) <= 2023
+
+
+def test_unfiltered_reads_of_train_only_data_are_refused(store: FeatureStore) -> None:
+    """`raw()` has no time filter at all, so for a post-season dataset it would
+    hand back the in-flight season. Only `as_of()`, which truncates to completed
+    seasons, is safe."""
     with pytest.raises(LeakageError, match="after the season ends"):
         store.raw("ftn_charting")
-
-    with pytest.raises(LeakageError):
-        store.as_of("ftn_charting", AsOf(2024, 8))
 
 
 def test_train_time_only_is_available_when_explicitly_requested(store: FeatureStore) -> None:

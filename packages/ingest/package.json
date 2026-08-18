@@ -4,12 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "dependencies": {
     "@ffe/core": "*"
   },
   "scripts": {
-    "typecheck": "tsc --build"
-  }
+    "typecheck": "tsc --build",
+    "build": "tsc --build"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
 }

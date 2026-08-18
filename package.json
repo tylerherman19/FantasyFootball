@@ -18,7 +18,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "snapshot": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/snapshot.ts",
-    "snapshot:ci": "tsx scripts/snapshot.ts"
+    "snapshot:ci": "tsx scripts/snapshot.ts",
+    "build": "tsc --build",
+    "dev": "npm run build && npm run dev --workspace=@ffe/web"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

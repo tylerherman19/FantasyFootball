@@ -4,10 +4,19 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./domain": "./src/domain/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./domain": {
+      "types": "./dist/domain/index.d.ts",
+      "default": "./dist/domain/index.js"
+    }
   },
   "scripts": {
-    "typecheck": "tsc --build"
-  }
+    "typecheck": "tsc --build",
+    "build": "tsc --build"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
 }

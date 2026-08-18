@@ -164,7 +164,7 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
           const survived = tallies.get(teamId)!.survivedThrough;
           survived[week] = (survived[week] ?? 0) + 1;
         }
-        chopLowest(scores, alive);
+        chopLowest(scores, alive, rng);
         continue;
       }
 
@@ -191,18 +191,29 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
   };
 };
 
-/** Lowest scorer is eliminated; their roster returns to the free agent pool. */
-const chopLowest = (scores: Map<string, number>, alive: Set<string>): void => {
-  let lowestTeam: string | null = null;
+/**
+ * Lowest scorer is eliminated; their roster returns to the free agent pool.
+ *
+ * Ties are broken at random rather than by iteration order. It sounds pedantic,
+ * but before a draft every team scores exactly zero — and a first-encountered
+ * tiebreak then hands the same team a 100% survival rate in every iteration,
+ * which is a confidently wrong answer rather than an honest "we don't know yet".
+ */
+const chopLowest = (scores: Map<string, number>, alive: Set<string>, rng: Rng): void => {
   let lowestScore = Number.POSITIVE_INFINITY;
+  let tied: string[] = [];
 
   for (const [teamId, points] of scores) {
     if (points < lowestScore) {
       lowestScore = points;
-      lowestTeam = teamId;
+      tied = [teamId];
+    } else if (points === lowestScore) {
+      tied.push(teamId);
     }
   }
-  if (lowestTeam !== null) alive.delete(lowestTeam);
+
+  const chopped = tied[Math.floor(rng() * tied.length)];
+  if (chopped !== undefined) alive.delete(chopped);
 };
 
 const settleMatchups = (

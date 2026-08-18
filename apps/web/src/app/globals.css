@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+/*
+ * 538-inspired: off-white ground, strong type hierarchy, muted categorical
+ * palette, and uncertainty rendered rather than hidden. Light is the default
+ * because that is what the reference reads like; dark is supported but secondary.
+ */
+:root {
+  --ground: #f7f7f4;
+  --surface: #ffffff;
+  --ink: #16161a;
+  --ink-muted: #5b5b63;
+  --rule: #e3e3dd;
+
+  /* Sequential ramp for probability. Colour-blind safe, prints legibly. */
+  --p-low: #d8d8d2;
+  --p-mid: #9dc6d8;
+  --p-high: #3a86a8;
+
+  --good: #2f7d54;
+  --bad: #b4442e;
+  --accent: #c05c2c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #131316;
+    --surface: #1c1c20;
+    --ink: #f2f2ef;
+    --ink-muted: #a0a0a8;
+    --rule: #32323a;
+    --p-low: #3a3a42;
+    --p-mid: #3d6f85;
+    --p-high: #6fb2ce;
+  }
+}
+
+html,
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-feature-settings: 'tnum' 1;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Numbers must align in columns; that is most of what makes a table readable. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

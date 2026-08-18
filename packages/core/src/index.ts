@@ -23,6 +23,15 @@ export {
 // projections
 export { scoreStatLine, scoringCoverage, type StatLine } from './projections/scoring.js';
 
+// valuation
+export {
+  marketPickValues,
+  pickInventory,
+  valuePicks,
+  type PickValueSource,
+  type ValuedPick,
+} from './valuation/picks.js';
+
 // metrics
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
 export {

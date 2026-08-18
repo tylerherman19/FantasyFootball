@@ -4,6 +4,7 @@ import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
 import { serializeLeague } from '@/lib/serialize';
 import { loadTrades } from '@/lib/trade-data';
+import { loadPicks } from '@/lib/pick-data';
 import { loadMarketValues } from '@/lib/values';
 
 export const revalidate = 900;
@@ -29,13 +30,14 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
   const myTeamId = view.myTeamId;
   const { snapshot } = view;
 
-  const [trades, values, players] = await Promise.all([
+  const [trades, values, players, picks] = await Promise.all([
     loadTrades(view, myTeamId),
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+    loadPicks(view),
   ]);
 
-  const wire = serializeLeague(view, values, players);
+  const wire = serializeLeague(view, values, players, picks);
 
   return (
     <>

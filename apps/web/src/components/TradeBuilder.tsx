@@ -35,21 +35,42 @@ export const TradeBuilder = ({ league, myTeamId }: { league: WireLeague; myTeamI
   const [grade, setGrade] = useState<TradeGrade | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const myPlayers = useMemo(() => {
-    const team = league.teams.find((t) => t.teamId === myTeamId);
-    return (team?.playerIds ?? [])
-      .map((id) => league.players[id])
-      .filter((p): p is NonNullable<typeof p> => p !== undefined)
-      .sort((a, b) => b.mean - a.mean);
-  }, [league, myTeamId]);
+  /** Players and picks together — both are assets a manager trades. */
+  const assetsFor = (teamId: string) => {
+    const team = league.teams.find((t) => t.teamId === teamId);
 
-  const theirPlayers = useMemo(() => {
-    const team = league.teams.find((t) => t.teamId === partnerId);
-    return (team?.playerIds ?? [])
+    const players = (team?.playerIds ?? [])
       .map((id) => league.players[id])
       .filter((p): p is NonNullable<typeof p> => p !== undefined)
-      .sort((a, b) => b.mean - a.mean);
-  }, [league, partnerId]);
+      .sort((a, b) => b.mean - a.mean)
+      .map((player) => ({
+        id: player.id,
+        name: player.name,
+        position: player.position,
+        team: player.team,
+        mean: player.mean,
+        value: player.value,
+        isPick: false,
+      }));
+
+    const picks = league.picks
+      .filter((pick) => pick.ownerTeamId === teamId)
+      .sort((a, b) => a.season - b.season || a.round - b.round)
+      .map((pick) => ({
+        id: pick.id,
+        name: pick.description,
+        position: 'PICK',
+        team: '',
+        mean: 0,
+        value: pick.value,
+        isPick: true,
+      }));
+
+    return [...players, ...picks];
+  };
+
+  const myPlayers = useMemo(() => assetsFor(myTeamId), [league, myTeamId]);
+  const theirPlayers = useMemo(() => assetsFor(partnerId), [league, partnerId]);
 
   const toggle = (list: string[], setList: (next: string[]) => void, id: string) => {
     const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -64,8 +85,11 @@ export const TradeBuilder = ({ league, myTeamId }: { league: WireLeague; myTeamI
     });
   };
 
-  const sendValue = iSend.reduce((sum, id) => sum + (league.players[id]?.value ?? 0), 0);
-  const getValue = iGet.reduce((sum, id) => sum + (league.players[id]?.value ?? 0), 0);
+  const valueOf = (id: string) =>
+    league.players[id]?.value ?? league.picks.find((pick) => pick.id === id)?.value ?? 0;
+
+  const sendValue = iSend.reduce((sum, id) => sum + valueOf(id), 0);
+  const getValue = iGet.reduce((sum, id) => sum + valueOf(id), 0);
 
   return (
     <div className="rounded border" style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
@@ -172,7 +196,15 @@ const PlayerColumn = ({
   bordered = false,
 }: {
   title: string;
-  players: readonly { id: string; name: string; position: string; team: string; mean: number; value: number }[];
+  players: readonly {
+    id: string;
+    name: string;
+    position: string;
+    team: string;
+    mean: number;
+    value: number;
+    isPick: boolean;
+  }[];
   selected: readonly string[];
   onToggle: (id: string) => void;
   total: number;
@@ -209,7 +241,8 @@ const PlayerColumn = ({
                 </span>
               </span>
               <span className="tabular shrink-0 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                {player.mean.toFixed(1)} · {player.value > 0 ? player.value.toLocaleString() : '—'}
+                {player.isPick ? '' : `${player.mean.toFixed(1)} · `}
+                {player.value > 0 ? player.value.toLocaleString() : '—'}
               </span>
             </button>
           </li>

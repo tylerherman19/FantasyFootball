@@ -26,6 +26,15 @@ export interface WirePlayer {
   readonly value: number;
 }
 
+export interface WirePick {
+  readonly id: string;
+  readonly description: string;
+  readonly season: number;
+  readonly round: number;
+  readonly ownerTeamId: string;
+  readonly value: number;
+}
+
 export interface WireTeam {
   readonly teamId: string;
   readonly name: string;
@@ -47,6 +56,12 @@ export interface WireLeague {
   readonly seed: number;
   readonly teams: readonly WireTeam[];
   readonly players: Readonly<Record<string, WirePlayer>>;
+  /**
+   * Tradeable draft picks, priced against the projected finish of the team that
+   * will produce them. Empty in redraft leagues, where picks don't exist as
+   * assets.
+   */
+  readonly picks: readonly WirePick[];
   /** Snapshot pieces the simulator needs, kept minimal. */
   readonly schedule: readonly {
     week: number;
@@ -66,6 +81,7 @@ export const serializeLeague = (
   view: LeagueView,
   values: ReadonlyMap<string, MarketValue>,
   playerNames: Record<string, { name: string; position: string; team: string }>,
+  picks: readonly WirePick[] = [],
 ): WireLeague => {
   const { snapshot, context } = view;
 
@@ -114,6 +130,7 @@ export const serializeLeague = (
       isMine: team.teamId === view.myTeamId,
     })),
     players,
+    picks,
     schedule: snapshot.schedule
       .filter((m) => m.week >= snapshot.asOfWeek)
       .map((m) => ({ week: m.week, matchupId: m.matchupId, teamIds: m.teamIds as [string, string] })),

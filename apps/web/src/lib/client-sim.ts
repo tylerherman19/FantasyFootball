@@ -95,6 +95,8 @@ const rebuildContext = (wire: WireLeague, iterations: number): SimContext => {
 };
 
 export interface TradeGrade {
+  /** True when picks were involved, so the odds figure needs context. */
+  readonly includesPicks: boolean;
   readonly myTitleDelta: number;
   readonly myPlayoffDelta: number;
   readonly theirTitleDelta: number;
@@ -135,19 +137,34 @@ export const evaluateTradeClient = (
 ): TradeGrade => {
   const context = rebuildContext(wire, iterations);
 
+  // Only players enter the simulation; picks have no week-to-week effect.
+  const isPlayer = (id: string) => wire.players[id] !== undefined;
+  const sendPlayers = iSend.filter(isPlayer).map(asPlayerId);
+  const getPlayers = iGet.filter(isPlayer).map(asPlayerId);
+
   const changes = [
-    { teamId: myTeamId, add: iGet.map(asPlayerId), drop: iSend.map(asPlayerId) },
-    { teamId: partnerTeamId, add: iSend.map(asPlayerId), drop: iGet.map(asPlayerId) },
+    { teamId: myTeamId, add: getPlayers, drop: sendPlayers },
+    { teamId: partnerTeamId, add: sendPlayers, drop: getPlayers },
   ];
 
   const mine = oddsDelta(context, changes, myTeamId);
   const theirs = oddsDelta(context, changes, partnerTeamId);
 
-  const sendValue = iSend.reduce((sum, id) => sum + (wire.players[id]?.value ?? 0), 0);
-  const getValue = iGet.reduce((sum, id) => sum + (wire.players[id]?.value ?? 0), 0);
+  // Picks are priced by the market but play no games, so they move value
+  // without moving this season's odds. Saying that plainly is more useful than
+  // pretending a 2028 second changes your playoff chances in October.
+  const pickValue = new Map(wire.picks.map((pick) => [pick.id, pick.value]));
+  const valueOf = (id: string) => wire.players[id]?.value ?? pickValue.get(id) ?? 0;
+
+  const sendValue = iSend.reduce((sum, id) => sum + valueOf(id), 0);
+  const getValue = iGet.reduce((sum, id) => sum + valueOf(id), 0);
   const fairness = fairnessGap(sendValue, getValue);
 
   const acceptable = fairness <= 0.2 || theirs.titleDelta > 0;
+
+  const pickNote = includesPicks
+    ? ' Picks move market value but play no games, so this season\'s odds reflect the players only.'
+    : '';
 
   const verdict =
     mine.titleDelta <= 0
@@ -158,7 +175,10 @@ export const evaluateTradeClient = (
           ? 'Helps you, but lopsided enough in market terms that they will likely refuse.'
           : 'Improves your odds at their expense — worth proposing.';
 
+  const includesPicks = [...iSend, ...iGet].some((id) => !isPlayer(id));
+
   return {
+    includesPicks,
     myTitleDelta: mine.titleDelta,
     myPlayoffDelta: mine.playoffDelta,
     theirTitleDelta: theirs.titleDelta,
@@ -166,7 +186,7 @@ export const evaluateTradeClient = (
     myValueDelta: getValue - sendValue,
     fairness,
     grade: gradeFor(mine.titleDelta),
-    verdict,
+    verdict: verdict + pickNote,
     acceptable,
   };
 };

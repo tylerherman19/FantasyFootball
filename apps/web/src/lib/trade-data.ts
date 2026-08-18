@@ -15,7 +15,7 @@ import {
 } from '@ffe/core';
 import type { LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
-import { loadMarketValues } from './values';
+import { loadMarketData } from './values';
 
 /**
  * Trade suggestions for one team.
@@ -109,7 +109,8 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return null;
 
-  const values = await loadMarketValues(snapshot.league.format, snapshot.league.superFlex);
+  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex);
+  const values = market.players;
 
   const assetFor = (playerId: string): TradeAsset | null => {
     const projection = artifact.players[playerId];

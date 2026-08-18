@@ -307,3 +307,73 @@ const rebuildContextWithFreeAgents = (wire: WireLeague, iterations: number): Sim
 
   return { ...context, pool: new Map(wire.weeks.map((week) => [week, extended])) };
 };
+
+
+export interface SwapVerdict {
+  readonly inPlayerId: string;
+  readonly outPlayerId: string;
+  readonly titleDelta: number;
+  readonly playoffDelta: number;
+  readonly pointsDelta: number;
+  /** True when the gap is inside what the projection can actually resolve. */
+  readonly negligible: boolean;
+  readonly explanation: string;
+}
+
+/**
+ * Below this, the difference is smaller than the model's own error and the
+ * honest answer is "it doesn't matter". Saying so saves a manager an hour.
+ */
+const NEGLIGIBLE_TITLE_DELTA = 0.0015;
+
+/**
+ * Price one start/sit decision in championship probability.
+ *
+ * Projected points answer "who scores more on average", which is not the same
+ * question. A high-floor player is worth more when you are favoured and only
+ * need to avoid disaster; a volatile one is worth more when you need variance.
+ * The simulator already knows that, so the answer comes from it.
+ *
+ * Implemented by removing the other option, which forces the solver to seat the
+ * one being tested — reusing the machinery that runs everything else rather
+ * than a parallel code path that could disagree with it.
+ */
+export const evaluateSwapClient = (
+  wire: WireLeague,
+  teamId: string,
+  outPlayerId: string,
+  inPlayerId: string,
+  iterations = 3_000,
+): SwapVerdict => {
+  const context = rebuildContext(wire, iterations);
+
+  const withIn = oddsDelta(context, [{ teamId, drop: [asPlayerId(outPlayerId)] }], teamId);
+  const withOut = oddsDelta(context, [{ teamId, drop: [asPlayerId(inPlayerId)] }], teamId);
+
+  const titleDelta = withIn.after.titlePct - withOut.after.titlePct;
+  const playoffDelta = withIn.after.playoffPct - withOut.after.playoffPct;
+
+  const inPoints = wire.players[inPlayerId]?.mean ?? 0;
+  const outPoints = wire.players[outPlayerId]?.mean ?? 0;
+  const pointsDelta = inPoints - outPoints;
+
+  const negligible = Math.abs(titleDelta) < NEGLIGIBLE_TITLE_DELTA;
+  const inName = wire.players[inPlayerId]?.name ?? 'that player';
+  const outName = wire.players[outPlayerId]?.name ?? 'the starter';
+
+  let explanation: string;
+  if (negligible) {
+    explanation = "Either choice is fine — the difference is inside the model's own margin.";
+  } else if (titleDelta > 0 && pointsDelta < 0) {
+    // The interesting case: the lower projection is the better start.
+    explanation =
+      `${inName} projects ${Math.abs(pointsDelta).toFixed(1)} fewer points than ${outName} but still ` +
+      'improves your title odds — the shape of the distribution fits your situation better than the average does.';
+  } else if (titleDelta > 0) {
+    explanation = `${inName} is the better start, by ${pointsDelta.toFixed(1)} projected points.`;
+  } else {
+    explanation = `Keep ${outName} — swapping costs you ${Math.abs(titleDelta * 100).toFixed(2)}% of a title.`;
+  }
+
+  return { inPlayerId, outPlayerId, titleDelta, playoffDelta, pointsDelta, negligible, explanation };
+};

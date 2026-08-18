@@ -1,56 +1,87 @@
-import { SLOT_ELIGIBILITY, type LineupSlot, type Position } from '@ffe/core';
+import { optimalLineup, asPlayerId, type LineupCandidate, type Position } from '@ffe/core';
 import { LeagueNav } from '@/components/LeagueNav';
+import { LineupBoard, type LineupSlotView } from '@/components/LineupBoard';
+import { StatTile } from '@/components/StatTile';
+import { loadAvailability } from '@/lib/availability';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
-import { rosterWithLineup } from '@/lib/analysis';
+import { loadArtifact, scoreFor } from '@/lib/projections';
+import { serializeLeague } from '@/lib/serialize';
+import { loadMarketValues } from '@/lib/values';
 
 export const revalidate = 900;
 
 const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
-
-const POSITION_COLOR: Record<string, string> = {
-  QB: 'var(--pos-qb)',
-  RB: 'var(--pos-rb)',
-  WR: 'var(--pos-wr)',
-  TE: 'var(--pos-te)',
-  K: 'var(--pos-k)',
-  DEF: 'var(--pos-def)',
-};
 
 export default async function LineupPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
   const view = await loadLeague(leagueId, USERNAME);
   const { snapshot, myTeamId } = view;
 
-  const players = await loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw);
-  const roster = myTeamId === null ? [] : rosterWithLineup(view, myTeamId, players);
+  const [artifact, availability, values, playerInfo] = await Promise.all([
+    loadArtifact(snapshot.league.season, snapshot.asOfWeek),
+    loadAvailability(),
+    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+    loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+  ]);
 
-  const starters = roster.filter((entry) => entry.starting);
-  const bench = roster.filter((entry) => !entry.starting);
-  const projectedTotal = starters.reduce((sum, entry) => sum + entry.mean, 0);
+  const roster = myTeamId === null ? undefined : snapshot.rosters.find((r) => r.teamId === myTeamId);
+  const rules = snapshot.league.scoring.raw;
 
-  /**
-   * The closest genuine decision.
-   *
-   * A decision only exists between players who could occupy the same slot —
-   * comparing a quarterback to a tight end is not a lineup call, it is a
-   * category error. So each starter is matched against the best benched player
-   * eligible for that starter's slot, and the tightest of those gaps wins.
-   */
-  const closeCall = starters
-    .flatMap((starter) => {
-      if (starter.slot === null) return [];
-      const eligible = SLOT_ELIGIBILITY[starter.slot as LineupSlot];
-      if (eligible === null || eligible === undefined) return [];
+  const describe = (playerId: string, projected: number): Omit<LineupSlotView, 'slot' | 'playerId'> => {
+    const projection = artifact?.players[playerId];
+    return {
+      name: projection?.name ?? playerInfo[playerId]?.name ?? playerId,
+      position: projection?.position ?? playerInfo[playerId]?.position ?? '?',
+      team: projection?.team ?? playerInfo[playerId]?.team ?? '',
+      projected,
+      sd: projection?.sd ?? 0,
+      injuryStatus: availability[playerId]?.injuryStatus ?? null,
+    };
+  };
 
-      const challenger = bench.find((entry) => eligible.includes(entry.position as Position));
-      if (challenger === undefined) return [];
+  const candidates: LineupCandidate[] = (roster?.playerIds ?? []).flatMap((id) => {
+    const projection = artifact?.players[String(id)];
+    if (projection === undefined || !projection.active) return [];
 
-      return [{ starter, challenger, gap: starter.mean - challenger.mean }];
-    })
-    .filter((option) => option.gap >= 0)
-    .sort((a, b) => a.gap - b.gap)
-    .find((option) => option.gap < 2) ?? null;
+    const position = projection.position as Position;
+    const status = availability[String(id)]?.injuryStatus ?? null;
+
+    return [
+      {
+        playerId: asPlayerId(String(id)),
+        position,
+        eligiblePositions: [position],
+        projectedPoints: scoreFor(projection, rules, status),
+        stddev: projection.sd,
+      },
+    ];
+  });
+
+  const lineup = optimalLineup(candidates, snapshot.league.rosterSlots);
+
+  const slots: LineupSlotView[] = lineup.slots.map((slot) => {
+    const id = slot.playerId === null ? null : String(slot.playerId);
+    return {
+      slot: slot.slot,
+      playerId: id,
+      ...(id === null
+        ? { name: 'empty', position: '—', team: '', projected: 0, sd: 0, injuryStatus: null }
+        : describe(id, slot.projectedPoints)),
+    };
+  });
+
+  const bench: LineupSlotView[] = lineup.bench.map((player) => ({
+    slot: 'BN',
+    playerId: String(player.playerId),
+    ...describe(String(player.playerId), player.projectedPoints),
+  }));
+
+  const total = slots.reduce((sum, slot) => sum + slot.projected, 0);
+  const hurtStarters = slots.filter((slot) => slot.injuryStatus !== null);
+  const emptySlots = slots.filter((slot) => slot.playerId === null);
+
+  const wire = serializeLeague(view, values, playerInfo);
 
   return (
     <>
@@ -64,109 +95,37 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
       />
 
       <main className="mx-auto max-w-5xl px-6 pb-20">
-        <div className="mb-8 flex flex-wrap items-baseline gap-x-6 gap-y-2">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Week {snapshot.asOfWeek} projected total
-            </div>
-            <div className="tabular text-3xl font-semibold">{projectedTotal.toFixed(1)}</div>
+        <section className="mb-8">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded border sm:grid-cols-4"
+            style={{ borderColor: 'var(--rule)', background: 'var(--rule)' }}>
+            <StatTile label={`Week ${snapshot.asOfWeek} projection`} value={total.toFixed(1)} sub="starting lineup" />
+            <StatTile
+              label="Starters with a flag"
+              value={String(hurtStarters.length)}
+              sub={hurtStarters.length === 0 ? 'all clear' : hurtStarters.map((s) => s.name).join(', ')}
+              emphasis={hurtStarters.length > 0}
+            />
+            <StatTile label="Bench" value={String(bench.length)} sub="eligible alternatives" />
+            <StatTile
+              label="Empty slots"
+              value={String(emptySlots.length)}
+              sub={emptySlots.length === 0 ? 'lineup full' : emptySlots.map((s) => s.slot).join(', ')}
+              emphasis={emptySlots.length > 0}
+            />
           </div>
-          <p className="max-w-md text-sm" style={{ color: 'var(--ink-muted)' }}>
-            The optimal lineup, solved rather than sorted — in superflex that means starting two
-            quarterbacks when the arithmetic says so, which greedy ordering gets wrong.
+
+          <p className="mt-3 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
+            The lineup is solved rather than sorted — in superflex that means starting two
+            quarterbacks when the arithmetic says so, which greedy ordering gets wrong. Injured
+            players are discounted by their chance of playing, and ruled-out players cannot be
+            started at all.
           </p>
-        </div>
+        </section>
 
-        {roster.length === 0 && (
-          <p style={{ color: 'var(--ink-muted)' }}>
-            No roster found — the league may not be drafted yet.
-          </p>
-        )}
-
-        {closeCall !== null && (
-          <div
-            className="mb-8 rounded border p-4 text-sm"
-            style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}
-          >
-            <strong>Closest call: {closeCall.starter.slot}.</strong> {closeCall.starter.name} (
-            {closeCall.starter.mean.toFixed(1)}) over {closeCall.challenger.name} (
-            {closeCall.challenger.mean.toFixed(1)}) — a gap of {closeCall.gap.toFixed(1)}, which is
-            inside the projection&apos;s own error. Start either and stop deliberating.
-          </div>
-        )}
-
-        {starters.length > 0 && (
-          <section className="mb-10">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Starters
-            </h2>
-            <LineupTable entries={starters} showSlot />
-          </section>
-        )}
-
-        {bench.length > 0 && (
-          <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Bench
-            </h2>
-            <LineupTable entries={bench} showSlot={false} />
-          </section>
+        {myTeamId !== null && (
+          <LineupBoard league={wire} myTeamId={myTeamId} slots={slots} bench={bench} />
         )}
       </main>
     </>
   );
 }
-
-const LineupTable = ({
-  entries,
-  showSlot,
-}: {
-  entries: readonly Awaited<ReturnType<typeof rosterWithLineup>>[number][];
-  showSlot: boolean;
-}) => (
-  <div className="scroll-x">
-    <table className="w-full min-w-[30rem] text-left">
-      <thead>
-        <tr className="border-b text-xs uppercase tracking-widest"
-          style={{ borderColor: 'var(--rule-strong)', color: 'var(--ink-faint)' }}>
-          {showSlot && <th className="py-2 pr-3">Slot</th>}
-          <th className="py-2">Player</th>
-          <th className="py-2">Team</th>
-          <th className="py-2 text-right">Proj.</th>
-          <th className="py-2 text-right">Range</th>
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((entry) => (
-          <tr key={entry.playerId} className="border-b" style={{ borderColor: 'var(--rule)' }}>
-            {showSlot && (
-              <td className="py-2.5 pr-3 text-xs font-semibold" style={{ color: 'var(--ink-faint)' }}>
-                {entry.slot}
-              </td>
-            )}
-            <td className="py-2.5">
-              <span className="font-medium">{entry.name}</span>
-              <span
-                className="ml-2 text-[10px] font-semibold uppercase"
-                style={{ color: POSITION_COLOR[entry.position] ?? 'var(--ink-faint)' }}
-              >
-                {entry.position}
-              </span>
-            </td>
-            <td className="py-2.5 text-sm" style={{ color: 'var(--ink-muted)' }}>
-              {entry.team}
-            </td>
-            <td className="tabular py-2.5 text-right font-medium">
-              {entry.projected ? entry.mean.toFixed(1) : '—'}
-            </td>
-            <td className="tabular py-2.5 text-right text-sm" style={{ color: 'var(--ink-faint)' }}>
-              {entry.projected
-                ? `${Math.max(0, entry.mean - entry.sd).toFixed(0)}–${(entry.mean + entry.sd).toFixed(0)}`
-                : 'not projected'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);

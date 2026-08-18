@@ -2,10 +2,20 @@ import type { NextConfig } from 'next';
 
 /**
  * Workspace packages are consumed as built output (`dist`) rather than raw
- * source. TypeScript's NodeNext convention writes `./foo.js` in imports that
- * resolve to `foo.ts`, which Turbopack does not remap — building first avoids
- * the mismatch entirely and keeps the app's bundle honest about what it ships.
+ * source, because TypeScript's NodeNext convention writes `./foo.js` for
+ * imports that resolve to `foo.ts` and Turbopack does not remap that.
  */
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  /**
+   * Model artifacts are read from disk at request time, and Next only traces
+   * files it can see being imported. Without this the deployed app finds no
+   * projections and every page renders empty — which looks like a data problem
+   * and is actually a bundling one.
+   */
+  outputFileTracingRoot: `${process.cwd()}/../..`,
+  outputFileTracingIncludes: {
+    '/**': ['../../model/artifacts/**'],
+  },
+};
 
 export default nextConfig;

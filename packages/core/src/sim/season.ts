@@ -52,6 +52,13 @@ export interface TeamOutcome {
   readonly byePct: number;
   /** Distribution over final regular-season rank, index 0 = first. */
   readonly rankDistribution: readonly number[];
+  /**
+   * Distribution over final win totals, index = wins.
+   *
+   * The spread here is what a single "projected wins" number hides: two teams
+   * with the same average can have very different seasons available to them.
+   */
+  readonly winDistribution: readonly number[];
   /** Guillotine only: probability of surviving to each week. */
   readonly survivalByWeek: readonly number[];
 }
@@ -68,6 +75,7 @@ interface MutableTally {
   titles: number;
   byes: number;
   rankCounts: number[];
+  winCounts: number[];
   survivedThrough: number[];
 }
 
@@ -121,6 +129,9 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
         titles: 0,
         byes: 0,
         rankCounts: Array(teamCount).fill(0),
+        // Median-win leagues award up to two wins a week, so the ceiling is
+        // twice the schedule rather than once.
+        winCounts: Array(snapshot.league.regularSeasonWeeks * (snapshot.league.medianWins ? 2 : 1) + 1).fill(0),
         survivedThrough: Array(snapshot.league.regularSeasonWeeks + 1).fill(0),
       },
     ]),
@@ -185,6 +196,7 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
         titlePct: tally.titles / iterations,
         byePct: tally.byes / iterations,
         rankDistribution: tally.rankCounts.map((c) => c / iterations),
+        winDistribution: tally.winCounts.map((c) => c / iterations),
         survivalByWeek: tally.survivedThrough.map((c) => c / iterations),
       };
     }),
@@ -293,8 +305,16 @@ const recordFinish = (
 
   standings.forEach((teamId, index) => {
     const tally = tallies.get(teamId)!;
-    tally.wins += record.get(teamId)!.wins;
+    const finalWins = record.get(teamId)!.wins;
+
+    tally.wins += finalWins;
     tally.rankCounts[index] = (tally.rankCounts[index] ?? 0) + 1;
+
+    // Half-wins from ties round to the nearest whole for the histogram; the
+    // expected-wins figure keeps the exact value.
+    const bucket = Math.min(tally.winCounts.length - 1, Math.max(0, Math.round(finalWins)));
+    tally.winCounts[bucket] = (tally.winCounts[bucket] ?? 0) + 1;
+
     if (index < playoffTeams) tally.playoffs += 1;
   });
 

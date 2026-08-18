@@ -103,6 +103,7 @@ def actual_points(
     season: int,
     week: int,
     scoring: dict[str, float],
+    positions: tuple[str, ...] | list[str] = SKILL_POSITIONS,
 ) -> pl.DataFrame:
     """What each player actually scored, under the given scoring rules.
 
@@ -119,7 +120,7 @@ def actual_points(
             total = total + pl.col(column).cast(pl.Float64).fill_null(0.0) * weight
 
     return (
-        stats.filter(pl.col("position").is_in(SKILL_POSITIONS))
+        stats.filter(pl.col("position").is_in(list(positions)))
         .select(pl.col("player_id").cast(pl.Utf8), total.alias("actual"))
         .group_by("player_id")
         .agg(pl.col("actual").sum())
@@ -133,6 +134,7 @@ def walk_forward(
     seasons: range,
     weeks: range,
     scoring: dict[str, float],
+    positions: tuple[str, ...] | list[str] = SKILL_POSITIONS,
 ) -> BacktestResult:
     """Score a model across many weeks, refitting at every step."""
     results: list[WeekResult] = []
@@ -142,7 +144,7 @@ def walk_forward(
         if not predictions:
             continue
 
-        truth = actual_points(store, season, week, scoring)
+        truth = actual_points(store, season, week, scoring, positions)
         if truth.height == 0:
             continue
 

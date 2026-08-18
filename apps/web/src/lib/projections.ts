@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { asPlayerId, scoreStatLine, type PlayerId, type Position } from '@ffe/core';
+import { applyAvailability, asPlayerId, scoreStatLine, type PlayerId, type Position } from '@ffe/core';
 import type { PlayerProjection, ProjectionPool } from '@ffe/core';
 
 /**
@@ -48,20 +48,28 @@ export const loadArtifact = async (season: number, week: number): Promise<Projec
 const toProjection = (
   player: ArtifactPlayer,
   rules: Readonly<Record<string, number>>,
+  injuryStatus: string | null = null,
 ): PlayerProjection | null => {
   if (!SKILL.includes(player.position)) return null;
   const position = player.position as Position;
+
+  const scored = Math.max(0, scoreStatLine(player.stats ?? {}, rules));
+  const onBye = !player.active;
+
+  // Availability is applied here rather than in the model, because injuries
+  // change daily and the artifact is rebuilt weekly.
+  const adjusted = applyAvailability(scored, player.sd, injuryStatus, onBye);
 
   return {
     playerId: asPlayerId(player.playerId),
     position,
     eligiblePositions: [position],
-    // Scored here, under this league's own rules.
-    mean: Math.max(0, scoreStatLine(player.stats ?? {}, rules)),
-    sd: player.sd,
+    mean: adjusted.mean,
+    sd: adjusted.sd,
     gameId: player.gameId === '' ? `bye-${player.playerId}` : player.gameId,
     gameLoading: player.gameLoading,
-    active: player.active,
+    // A ruled-out player must never reach the lineup solver.
+    active: player.active && adjusted.playProbability > 0,
   };
 };
 
@@ -77,19 +85,39 @@ export const buildPool = (
   artifact: ProjectionArtifact,
   weeks: readonly number[],
   rules: Readonly<Record<string, number>>,
+  availability: Record<string, { injuryStatus: string | null }> = {},
 ): ProjectionPool => {
-  const weekly = new Map<PlayerId, PlayerProjection>();
+  const currentWeek = new Map<PlayerId, PlayerProjection>();
+  const laterWeeks = new Map<PlayerId, PlayerProjection>();
 
   for (const player of Object.values(artifact.players)) {
-    const projection = toProjection(player, rules);
-    if (projection !== null) weekly.set(projection.playerId, projection);
+    const status = availability[player.playerId]?.injuryStatus ?? null;
+
+    const now = toProjection(player, rules, status);
+    if (now !== null) currentWeek.set(now.playerId, now);
+
+    // Injuries are applied to this week only. A player out on Sunday is
+    // usually back later in the season, and carrying today's designation
+    // across fourteen weeks would write off half the league by November.
+    const later = toProjection(player, rules, null);
+    if (later !== null) laterWeeks.set(later.playerId, later);
   }
 
-  return new Map(weeks.map((week) => [week, weekly]));
+  const [first, ...rest] = weeks;
+
+  return new Map([
+    ...(first === undefined ? [] : ([[first, currentWeek]] as [number, typeof currentWeek][])),
+    ...rest.map((week) => [week, laterWeeks] as [number, typeof laterWeeks]),
+  ]);
 };
 
 /** Points for one player under one league's rules, for display. */
 export const scoreFor = (
   player: ArtifactPlayer,
   rules: Readonly<Record<string, number>>,
-): number => Math.max(0, scoreStatLine(player.stats ?? {}, rules));
+  injuryStatus: string | null = null,
+): number => {
+  const scored = Math.max(0, scoreStatLine(player.stats ?? {}, rules));
+  if (injuryStatus === null) return scored;
+  return applyAvailability(scored, player.sd, injuryStatus, !player.active).mean;
+};

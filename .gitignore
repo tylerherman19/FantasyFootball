@@ -43,3 +43,4 @@ data/lake/
 # local dev TLS cert — regenerate with openssl, never commit
 apps/web/certificates/
 apps/web/.env.local
+.vercel

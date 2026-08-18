@@ -6,8 +6,10 @@
     "dev": "next dev -p 3100 --experimental-https --experimental-https-key ./certificates/localhost-key.pem --experimental-https-cert ./certificates/localhost.pem",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint",
-    "predev": "npm run build --workspace=@ffe/core --workspace=@ffe/adapters"
+    "predev": "npm run build --workspace=@ffe/core --workspace=@ffe/adapters",
+    "prebuild": "npm run build --workspace=@ffe/core --workspace=@ffe/adapters --workspace=@ffe/ingest"
   },
   "dependencies": {
     "next": "16.3.1",

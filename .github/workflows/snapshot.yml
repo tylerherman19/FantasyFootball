@@ -30,3 +30,23 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+
+      # Projections must be regenerated weekly or the app serves week 1 all
+      # season. The lake is re-synced first because usage, injuries and depth
+      # charts all move between weeks.
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync nflverse and rebuild projections
+        run: |
+          uv run --project model python model/ingest/nflverse.py data/lake
+          uv run --project model python model/ingest/crosswalk.py
+          uv run --project model python model/export_projections.py
+        env:
+          PYTHONPATH: .
+
+      - name: Commit refreshed artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add model/artifacts
+          git diff --staged --quiet || git commit -m "Weekly projections refresh [skip ci]"
+          git push

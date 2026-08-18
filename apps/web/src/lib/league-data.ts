@@ -12,6 +12,7 @@ import {
   type SimContext,
   type TeamContext,
 } from '@ffe/core';
+import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
 import { buildPool, loadArtifact } from './projections';
 
@@ -107,10 +108,14 @@ export const loadLeague = async (
     weeks.push(week);
   }
 
-  const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
+  const [artifact, availability] = await Promise.all([
+    loadArtifact(snapshot.league.season, snapshot.asOfWeek),
+    loadAvailability(),
+  ]);
+
   // Every league scores its own way — 42, 64 and 132 keys across Tyler's three.
   const rules = snapshot.league.scoring.raw;
-  const pool = artifact === null ? new Map() : buildPool(artifact, weeks, rules);
+  const pool = artifact === null ? new Map() : buildPool(artifact, weeks, rules, availability);
 
   // Measured from what each manager actually did, not assumed. Falls back to
   // this league's own average until a manager has enough played weeks.

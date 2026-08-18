@@ -10,6 +10,7 @@ import {
   JsonlSnapshotStore,
   PostgrestSnapshotStore,
   TeeSnapshotStore,
+  fetchAllValueConfigurations,
   fetchOdds,
   fetchSleeperProjections,
   scoringKey,
@@ -74,4 +75,23 @@ if (apiKey === undefined || apiKey === '') {
       `  sample: ${sample.awayTeam} @ ${sample.homeTeam} total ${sample.total} spread ${sample.homeSpread} homeWin ${sample.homeWinProb?.toFixed(3)}`,
     );
   }
+}
+
+
+// Market values, captured for the same reason as projections: buy-low and
+// sell-high are differences over time, and yesterday's prices are unavailable
+// unless somebody wrote them down.
+if (supabaseUrl !== undefined && supabaseUrl !== '' && supabaseSecret !== undefined && supabaseSecret !== '') {
+  try {
+    const values = await fetchAllValueConfigurations();
+    const store = new PostgrestSnapshotStore(supabaseUrl, supabaseSecret);
+    const wroteValues = await store.writeValues(values);
+    console.log(`values: ${wroteValues} rows across 4 market configurations`);
+  } catch (error) {
+    // A market outage should not fail the projection snapshot, which is the
+    // deadline-bound half of this job.
+    console.log(`values: skipped (${error instanceof Error ? error.message : String(error)})`);
+  }
+} else {
+  console.log('values: skipped (Supabase not configured)');
 }

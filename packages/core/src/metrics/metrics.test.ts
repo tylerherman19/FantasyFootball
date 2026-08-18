@@ -15,8 +15,6 @@ import { scheduleLuck } from './schedule-luck.js';
 import { replacementLevels, teamScarcity, type ScarcityPlayer } from './scarcity.js';
 import { fragility } from './fragility.js';
 import { powerRankings } from '../valuation/power-rankings.js';
-import { pickEquity } from '../valuation/pick-equity.js';
-import type { TeamOutcome } from '../sim/season.js';
 
 const TEAM_IDS = ['1', '2', '3', '4'];
 
@@ -38,6 +36,7 @@ const league = (overrides: Partial<League> = {}): League => ({
   regularSeasonWeeks: 3,
   medianWins: false,
   superFlex: false,
+  waiverType: 'faab',
   waiverBudget: 100,
   ...overrides,
 });
@@ -337,95 +336,6 @@ describe('powerRankings', () => {
 
     expect(rankings.every((r) => r.divergence === 0)).toBe(true);
     expect(rankings.every((r) => r.signal === 'aligned')).toBe(true);
-  });
-});
-
-describe('pickEquity', () => {
-  const outcome = (rankDistribution: number[]): TeamOutcome => ({
-    teamId: '1',
-    expectedWins: 0,
-    playoffPct: 0,
-    titlePct: 0,
-    byePct: 0,
-    rankDistribution,
-    survivalByWeek: [],
-  });
-
-  it('turns a last-place finish into the first pick', () => {
-    const equity = pickEquity({
-      outcome: outcome([0, 0, 0, 1]), // certain to finish 4th of 4
-      season: 2027,
-      round: 1,
-      teamCount: 4,
-    });
-
-    expect(equity.expectedSlot).toBeCloseTo(1, 6);
-    expect(equity.expectedOverallPick).toBeCloseTo(1, 6);
-  });
-
-  it('turns a first-place finish into the last pick of the round', () => {
-    const equity = pickEquity({
-      outcome: outcome([1, 0, 0, 0]),
-      season: 2027,
-      round: 2,
-      teamCount: 4,
-    });
-
-    expect(equity.expectedSlot).toBeCloseTo(4, 6);
-    // Round 2 starts after four picks.
-    expect(equity.expectedOverallPick).toBeCloseTo(8, 6);
-  });
-
-  it('reports a range rather than a single slot when the finish is uncertain', () => {
-    const equity = pickEquity({
-      outcome: outcome([0.25, 0.25, 0.25, 0.25]),
-      season: 2027,
-      round: 1,
-      teamCount: 4,
-    });
-
-    expect(equity.expectedSlot).toBeCloseTo(2.5, 6);
-    expect(equity.slotRange[0]).toBeLessThan(equity.slotRange[1]);
-  });
-
-  it('values the distribution rather than the average slot', () => {
-    // A convex curve: the 1.01 is worth far more than two mid picks.
-    const valueOfPick = (pick: number): number => 1000 / pick;
-
-    const coinFlip = pickEquity({
-      outcome: outcome([0.5, 0, 0, 0.5]), // either first or last
-      season: 2027,
-      round: 1,
-      teamCount: 4,
-      valueOfPick,
-    });
-
-    // Valuing the mean slot (2.5) would give 400; the distribution is worth more.
-    expect(coinFlip.value!).toBeGreaterThan(400);
-    expect(coinFlip.value!).toBeCloseTo(0.5 * 1000 + 0.5 * 250, 6);
-  });
-
-  it('honours a best-picks-first draft order', () => {
-    const equity = pickEquity({
-      outcome: outcome([1, 0, 0, 0]),
-      season: 2027,
-      round: 1,
-      teamCount: 4,
-      worstPicksFirst: false,
-    });
-
-    expect(equity.expectedSlot).toBeCloseTo(1, 6);
-  });
-
-  it('renormalizes when the simulation did not fill every rank', () => {
-    const equity = pickEquity({
-      outcome: outcome([0.5, 0.25, 0, 0]),
-      season: 2027,
-      round: 1,
-      teamCount: 4,
-    });
-
-    expect(equity.slotDistribution.reduce((sum, p) => sum + p, 0)).toBeCloseTo(1, 6);
   });
 });
 

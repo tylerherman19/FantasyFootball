@@ -22,9 +22,31 @@ export {
 
 // projections
 export { scoreStatLine, scoringCoverage, type StatLine } from './projections/scoring.js';
+export {
+  applyAvailability,
+  isRuledOut,
+  playProbability,
+  type AvailabilityAdjustment,
+  type InjuryStatus,
+} from './projections/availability.js';
+
+// valuation
+export {
+  marketPickValues,
+  pickInventory,
+  valuePicks,
+  type PickValueSource,
+  type ValuedPick,
+} from './valuation/picks.js';
 
 // metrics — how good is this team, and why
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
+export {
+  assessDepth,
+  marginalValues,
+  type DepthAssessment,
+  type MarginalValue,
+} from './metrics/marginal-value.js';
 export { scheduleLuck, type ScheduleLuck } from './metrics/schedule-luck.js';
 export {
   replacementLevels,
@@ -39,15 +61,12 @@ export {
   type FragilityInput,
   type PlayerDependence,
 } from './metrics/fragility.js';
-
-// valuation
 export {
   powerRankings,
   type RankingInput,
   type RankingSignal,
   type TeamRanking,
 } from './valuation/power-rankings.js';
-export { pickEquity, type PickEquity, type PickEquityInput } from './valuation/pick-equity.js';
 
 // decisions — everything priced in championship probability
 export {
@@ -67,6 +86,14 @@ export {
   type WaiverInput,
   type WaiverRecommendation,
 } from './decisions/waivers.js';
+export {
+  analyzeRosters,
+  offerCandidates,
+  rankPartners,
+  type FitScore,
+  type RosterInput,
+  type TeamRosterAnalysis,
+} from './decisions/fit.js';
 export {
   evaluateTrade,
   fairnessGap,

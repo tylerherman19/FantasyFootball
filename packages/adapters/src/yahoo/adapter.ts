@@ -171,6 +171,7 @@ export class YahooAdapter implements PlatformAdapter {
       // Yahoo has no median-win format.
       medianWins: false,
       superFlex: rosterSlots.includes('SUPER_FLEX'),
+      waiverType: asNumber(settings['uses_faab']) > 0 ? 'faab' : 'priority',
       waiverBudget: asNumber(settings['faab_balance'], 0),
     };
 

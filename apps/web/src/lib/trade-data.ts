@@ -1,7 +1,21 @@
-import { asPlayerId, findTrades, type Position, type TradeAsset, type TradeEvaluation } from '@ffe/core';
+import {
+  analyzeRosters,
+  asPlayerId,
+  assessDepth,
+  findTrades,
+  marginalValues,
+  offerCandidates,
+  rankPartners,
+  type FitScore,
+  type DepthAssessment,
+  type LineupCandidate,
+  type Position,
+  type TradeAsset,
+  type TradeEvaluation,
+} from '@ffe/core';
 import type { LeagueView } from './league-data';
-import { loadArtifact } from './projections';
-import { loadMarketValues } from './values';
+import { loadArtifact, scoreFor } from './projections';
+import { loadMarketData } from './values';
 
 /**
  * Trade suggestions for one team.
@@ -12,8 +26,18 @@ import { loadMarketValues } from './values';
  * for your season, odds-only tools propose fleeces nobody would accept.
  */
 
-const SCREEN_ITERATIONS = 400;
-const FINALIST_ITERATIONS = 4_000;
+/**
+ * Iteration counts for the server-rendered proposal list.
+ *
+ * Kept deliberately low. Precision here buys little: the list exists to suggest
+ * *which* trades to look at, and anything a user acts on gets re-graded at full
+ * precision in the interactive calculator, which runs in their browser. Spending
+ * ten seconds of server time to refine a suggestion nobody clicked is the wrong
+ * trade.
+ */
+const SCREEN_ITERATIONS = 300;
+const FINALIST_ITERATIONS = 1_200;
+const FINALIST_COUNT = 3;
 
 /**
  * Positions worth trading.
@@ -30,28 +54,50 @@ export interface TradeView {
   readonly needs: readonly Position[];
   readonly surplus: readonly Position[];
   readonly valuesAvailable: boolean;
+  /** Per-position depth, with the reasoning shown rather than asserted. */
+  readonly depth: readonly DepthAssessment[];
+  /** Partners ranked by how well the two rosters complement each other. */
+  readonly partners: readonly (FitScore & {
+    offers: readonly {
+      playerId: string;
+      name: string;
+      position: string;
+      projected: number;
+      helpsThemBy: number;
+    }[];
+  })[];
+  /** Marginal value per player, best first — who you can actually move. */
+  readonly marginal: readonly {
+    playerId: string;
+    name: string;
+    position: string;
+    marginal: number;
+    projected: number;
+    value: number;
+  }[];
 }
 
 /**
- * Infer what a roster is short of and long on.
+ * What this roster is actually short of and can actually spare.
  *
- * Compares each position's starter-quality depth against what the league's
- * lineup actually demands, so "I need a receiver" is measured against this
- * league's slots rather than a generic template.
+ * Judged by consequence, not headcount: a position is surplus only when it
+ * holds players whose departure would not change the optimal lineup, and thin
+ * when the whole position rests on one player. Counting bodies against slots
+ * produces confident nonsense like "you can spare a running back" about a
+ * roster whose backs fill both flex spots.
  */
 const inferNeeds = (
-  positionCounts: Map<Position, number>,
-  required: Map<Position, number>,
+  depth: readonly DepthAssessment[],
 ): { needs: Position[]; surplus: Position[] } => {
   const needs: Position[] = [];
   const surplus: Position[] = [];
 
-  for (const [position, demand] of required) {
+  for (const assessment of depth) {
+    const position = assessment.position as Position;
     if (!TRADEABLE.includes(position)) continue;
-    const have = positionCounts.get(position) ?? 0;
-    // One spare body per starting slot is healthy; beyond that is tradeable.
-    if (have < demand + 1) needs.push(position);
-    else if (have > demand + 2) surplus.push(position);
+
+    if (assessment.verdict === 'thin') needs.push(position);
+    else if (assessment.verdict === 'surplus') surplus.push(position);
   }
 
   return { needs, surplus };
@@ -63,7 +109,8 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return null;
 
-  const values = await loadMarketValues(snapshot.league.format, snapshot.league.superFlex);
+  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex);
+  const values = market.players;
 
   const assetFor = (playerId: string): TradeAsset | null => {
     const projection = artifact.players[playerId];
@@ -86,24 +133,103 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     assetsByTeam.set(roster.teamId, assets);
   }
 
-  // What this league's lineup demands, position by position.
-  const required = new Map<Position, number>();
-  for (const slot of snapshot.league.rosterSlots) {
-    if (slot === 'BN' || slot === 'IR' || slot === 'TAXI') continue;
-    const base = slot === 'FLEX' || slot === 'SUPER_FLEX' || slot === 'WRRB_FLEX' || slot === 'REC_FLEX'
-      ? null
-      : (slot as Position);
-    if (base !== null) required.set(base, (required.get(base) ?? 0) + 1);
-  }
+  // Marginal value of every player on my roster: what the optimal lineup loses
+  // without them. This is what "spare" actually means.
+  const myRoster = snapshot.rosters.find((r) => r.teamId === teamId);
+  const candidates: LineupCandidate[] = (myRoster?.playerIds ?? []).flatMap((id) => {
+    const projection = artifact.players[String(id)];
+    if (projection === undefined || !projection.active) return [];
+    const position = projection.position as Position;
+    return [
+      {
+        playerId: asPlayerId(String(id)),
+        position,
+        eligiblePositions: [position],
+        projectedPoints: scoreFor(projection, snapshot.league.scoring.raw),
+        stddev: projection.sd,
+      },
+    ];
+  });
 
-  const mine = assetsByTeam.get(teamId) ?? [];
-  const counts = new Map<Position, number>();
-  for (const asset of mine) counts.set(asset.position, (counts.get(asset.position) ?? 0) + 1);
+  const positionById = new Map(candidates.map((c) => [String(c.playerId), c.position]));
+  const marginal = marginalValues(candidates, snapshot.league.rosterSlots).map((value) => ({
+    ...value,
+    position: positionById.get(String(value.playerId)) ?? '?',
+  }));
 
-  const { needs, surplus } = inferNeeds(counts, required);
+  const depth = assessDepth(marginal);
+  const { needs, surplus } = inferNeeds(depth);
+
+  /**
+   * Every roster in the league gets the same counterfactual treatment.
+   *
+   * A proposal only happens when the piece being offered is worth more to the
+   * other manager than what they give up, and that cannot be known without
+   * analysing their roster too. This is what separates a trade finder from a
+   * wish list.
+   */
+  const toCandidates = (playerIds: readonly unknown[]): LineupCandidate[] =>
+    playerIds.flatMap((id) => {
+      const projection = artifact.players[String(id)];
+      if (projection === undefined || !projection.active) return [];
+      const position = projection.position as Position;
+      return [
+        {
+          playerId: asPlayerId(String(id)),
+          position,
+          eligiblePositions: [position],
+          projectedPoints: scoreFor(projection, snapshot.league.scoring.raw),
+          stddev: projection.sd,
+        },
+      ];
+    });
+
+  const analyses = analyzeRosters(
+    snapshot.rosters.map((roster) => ({
+      teamId: roster.teamId,
+      candidates: toCandidates(roster.playerIds),
+    })),
+    snapshot.league.rosterSlots,
+  );
+
+  const partners = rankPartners(analyses, teamId).slice(0, 5).map((fit) => ({
+    ...fit,
+    offers: offerCandidates(analyses, teamId, fit.partnerTeamId)
+      .slice(0, 4)
+      .map((offer) => ({
+        playerId: String(offer.playerId),
+        name: artifact.players[String(offer.playerId)]?.name ?? String(offer.playerId),
+        position: offer.position,
+        projected: offer.projected,
+        helpsThemBy: offer.helpsThemBy,
+      })),
+  }));
+
+  const marginalDetail = marginal
+    .map((entry) => {
+      const id = String(entry.playerId);
+      const projection = artifact.players[id];
+      return {
+        playerId: id,
+        name: projection?.name ?? id,
+        position: entry.position,
+        marginal: entry.marginal,
+        projected: entry.projected,
+        value: values.get(id)?.value ?? 0,
+      };
+    })
+    .sort((a, b) => a.marginal - b.marginal);
 
   if (needs.length === 0 || surplus.length === 0 || values.size === 0) {
-    return { evaluations: [], needs, surplus, valuesAvailable: values.size > 0 };
+    return {
+      evaluations: [],
+      needs,
+      surplus,
+      valuesAvailable: values.size > 0,
+      depth,
+      partners,
+      marginal: marginalDetail,
+    };
   }
 
   // Screen cheaply, then re-simulate the survivors precisely — the same
@@ -114,11 +240,11 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     assetsByTeam,
     needs,
     surplus,
-    finalists: 12,
+    finalists: 6,
   });
 
   const evaluations = screened
-    .slice(0, 5)
+    .slice(0, FINALIST_COUNT)
     .map((candidate) =>
       findTrades({
         context: { ...context, iterations: FINALIST_ITERATIONS },
@@ -134,5 +260,13 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     )
     .flat();
 
-  return { evaluations, needs, surplus, valuesAvailable: true };
+  return {
+    evaluations,
+    needs,
+    surplus,
+    valuesAvailable: true,
+    depth,
+    partners,
+    marginal: marginalDetail,
+  };
 };

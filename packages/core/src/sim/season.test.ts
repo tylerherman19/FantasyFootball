@@ -20,6 +20,7 @@ const league = (overrides: Partial<League> = {}): League => ({
   regularSeasonWeeks: 3,
   medianWins: false,
   superFlex: false,
+  waiverType: 'faab' as const,
   waiverBudget: 100,
   ...overrides,
 });

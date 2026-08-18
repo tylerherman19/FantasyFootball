@@ -1,5 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
 import { OddsBar } from '@/components/OddsBar';
+import { OutcomeDistribution } from '@/components/OutcomeDistribution';
 import { StatTile } from '@/components/StatTile';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { remainingSchedule, weekLeverage } from '@/lib/analysis';
@@ -74,6 +75,22 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
               />
               <StatTile label="Title" value={`${(me.titlePct * 100).toFixed(1)}%`} emphasis />
             </div>
+          </section>
+        )}
+
+        {me !== null && !notDrafted && !isGuillotine && me.winDistribution.length > 1 && (
+          <section className="mb-10">
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
+              Where your season can land
+            </h2>
+            <p className="mb-3 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
+              Every simulated season, by final win total. The spread matters as much as the average.
+            </p>
+            <OutcomeDistribution
+              winDistribution={me.winDistribution}
+              expectedWins={me.expectedWins}
+              playoffPct={me.playoffPct}
+            />
           </section>
         )}
 

@@ -161,7 +161,8 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
 
       if (isGuillotine) {
         for (const teamId of alive) {
-          tallies.get(teamId)!.survivedThrough[week] += 1;
+          const survived = tallies.get(teamId)!.survivedThrough;
+          survived[week] = (survived[week] ?? 0) + 1;
         }
         chopLowest(scores, alive);
         continue;

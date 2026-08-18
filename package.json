@@ -11,7 +11,7 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc --build --verbose",
+    "typecheck": "tsc --build --verbose && npm run typecheck --workspace=@ffe/web",
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke:sleeper": "tsx scripts/smoke-sleeper.ts",

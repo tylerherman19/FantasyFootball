@@ -165,10 +165,6 @@ export const evaluateTradeClient = (
 
   const acceptable = fairness <= 0.2 || theirs.titleDelta > 0;
 
-  const pickNote = includesPicks
-    ? ' Picks move market value but play no games, so this season\'s odds reflect the players only.'
-    : '';
-
   const verdict =
     mine.titleDelta <= 0
       ? 'Declines your odds — pass.'
@@ -179,6 +175,10 @@ export const evaluateTradeClient = (
           : 'Improves your odds at their expense — worth proposing.';
 
   const includesPicks = [...iSend, ...iGet].some((id) => !isPlayer(id));
+
+  const pickNote = includesPicks
+    ? " Picks move market value but play no games, so this season's odds reflect the players only."
+    : '';
 
   return {
     includesPicks,

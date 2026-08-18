@@ -49,14 +49,14 @@ npm test
 
 - [x] Phase 0 — scaffold
 - [x] Phase 1 — Sleeper adapter + domain model
-- [ ] Phase 2 — historical data lake + point-in-time feature store
-- [ ] Phase 3 — backtest harness
-- [ ] Phase 4 — projection engine (v0 Marcel → v4 ensemble)
-- [ ] Phase 5 — simulation engine
+- [x] Phase 2 — historical data lake + point-in-time feature store
+- [x] Phase 3 — backtest harness
+- [ ] Phase 4 — projection engine — **v0 and v1 shipped**, v2–v4 not started
+- [x] Phase 5 — simulation engine
 - [ ] Phase 6 — odds calibration
-- [ ] Phase 7 — rankings and metrics
-- [ ] Phase 8 — trades, waivers, lineups
-- [ ] Phase 9 — Yahoo adapter
+- [x] Phase 7 — rankings and metrics
+- [x] Phase 8 — trades, waivers, lineups
+- [x] Phase 9 — Yahoo adapter
 - [ ] Phase 10 — compounding data
 
 Full plan: `docs/PLAN.md`

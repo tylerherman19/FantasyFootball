@@ -39,7 +39,7 @@ export {
   type ValuedPick,
 } from './valuation/picks.js';
 
-// metrics
+// metrics — how good is this team, and why
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
 export {
   assessDepth,
@@ -47,6 +47,26 @@ export {
   type DepthAssessment,
   type MarginalValue,
 } from './metrics/marginal-value.js';
+export { scheduleLuck, type ScheduleLuck } from './metrics/schedule-luck.js';
+export {
+  replacementLevels,
+  teamScarcity,
+  type ReplacementLevel,
+  type ScarcityPlayer,
+  type TeamScarcity,
+} from './metrics/scarcity.js';
+export {
+  fragility,
+  type Fragility,
+  type FragilityInput,
+  type PlayerDependence,
+} from './metrics/fragility.js';
+export {
+  powerRankings,
+  type RankingInput,
+  type RankingSignal,
+  type TeamRanking,
+} from './valuation/power-rankings.js';
 
 // decisions — everything priced in championship probability
 export {

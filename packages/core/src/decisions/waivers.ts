@@ -39,6 +39,15 @@ export interface WaiverInput {
   readonly remainingBudget: number;
   /** Weeks left in the regular season, used to price future opportunities. */
   readonly weeksRemaining: number;
+  /**
+   * Value expected from future weeks' claims, overriding the estimate derived
+   * from this candidate list.
+   *
+   * Needed because bids must not depend on how many candidates were simulated.
+   * A two-stage screen that hands the finalist round three players would
+   * otherwise conclude the wire is barren and bid the whole budget.
+   */
+  readonly expectedFutureGain?: number;
 }
 
 /**
@@ -77,6 +86,46 @@ export const suggestBid = (
 
   return { bid: Math.min(bid, remainingBudget), rationale };
 };
+
+/**
+ * What a typical future week's best claim is likely to be worth.
+ *
+ * Estimated from an observed field rather than assumed, using the *second* best
+ * option as the stand-in for "what turns up next week" — the best one is the
+ * outlier we're pricing against, so using it would make every week look like
+ * this one.
+ */
+export const estimateFutureGain = (
+  titleDeltas: readonly number[],
+  weeksRemaining: number,
+): number => {
+  const positive = titleDeltas.filter((d) => d > 0).sort((a, b) => b - a);
+  if (positive.length === 0) return 0;
+
+  // Median of the runners-up, not the second-best value itself. A single noisy
+  // screening estimate should not move a bid recommendation by tens of dollars,
+  // and a manager who sees $43 one refresh and $8 the next stops believing any
+  // of it. The best option is excluded because it is the outlier being priced.
+  const runnersUp = positive.slice(1, 6);
+  const typicalOpportunity =
+    runnersUp.length > 0 ? runnersUp[Math.floor(runnersUp.length / 2)]! : positive[0]! * 0.5;
+
+  // Crucially, *not* one useful add per remaining week. Multiplying by the full
+  // schedule assumes a season-changing free agent appears every Tuesday, which
+  // makes even a genuinely valuable claim look worthless by comparison and
+  // recommends absurdly small bids. In practice a season yields a handful of
+  // adds that move a roster at all, so the horizon is capped.
+  const realisticOpportunities = Math.min(Math.max(0, weeksRemaining - 1), MAX_MEANINGFUL_CLAIMS);
+
+  return typicalOpportunity * realisticOpportunities;
+};
+
+/**
+ * How many genuinely useful free agents a season realistically offers after
+ * this one. Waiver wires are front-loaded — most value appears in the first few
+ * weeks as injuries reshuffle roles — and thin out from there.
+ */
+const MAX_MEANINGFUL_CLAIMS = 4;
 
 /**
  * Rank the wire for one specific roster.
@@ -124,7 +173,8 @@ export const rankWaivers = (input: WaiverInput): WaiverRecommendation[] => {
   // weeks left to exploit it.
   const positiveGains = evaluated.map((e) => e.delta.titleDelta).filter((d) => d > 0).sort((a, b) => b - a);
   const typicalWeeklyGain = positiveGains.length > 1 ? positiveGains[1]! : (positiveGains[0] ?? 0) * 0.5;
-  const expectedFutureGain = typicalWeeklyGain * Math.max(0, input.weeksRemaining - 1);
+  const expectedFutureGain =
+    input.expectedFutureGain ?? typicalWeeklyGain * Math.max(0, input.weeksRemaining - 1);
 
   return evaluated
     .map(({ candidate, delta, dropPlayerId }) => {

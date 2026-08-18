@@ -31,6 +31,7 @@ export {
   type SimContext,
 } from './decisions/odds.js';
 export {
+  estimateFutureGain,
   rankWaivers,
   suggestBid,
   type WaiverCandidate,

@@ -1,11 +1,47 @@
 import type { LeagueSnapshot, PlayerId } from '../domain/index.js';
 import { simulateSeason, type SeasonSimResult } from '../sim/season.js';
 import {
-  projectSeason,
+  projectTeamWeek,
   withRosterChange,
   type ProjectionPool,
   type TeamContext,
 } from '../sim/roster-projection.js';
+import type { TeamWeekProjection } from '../sim/season.js';
+
+/**
+ * Per-team projection cache.
+ *
+ * A trade or waiver evaluation changes one or two rosters and leaves the other
+ * eight untouched, yet the naive path re-derives every team's optimal lineup for
+ * every remaining week on both sides of every comparison. Since unchanged teams
+ * are passed through by reference, a WeakMap keyed on the team object skips all
+ * of that — and the entries disappear on their own when the context does.
+ */
+const teamProjectionCache = new WeakMap<TeamContext, Map<string, TeamWeekProjection[]>>();
+
+const projectTeam = (
+  team: TeamContext,
+  pool: ProjectionPool,
+  weeks: readonly number[],
+): TeamWeekProjection[] => {
+  const key = weeks.join(',');
+  const cached = teamProjectionCache.get(team);
+  const hit = cached?.get(key);
+  if (hit !== undefined) return hit;
+
+  const projections = weeks.map((week) => projectTeamWeek(team, pool, week));
+  const byWeeks = cached ?? new Map<string, TeamWeekProjection[]>();
+  byWeeks.set(key, projections);
+  teamProjectionCache.set(team, byWeeks);
+
+  return projections;
+};
+
+const projectAll = (
+  teams: readonly TeamContext[],
+  pool: ProjectionPool,
+  weeks: readonly number[],
+): TeamWeekProjection[] => teams.flatMap((team) => projectTeam(team, pool, weeks));
 
 /**
  * The single currency.
@@ -63,7 +99,7 @@ export const extractOdds = (result: SeasonSimResult, teamId: string): OddsSnapsh
 export const currentOdds = (context: SimContext, teamId: string): OddsSnapshot => {
   const result = simulateSeason({
     snapshot: context.snapshot,
-    projections: projectSeason(context.teams, context.pool, context.weeks),
+    projections: projectAll(context.teams, context.pool, context.weeks),
     iterations: context.iterations ?? 4_000,
     seed: context.seed ?? 0x5eed,
   });
@@ -96,7 +132,7 @@ export const oddsDelta = (
     extractOdds(
       simulateSeason({
         snapshot: context.snapshot,
-        projections: projectSeason(context.teams, context.pool, context.weeks),
+        projections: projectAll(context.teams, context.pool, context.weeks),
         iterations,
         seed,
       }),
@@ -116,7 +152,7 @@ export const oddsDelta = (
   const after = extractOdds(
     simulateSeason({
       snapshot: context.snapshot,
-      projections: projectSeason(modified, context.pool, context.weeks),
+      projections: projectAll(modified, context.pool, context.weeks),
       iterations,
       // Same seed as the baseline: we are measuring the change, not the noise.
       seed,

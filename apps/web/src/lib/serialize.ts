@@ -62,6 +62,18 @@ export interface WireLeague {
    * assets.
    */
   readonly picks: readonly WirePick[];
+  /**
+   * Best available free agents, already filtered.
+   *
+   * Only players who could plausibly crack a lineup are sent — the rest of the
+   * wire cannot change anyone's odds, so shipping them would cost bandwidth to
+   * simulate nothing.
+   */
+  readonly freeAgents: readonly WirePlayer[];
+  readonly waiverType: 'faab' | 'priority';
+  readonly remainingBudget: number;
+  readonly seasonBudget: number;
+  readonly weeksRemaining: number;
   /** Snapshot pieces the simulator needs, kept minimal. */
   readonly schedule: readonly {
     week: number;
@@ -82,6 +94,8 @@ export const serializeLeague = (
   values: ReadonlyMap<string, MarketValue>,
   playerNames: Record<string, { name: string; position: string; team: string }>,
   picks: readonly WirePick[] = [],
+  freeAgents: readonly WirePlayer[] = [],
+  waivers: { remainingBudget: number; seasonBudget: number } = { remainingBudget: 0, seasonBudget: 0 },
 ): WireLeague => {
   const { snapshot, context } = view;
 
@@ -131,6 +145,11 @@ export const serializeLeague = (
     })),
     players,
     picks,
+    freeAgents,
+    waiverType: snapshot.league.waiverType,
+    remainingBudget: waivers.remainingBudget,
+    seasonBudget: waivers.seasonBudget,
+    weeksRemaining: Math.max(1, snapshot.league.regularSeasonWeeks - snapshot.asOfWeek + 1),
     schedule: snapshot.schedule
       .filter((m) => m.week >= snapshot.asOfWeek)
       .map((m) => ({ week: m.week, matchupId: m.matchupId, teamIds: m.teamIds as [string, string] })),

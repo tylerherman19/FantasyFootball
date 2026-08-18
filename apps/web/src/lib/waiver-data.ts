@@ -145,3 +145,58 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
     seasonBudget: isFaab ? snapshot.league.waiverBudget : 0,
   };
 };
+
+
+/**
+ * Best available free agents, ready to ship to the browser.
+ *
+ * Filtered hard on purpose: the vast majority of any wire cannot crack a lineup,
+ * and a player who cannot start cannot change your odds. Simulating them would
+ * cost time to prove a foregone conclusion.
+ */
+export const loadFreeAgents = async (view: LeagueView) => {
+  const { snapshot } = view;
+  const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
+  if (artifact === null) return [];
+
+  const rules = snapshot.league.scoring.raw;
+
+  const rostered = new Set<string>();
+  for (const roster of snapshot.rosters) {
+    for (const id of roster.playerIds) rostered.add(String(id));
+  }
+
+  return Object.values(artifact.players)
+    .filter((player) => !rostered.has(player.playerId) && player.active)
+    .map((player) => ({
+      id: player.playerId,
+      name: player.name,
+      position: player.position,
+      team: player.team,
+      mean: scoreFor(player, rules),
+      sd: player.sd,
+      gameId: player.gameId,
+      gameLoading: player.gameLoading,
+      active: player.active,
+      value: 0,
+    }))
+    .sort((a, b) => b.mean - a.mean)
+    .slice(0, SCREEN_TOP);
+};
+
+/** Remaining FAAB for one team, or zeroes in a priority league. */
+export const waiverBudgetFor = (
+  snapshot: LeagueView['snapshot'],
+  teamId: string,
+): { remainingBudget: number; seasonBudget: number } => {
+  if (snapshot.league.waiverType !== 'faab') return { remainingBudget: 0, seasonBudget: 0 };
+
+  const spent = snapshot.transactions
+    .filter((transaction) => transaction.kind === 'waiver')
+    .reduce((total, transaction) => total + (transaction.faabSpent[teamId] ?? 0), 0);
+
+  return {
+    remainingBudget: Math.max(0, snapshot.league.waiverBudget - spent),
+    seasonBudget: snapshot.league.waiverBudget,
+  };
+};

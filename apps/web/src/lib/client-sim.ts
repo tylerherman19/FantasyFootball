@@ -1,7 +1,10 @@
 import {
   asPlayerId,
+  currentOdds,
+  estimateFutureGain,
   oddsDelta,
   fairnessGap,
+  suggestBid,
   type LeagueSnapshot,
   type PlayerProjection,
   type Position,
@@ -189,4 +192,118 @@ export const evaluateTradeClient = (
     verdict: verdict + pickNote,
     acceptable,
   };
+};
+
+
+export interface WaiverResult {
+  readonly playerId: string;
+  readonly name: string;
+  readonly position: string;
+  readonly team: string;
+  readonly projected: number;
+  readonly titleDelta: number;
+  readonly playoffDelta: number;
+  readonly dropPlayerId: string | null;
+  readonly dropName: string | null;
+  readonly suggestedBid: number;
+}
+
+/**
+ * Rank the wire against one roster, in the browser.
+ *
+ * Server-side this took twelve seconds, because it is dozens of simulations and
+ * the answer changes whenever a roster does. Run here it costs nothing the user
+ * waits on, and — more usefully — the drop choice becomes interactive: a manager
+ * can see what each claim is worth paired with each cut rather than accepting
+ * ours.
+ */
+export const rankWaiversClient = (
+  wire: WireLeague,
+  myTeamId: string,
+  dropCandidateIds: readonly string[],
+  iterations = 800,
+): WaiverResult[] => {
+  const context = rebuildContextWithFreeAgents(wire, iterations);
+  const before = currentOdds(context, myTeamId);
+
+  const results: WaiverResult[] = [];
+
+  for (const candidate of wire.freeAgents) {
+    let best: { delta: ReturnType<typeof oddsDelta>; dropId: string | null } | null = null;
+
+    const dropOptions: (string | null)[] = dropCandidateIds.length > 0 ? [...dropCandidateIds] : [null];
+
+    for (const dropId of dropOptions) {
+      const delta = oddsDelta(
+        context,
+        [
+          {
+            teamId: myTeamId,
+            add: [asPlayerId(candidate.id)],
+            ...(dropId !== null ? { drop: [asPlayerId(dropId)] } : {}),
+          },
+        ],
+        myTeamId,
+        before,
+      );
+
+      if (best === null || delta.titleDelta > best.delta.titleDelta) {
+        best = { delta, dropId };
+      }
+    }
+
+    if (best === null) continue;
+
+    results.push({
+      playerId: candidate.id,
+      name: candidate.name,
+      position: candidate.position,
+      team: candidate.team,
+      projected: candidate.mean,
+      titleDelta: best.delta.titleDelta,
+      playoffDelta: best.delta.playoffDelta,
+      dropPlayerId: best.dropId,
+      dropName: best.dropId === null ? null : (wire.players[best.dropId]?.name ?? null),
+      suggestedBid: 0,
+    });
+  }
+
+  const sorted = results.sort((a, b) => b.titleDelta - a.titleDelta);
+
+  if (wire.waiverType !== 'faab' || wire.remainingBudget <= 0) return sorted;
+
+  // Price bids off the whole observed field, so a thin list of positives does
+  // not make the wire look barren and inflate every bid.
+  const futureGain = estimateFutureGain(
+    sorted.map((r) => r.titleDelta),
+    wire.weeksRemaining,
+  );
+
+  return sorted.map((result) => ({
+    ...result,
+    suggestedBid: suggestBid(result.titleDelta, wire.remainingBudget, futureGain).bid,
+  }));
+};
+
+/** Same rehydration, with free agents added to the projection pool. */
+const rebuildContextWithFreeAgents = (wire: WireLeague, iterations: number): SimContext => {
+  const context = rebuildContext(wire, iterations);
+  const weekly = context.pool.get(wire.weeks[0] ?? wire.asOfWeek);
+  if (weekly === undefined) return context;
+
+  const extended = new Map(weekly);
+  for (const player of wire.freeAgents) {
+    extended.set(asPlayerId(player.id), {
+      playerId: asPlayerId(player.id),
+      position: player.position as Position,
+      eligiblePositions: [player.position as Position],
+      mean: player.mean,
+      sd: player.sd,
+      gameId: player.gameId,
+      gameLoading: player.gameLoading,
+      active: player.active,
+    });
+  }
+
+  return { ...context, pool: new Map(wire.weeks.map((week) => [week, extended])) };
 };

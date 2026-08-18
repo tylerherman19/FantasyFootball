@@ -311,6 +311,21 @@ describe('powerRankings', () => {
     expect(rankings[0]!.valueRank).toBe(1);
     expect(rankings[1]!.valueRank).toBe(1);
   });
+
+  it('reports no divergence when the market priced nothing', () => {
+    // Before a draft every roster is empty and worth zero. All teams then tie at
+    // rank one, and a naive divergence would label the whole league as wasting
+    // talent it does not have.
+    const rankings = powerRankings([
+      team('a', 0, 0.30),
+      team('b', 0, 0.25),
+      team('c', 0, 0.20),
+      team('d', 0, 0.15),
+    ]);
+
+    expect(rankings.every((r) => r.divergence === 0)).toBe(true);
+    expect(rankings.every((r) => r.signal === 'aligned')).toBe(true);
+  });
 });
 
 describe('pickEquity', () => {

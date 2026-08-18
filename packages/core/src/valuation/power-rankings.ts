@@ -89,11 +89,23 @@ export const powerRankings = (teams: readonly RankingInput[]): TeamRanking[] => 
 
   const threshold = divergenceThreshold(teams.length);
 
+  /**
+   * Whether the market told us anything at all.
+   *
+   * Before a draft every roster is empty and every team's value is zero, so the
+   * tie rule hands all of them first place. Divergence would then be
+   * `1 − titleRank` for everybody — a systematically negative number that labels
+   * the entire league as wasting its talent. That is not a finding, it is an
+   * artifact of having no data, so a flat value column produces no signal.
+   */
+  const values = teams.map((t) => t.marketValue);
+  const hasValueSpread = values.length > 1 && Math.min(...values) !== Math.max(...values);
+
   return teams
     .map((team): TeamRanking => {
       const valueRank = valueRanks.get(team)!;
       const titleRank = titleRanks.get(team)!;
-      const divergence = valueRank - titleRank;
+      const divergence = hasValueSpread ? valueRank - titleRank : 0;
 
       return {
         teamId: team.teamId,

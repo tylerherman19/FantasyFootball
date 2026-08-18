@@ -23,6 +23,7 @@ const TABS = [
   { key: 'lineup', label: 'Lineup', href: '/lineup' },
   { key: 'waivers', label: 'Waivers', href: '/waivers' },
   { key: 'trades', label: 'Trades', href: '/trades' },
+  { key: 'rankings', label: 'Rankings', href: '/rankings' },
   { key: 'roster', label: 'Roster', href: '/roster' },
   { key: 'schedule', label: 'Schedule', href: '/schedule' },
 ] as const;

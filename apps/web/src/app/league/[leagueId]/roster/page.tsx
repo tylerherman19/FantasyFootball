@@ -2,34 +2,12 @@ import { LeagueNav } from '@/components/LeagueNav';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
 import { rosterWithLineup } from '@/lib/analysis';
+import { leagueRankings } from '@/lib/rankings';
+import type { Position } from '@ffe/core';
 
 export const revalidate = 900;
 
 const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
-
-/**
- * Positional strength against this league's own replacement level.
- *
- * Comparing to a generic baseline is what makes most "team needs" analysis
- * wrong: a receiver who starts comfortably in a 10-team league is a bench piece
- * in a 14-team superflex. Replacement level here is the worst starter at that
- * position across the league, so the comparison is to the actual competition.
- */
-const replacementLevels = (
-  rostersByPosition: Map<string, number[]>,
-  demandByPosition: Map<string, number>,
-): Map<string, number> => {
-  const levels = new Map<string, number>();
-
-  for (const [position, projections] of rostersByPosition) {
-    const demand = demandByPosition.get(position) ?? 1;
-    const sorted = [...projections].sort((a, b) => b - a);
-    const index = Math.min(sorted.length - 1, Math.max(0, demand - 1));
-    levels.set(position, sorted[index] ?? 0);
-  }
-
-  return levels;
-};
 
 export default async function RosterPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
@@ -39,25 +17,12 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
   const players = await loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw);
   const roster = myTeamId === null ? [] : rosterWithLineup(view, myTeamId, players);
 
-  // League-wide projections per position, for replacement level.
-  const leagueByPosition = new Map<string, number[]>();
-  for (const team of snapshot.rosters) {
-    for (const playerId of team.playerIds) {
-      const info = players[String(playerId)];
-      if (info === undefined) continue;
-      const bucket = leagueByPosition.get(info.position) ?? [];
-      bucket.push(info.mean);
-      leagueByPosition.set(info.position, bucket);
-    }
-  }
-
-  const demand = new Map<string, number>();
-  for (const slot of snapshot.league.rosterSlots) {
-    if (slot === 'BN' || slot === 'IR' || slot === 'TAXI') continue;
-    demand.set(slot, (demand.get(slot) ?? 0) + snapshot.league.teamCount);
-  }
-
-  const levels = replacementLevels(leagueByPosition, demand);
+  // Replacement level comes from the shared metric, which seats the league's
+  // flex slots against the real player pool. The version this page used to carry
+  // keyed demand by slot name, so FLEX and SUPER_FLEX matched no position and
+  // their demand vanished — which set replacement level too high and made every
+  // roster look thinner than it is.
+  const { replacement: levels } = await leagueRankings(view, players);
 
   const unprojected = roster.filter((entry) => !entry.projected);
 
@@ -86,16 +51,17 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
       <main className="mx-auto max-w-5xl px-6 pb-20">
         <p className="mb-8 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-          Value over replacement is measured against <em>this</em> league&apos;s worst starter at each
-          position, not a generic baseline. A receiver who starts easily in a shallow league is a
-          bench piece in a deep one.
+          Value over replacement is measured against the best player <em>not</em> starting anywhere
+          in <em>this</em> league — the man you would pick up if you lost a starter — rather than a
+          generic baseline. A receiver who starts easily in a shallow league is a bench piece in a
+          deep one, and flex slots move that line further than most tools admit.
         </p>
 
         {roster.length === 0 && <p style={{ color: 'var(--ink-muted)' }}>No roster found.</p>}
 
         <div className="space-y-8">
           {groups.map(([position, entries]) => {
-            const replacement = levels.get(position) ?? 0;
+            const replacement = levels.get(position as Position) ?? 0;
             const surplus = entries.reduce((sum, e) => sum + Math.max(0, e.mean - replacement), 0);
 
             return (

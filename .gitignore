@@ -36,3 +36,6 @@ data/snapshots/
 
 # nflverse mirror — 150MB+, regenerable via model/ingest/nflverse.py
 data/lake/
+
+# Yahoo OAuth tokens — secrets, never commit
+.yahoo-tokens.json

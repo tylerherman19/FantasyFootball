@@ -115,6 +115,22 @@ export interface Manager {
   readonly id: string;
   readonly displayName: string;
   readonly teamName: string;
+  /**
+   * The platform's own account id for this manager.
+   *
+   * Display names are not identifiers — they differ between leagues, change
+   * mid-season, and collide. Anything that needs to answer "which of these
+   * teams is mine" must match on this.
+   */
+  readonly platformUserId: string | null;
+  /**
+   * Additional account ids sharing this team.
+   *
+   * Sleeper supports co-owned teams, and a co-owner's id never appears as the
+   * roster's owner. Ignoring them means a co-owner opening the app is told they
+   * are not in their own league.
+   */
+  readonly coOwnerUserIds: readonly string[];
 }
 
 export interface Roster {

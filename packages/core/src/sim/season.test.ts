@@ -36,7 +36,7 @@ const schedule = (): Matchup[] => [
 const snapshot = (overrides: Partial<LeagueSnapshot> = {}): LeagueSnapshot => ({
   league: league(),
   asOfWeek: 1,
-  managers: ['1', '2', '3', '4'].map((id) => ({ id, displayName: `m${id}`, teamName: `t${id}` })),
+  managers: ['1', '2', '3', '4'].map((id) => ({ id, displayName: `m${id}`, teamName: `t${id}`, platformUserId: id, coOwnerUserIds: [] })),
   rosters: ['1', '2', '3', '4'].map((id) => ({
     teamId: id, managerId: id, playerIds: [], starterIds: [], taxiIds: [], irIds: [],
   })),

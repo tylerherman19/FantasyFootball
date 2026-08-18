@@ -143,9 +143,20 @@ const combineFpts = (whole: number | undefined, decimal: number | undefined): nu
 export class SleeperAdapter implements PlatformAdapter {
   readonly platform = 'sleeper' as const;
   readonly #client: SleeperClient;
+  readonly #userIds = new Map<string, string>();
 
   constructor(client: SleeperClient = new SleeperClient()) {
     this.#client = client;
+  }
+
+  /** Resolve a username to the platform's account id. Cached per adapter. */
+  async resolveUserId(userHandle: string): Promise<string> {
+    const cached = this.#userIds.get(userHandle.toLowerCase());
+    if (cached !== undefined) return cached;
+
+    const user = await this.#client.getUser(userHandle);
+    this.#userIds.set(userHandle.toLowerCase(), user.user_id);
+    return user.user_id;
   }
 
   async listLeagues(userHandle: string, season: number): Promise<LeagueRef[]> {
@@ -234,6 +245,8 @@ export class SleeperAdapter implements PlatformAdapter {
         id: String(r.roster_id),
         displayName: user?.display_name ?? 'Orphan team',
         teamName: user?.metadata?.team_name ?? user?.display_name ?? `Team ${r.roster_id}`,
+        platformUserId: r.owner_id,
+        coOwnerUserIds: r.co_owners ?? [],
       };
     });
   }

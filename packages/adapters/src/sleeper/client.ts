@@ -164,6 +164,7 @@ export interface SleeperLeague {
 export interface SleeperRoster {
   readonly roster_id: number;
   readonly owner_id: string | null;
+  readonly co_owners: readonly string[] | null;
   readonly players: readonly string[] | null;
   readonly starters: readonly string[] | null;
   readonly taxi: readonly string[] | null;

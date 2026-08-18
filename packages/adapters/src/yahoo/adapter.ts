@@ -240,6 +240,12 @@ export class YahooAdapter implements PlatformAdapter {
         id: teamId,
         displayName: asString(firstManager['nickname'], 'Manager'),
         teamName: asString(team['name'], 'Team'),
+        platformUserId: asString(firstManager['guid'], '') || null,
+        // Yahoo exposes multiple managers per team but no co-owner distinction.
+        coOwnerUserIds: managerList
+          .slice(1)
+          .map((m) => asString(mergeFragments((m as Record<string, unknown>)['manager'])['guid']))
+          .filter((guid) => guid !== ''),
       });
 
       rosters.push({

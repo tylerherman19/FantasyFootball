@@ -97,9 +97,15 @@ export const loadLeague = async (
   });
 
   const teamNames = new Map(snapshot.managers.map((m) => [m.id, m.teamName]));
-  const me = snapshot.managers.find(
-    (m) => m.displayName.toLowerCase() === username.toLowerCase(),
-  );
+
+  // Match on the platform account id, not the display name. Display names differ
+  // between leagues and change mid-season; matching on them silently fails to
+  // find your own team, which reads as "you are not in this league".
+  const myUserId = await adapter.resolveUserId(username);
+  const me =
+    snapshot.managers.find((m) => m.platformUserId === myUserId) ??
+    snapshot.managers.find((m) => m.coOwnerUserIds.includes(myUserId)) ??
+    snapshot.managers.find((m) => m.displayName.toLowerCase() === username.toLowerCase());
 
   return {
     snapshot,

@@ -46,7 +46,7 @@ const schedule = (): Matchup[] => [
 const snapshot = (): LeagueSnapshot => ({
   league: league(),
   asOfWeek: 1,
-  managers: TEAM_IDS.map((id) => ({ id, displayName: `m${id}`, teamName: `t${id}` })),
+  managers: TEAM_IDS.map((id) => ({ id, displayName: `m${id}`, teamName: `t${id}`, platformUserId: id, coOwnerUserIds: [] })),
   rosters: TEAM_IDS.map((id) => ({
     teamId: id, managerId: id, playerIds: [], starterIds: [], taxiIds: [], irIds: [],
   })),

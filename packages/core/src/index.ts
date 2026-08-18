@@ -23,8 +23,31 @@ export {
 // projections
 export { scoreStatLine, scoringCoverage, type StatLine } from './projections/scoring.js';
 
-// metrics
+// metrics — how good is this team, and why
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
+export { scheduleLuck, type ScheduleLuck } from './metrics/schedule-luck.js';
+export {
+  replacementLevels,
+  teamScarcity,
+  type ReplacementLevel,
+  type ScarcityPlayer,
+  type TeamScarcity,
+} from './metrics/scarcity.js';
+export {
+  fragility,
+  type Fragility,
+  type FragilityInput,
+  type PlayerDependence,
+} from './metrics/fragility.js';
+
+// valuation
+export {
+  powerRankings,
+  type RankingInput,
+  type RankingSignal,
+  type TeamRanking,
+} from './valuation/power-rankings.js';
+export { pickEquity, type PickEquity, type PickEquityInput } from './valuation/pick-equity.js';
 
 // decisions — everything priced in championship probability
 export {

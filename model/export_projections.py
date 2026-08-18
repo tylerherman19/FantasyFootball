@@ -153,9 +153,25 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
     }
 
 
+def current_week() -> tuple[int, int]:
+    """Season and week to export, taken from the NFL itself.
+
+    Hardcoding a week means the weekly job silently keeps publishing week 1 for
+    the whole season. Preseason maps to week 1, since that is what the app shows
+    until games count.
+    """
+    import httpx
+
+    state = httpx.get("https://api.sleeper.app/v1/state/nfl", timeout=30.0).json()
+    season = int(state["season"])
+    week = int(state["week"]) if state.get("season_type") == "regular" else 1
+    return season, max(1, week)
+
+
 if __name__ == "__main__":
-    season = int(sys.argv[1]) if len(sys.argv) > 1 else 2026
-    week = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    default_season, default_week = current_week()
+    season = int(sys.argv[1]) if len(sys.argv) > 1 else default_season
+    week = int(sys.argv[2]) if len(sys.argv) > 2 else default_week
 
     artifact = build_artifact(season, week, default_lake(), Path("model/artifacts/crosswalk.json"))
 

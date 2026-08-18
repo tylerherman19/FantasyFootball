@@ -25,6 +25,12 @@ export { scoreStatLine, scoringCoverage, type StatLine } from './projections/sco
 
 // metrics
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
+export {
+  assessDepth,
+  marginalValues,
+  type DepthAssessment,
+  type MarginalValue,
+} from './metrics/marginal-value.js';
 
 // decisions — everything priced in championship probability
 export {
@@ -44,6 +50,14 @@ export {
   type WaiverInput,
   type WaiverRecommendation,
 } from './decisions/waivers.js';
+export {
+  analyzeRosters,
+  offerCandidates,
+  rankPartners,
+  type FitScore,
+  type RosterInput,
+  type TeamRosterAnalysis,
+} from './decisions/fit.js';
 export {
   evaluateTrade,
   fairnessGap,

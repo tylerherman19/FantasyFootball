@@ -29,7 +29,9 @@ data rather than importing someone's rules of thumb.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -63,6 +65,25 @@ HALF_LIFE_GAMES = 10.0
 #: Floor on the shrinkage constant, so a stat that looks perfectly stable in a
 #: small sample doesn't escape regression entirely.
 MIN_K = 1.0
+
+#: Measured spread corrections, per position.
+#:
+#: The naive spread — how much scores vary across all players at a position — is
+#: far too wide for a single player's week, because it includes the gap between a
+#: star and a backup. Calibration measured the real forecast error and produced
+#: these multipliers; without them the model is under-confident, its 80%
+#: intervals capture 90% of outcomes, and every probability built on top is
+#: blurred. Regenerate with model/backtest/run_calibration.py.
+_CALIBRATION_PATH = Path(__file__).resolve().parents[1] / "artifacts" / "spread-calibration.json"
+
+
+def _spread_multipliers() -> dict[str, float]:
+    try:
+        payload = json.loads(_CALIBRATION_PATH.read_text(encoding="utf-8"))
+        return {str(k): float(v) for k, v in payload.get("multipliers", {}).items()}
+    except (OSError, ValueError):
+        # No calibration file yet: ship uncorrected rather than guessing.
+        return {}
 
 
 @dataclass(frozen=True)
@@ -261,6 +282,7 @@ def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Pre
         for row in frame.select(["player_id", "position"]).unique(subset=["player_id"]).to_dicts()
     }
 
+    multipliers = _spread_multipliers()
     predictions: list[Prediction] = []
 
     for player_id, line in lines.items():
@@ -268,12 +290,11 @@ def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Pre
         expression, _ = score_expression(rules, set(row.columns))
         mean = float(row.select(expression.alias("p"))["p"][0])
 
+        position = position_of.get(player_id, "")
+        sd = points_sd.get(position, 7.0) * multipliers.get(position, 1.0)
+
         predictions.append(
-            Prediction(
-                player_id=player_id,
-                mean=max(0.0, mean),
-                sd=points_sd.get(position_of.get(player_id, ""), 7.0),
-            )
+            Prediction(player_id=player_id, mean=max(0.0, mean), sd=sd)
         )
 
     return predictions

@@ -27,22 +27,23 @@ SCORING: dict[str, float] = {
     "sack_fumbles_lost": -2.0,
 }
 
+#: Sleeper scoring keys for models that rebuild a stat line, as opposed to v0
+#: which works directly in nflverse column names.
+SLEEPER_RULES: dict[str, float] = {
+    "pass_yd": 0.04,
+    "pass_td": 4.0,
+    "pass_int": -1.0,
+    "rush_yd": 0.1,
+    "rush_td": 6.0,
+    "rec": 1.0,
+    "rec_yd": 0.1,
+    "rec_td": 6.0,
+}
+
+
 if __name__ == "__main__":
     first = int(sys.argv[1]) if len(sys.argv) > 1 else 2023
     last = int(sys.argv[2]) if len(sys.argv) > 2 else 2024
-
-    #: Scoring keys for v1, which rebuilds a stat line and scores it under real
-    #: Sleeper rules rather than the nflverse column names v0 uses.
-    SLEEPER_RULES = {
-        "pass_yd": 0.04,
-        "pass_td": 4.0,
-        "pass_int": -1.0,
-        "rush_yd": 0.1,
-        "rush_td": 6.0,
-        "rec": 1.0,
-        "rec_yd": 0.1,
-        "rec_td": 6.0,
-    }
 
     ladder = [
         ("v0-marcel", partial(marcel.build, scoring=SCORING)),

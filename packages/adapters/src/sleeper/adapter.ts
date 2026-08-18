@@ -234,6 +234,7 @@ export class SleeperAdapter implements PlatformAdapter {
       regularSeasonWeeks: regularSeasonWeeks(raw),
       medianWins: (raw.settings.league_average_match ?? 0) === 1,
       superFlex: rosterSlots.includes('SUPER_FLEX'),
+      waiverType: raw.settings.waiver_type === 2 ? 'faab' : 'priority',
       waiverBudget: raw.settings.waiver_budget ?? 0,
     };
   }

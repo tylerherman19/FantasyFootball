@@ -117,7 +117,16 @@ export interface League {
   readonly medianWins: boolean;
   /** True when a QB can fill a flex slot — changes valuation more than anything else. */
   readonly superFlex: boolean;
-  /** Season FAAB allowance. Zero means the league uses waiver priority instead. */
+  /**
+   * How waivers are settled.
+   *
+   * `faab` leagues bid money; `priority` leagues use a rolling order and no bid
+   * exists to recommend. Platforms populate a budget field either way — Sleeper
+   * reports $100 for priority leagues that have never used a dollar — so the
+   * waiver type is what decides, never the presence of a budget.
+   */
+  readonly waiverType: 'faab' | 'priority';
+  /** Season FAAB allowance. Meaningless unless waiverType is 'faab'. */
   readonly waiverBudget: number;
 }
 

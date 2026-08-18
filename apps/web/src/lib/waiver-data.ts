@@ -87,7 +87,10 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
     .filter((transaction) => transaction.kind === 'waiver')
     .reduce((total, transaction) => total + (transaction.faabSpent[teamId] ?? 0), 0);
 
-  const remainingBudget = Math.max(0, snapshot.league.waiverBudget - spent);
+  // Priority leagues have no bid to make, so the budget is reported as zero and
+  // the UI says "waiver priority" rather than inventing a dollar figure.
+  const isFaab = snapshot.league.waiverType === 'faab';
+  const remainingBudget = isFaab ? Math.max(0, snapshot.league.waiverBudget - spent) : 0;
 
   const toCandidate = (player: ArtifactPlayer) => ({
     playerId: asPlayerId(player.playerId),
@@ -139,6 +142,6 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
     candidateCount: freeAgents.length,
     simulatedCount: candidates.length,
     remainingBudget,
-    seasonBudget: snapshot.league.waiverBudget,
+    seasonBudget: isFaab ? snapshot.league.waiverBudget : 0,
   };
 };

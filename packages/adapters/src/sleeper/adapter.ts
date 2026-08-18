@@ -103,6 +103,7 @@ const toScoring = (raw: Readonly<Record<string, number>>): ScoringRules => {
     recTd: raw.rec_td ?? 0,
     fumbleLost: raw.fum_lost ?? 0,
     extra,
+    raw,
   };
 };
 
@@ -233,6 +234,7 @@ export class SleeperAdapter implements PlatformAdapter {
       regularSeasonWeeks: regularSeasonWeeks(raw),
       medianWins: (raw.settings.league_average_match ?? 0) === 1,
       superFlex: rosterSlots.includes('SUPER_FLEX'),
+      waiverBudget: raw.settings.waiver_budget ?? 0,
     };
   }
 

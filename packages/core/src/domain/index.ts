@@ -89,6 +89,14 @@ export interface ScoringRules {
   readonly fumbleLost: number;
   /** Anything platform-specific we haven't modeled explicitly, keyed by raw stat name. */
   readonly extra: Readonly<Record<string, number>>;
+  /**
+   * The platform's complete scoring settings, verbatim.
+   *
+   * Kept because leagues differ in ways a typed subset cannot capture — IDP
+   * tackles, distance-banded field goals, first-down bonuses — and scoring a
+   * league by anything other than its own rules produces confident nonsense.
+   */
+  readonly raw: Readonly<Record<string, number>>;
 }
 
 export interface League {
@@ -109,6 +117,8 @@ export interface League {
   readonly medianWins: boolean;
   /** True when a QB can fill a flex slot — changes valuation more than anything else. */
   readonly superFlex: boolean;
+  /** Season FAAB allowance. Zero means the league uses waiver priority instead. */
+  readonly waiverBudget: number;
 }
 
 export interface Manager {

@@ -77,7 +77,7 @@ const YAHOO_STAT_IDS: Readonly<Record<string, keyof Omit<ScoringRules, 'extra'>>
 const toScoring = (statModifiers: unknown): ScoringRules => {
   const base: ScoringRules = {
     rec: 0, passYd: 0, passTd: 0, passInt: 0, rushYd: 0,
-    rushTd: 0, recYd: 0, recTd: 0, fumbleLost: 0, extra: {},
+    rushTd: 0, recYd: 0, recTd: 0, fumbleLost: 0, extra: {}, raw: {},
   };
 
   const extra: Record<string, number> = {};
@@ -93,7 +93,7 @@ const toScoring = (statModifiers: unknown): ScoringRules => {
     else (mutable as Record<string, number>)[field] = value;
   }
 
-  return { ...mutable, extra };
+  return { ...mutable, extra, raw: extra };
 };
 
 export class YahooAdapter implements PlatformAdapter {
@@ -171,6 +171,7 @@ export class YahooAdapter implements PlatformAdapter {
       // Yahoo has no median-win format.
       medianWins: false,
       superFlex: rosterSlots.includes('SUPER_FLEX'),
+      waiverBudget: asNumber(settings['faab_balance'], 0),
     };
 
     const { managers, rosters, records } = this.#parseStandings(standingsPayload);

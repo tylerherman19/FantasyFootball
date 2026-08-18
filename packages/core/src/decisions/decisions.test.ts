@@ -25,13 +25,14 @@ const league = (): League => ({
   rosterSlots: ['QB', 'RB', 'WR', 'BN', 'BN'],
   scoring: {
     rec: 1, passYd: 0.04, passTd: 4, passInt: -1, rushYd: 0.1,
-    rushTd: 6, recYd: 0.1, recTd: 6, fumbleLost: -2, extra: {},
+    rushTd: 6, recYd: 0.1, recTd: 6, fumbleLost: -2, extra: {}, raw: {},
   },
   playoffTeams: 2,
   playoffStartWeek: 4,
   regularSeasonWeeks: 3,
   medianWins: false,
   superFlex: false,
+  waiverBudget: 100,
 });
 
 const schedule = (): Matchup[] => [

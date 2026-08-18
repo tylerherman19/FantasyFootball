@@ -5,7 +5,7 @@ import {
   type PlayerId,
   type WaiverRecommendation,
 } from '@ffe/core';
-import { loadArtifact, type ArtifactPlayer } from './projections';
+import { loadArtifact, scoreFor, type ArtifactPlayer } from './projections';
 import type { LeagueView } from './league-data';
 
 /**
@@ -34,6 +34,8 @@ export interface WaiverView {
   readonly recommendations: readonly WaiverRecommendation[];
   readonly candidateCount: number;
   readonly simulatedCount: number;
+  readonly remainingBudget: number;
+  readonly seasonBudget: number;
 }
 
 export const loadWaivers = async (view: LeagueView, teamId: string): Promise<WaiverView | null> => {
@@ -42,6 +44,8 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return null;
 
+  const rules = snapshot.league.scoring.raw;
+
   const rostered = new Set<string>();
   for (const roster of snapshot.rosters) {
     for (const playerId of roster.playerIds) rostered.add(String(playerId));
@@ -49,7 +53,7 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
 
   const freeAgents = Object.values(artifact.players)
     .filter((player: ArtifactPlayer) => !rostered.has(player.playerId) && player.active)
-    .sort((a, b) => b.mean - a.mean);
+    .sort((a, b) => scoreFor(b, rules) - scoreFor(a, rules));
 
   // Cheap filter: only players projected well enough to plausibly start.
   const candidates = freeAgents.slice(0, SCREEN_TOP);
@@ -62,12 +66,28 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
   // say so — but there's no reason to spend iterations proving it.
   const projections = artifact.players;
   const droppable = [...myPlayers]
-    .map((id) => ({ id: String(id), mean: projections[String(id)]?.mean ?? 0 }))
+    .map((id) => {
+      const player = projections[String(id)];
+      return { id: String(id), mean: player === undefined ? 0 : scoreFor(player, rules) };
+    })
     .sort((a, b) => a.mean - b.mean)
     .slice(0, 3)
     .map((p) => asPlayerId(p.id) as PlayerId);
 
   const weeksRemaining = Math.max(1, snapshot.league.regularSeasonWeeks - snapshot.asOfWeek + 1);
+
+  /**
+   * Real remaining budget, not an assumed hundred dollars.
+   *
+   * The season allowance comes from the league's own settings, and everything
+   * this team has already spent on waivers is subtracted from it. A manager with
+   * $12 left should not be told to bid $40.
+   */
+  const spent = snapshot.transactions
+    .filter((transaction) => transaction.kind === 'waiver')
+    .reduce((total, transaction) => total + (transaction.faabSpent[teamId] ?? 0), 0);
+
+  const remainingBudget = Math.max(0, snapshot.league.waiverBudget - spent);
 
   const toCandidate = (player: ArtifactPlayer) => ({
     playerId: asPlayerId(player.playerId),
@@ -78,8 +98,7 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
   const shared = {
     teamId,
     dropCandidates: droppable,
-    // FAAB budgets vary; 100 is the Sleeper default and what most leagues use.
-    remainingBudget: 100,
+    remainingBudget,
     weeksRemaining,
   };
 
@@ -119,5 +138,7 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
     recommendations: recommendations.filter((r) => r.delta.titleDelta > 0),
     candidateCount: freeAgents.length,
     simulatedCount: candidates.length,
+    remainingBudget,
+    seasonBudget: snapshot.league.waiverBudget,
   };
 };

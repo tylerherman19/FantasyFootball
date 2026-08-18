@@ -1,5 +1,5 @@
-import Link from 'next/link';
-import { loadLeague } from '@/lib/league-data';
+import { LeagueNav } from '@/components/LeagueNav';
+import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadWaivers } from '@/lib/waiver-data';
 
 /**
@@ -25,13 +25,17 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
   const waivers = await loadWaivers(view, view.myTeamId);
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <Link href={`/league/${leagueId}`} className="text-sm hover:opacity-60" style={{ color: 'var(--ink-muted)' }}>
-        ← {view.snapshot.league.name}
-      </Link>
-
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight">Waivers</h1>
-      <p className="mt-2 mb-8 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+    <>
+      <LeagueNav
+        leagueId={leagueId}
+        leagueName={view.snapshot.league.name}
+        meta={leagueMeta(view.snapshot)}
+        lineupShape={lineupShape(view.snapshot)}
+        active="waivers"
+        format={view.snapshot.league.format}
+      />
+      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <p className="mb-8 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
         Ranked by what each player does to <em>your</em> title odds, not by projected points. A
         backup running back is worth a lot to the manager whose starter just went down and nothing
         to everyone else — same player, same projection.
@@ -89,11 +93,14 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
 
           <p className="mt-6 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
             {waivers.simulatedCount} of {waivers.candidateCount} available players simulated — the
-            rest cannot crack a lineup, so they cannot change your odds. Bids assume a $100 budget
-            and size by this claim&apos;s share of the value still likely to appear this season.
+            rest cannot crack a lineup, so they cannot change your odds.{' '}
+            {waivers.seasonBudget > 0
+              ? `Bids size against your actual remaining FAAB ($${waivers.remainingBudget} of $${waivers.seasonBudget}), by this claim's share of the value still likely to appear this season.`
+              : 'This league uses waiver priority rather than FAAB, so no bid is suggested.'}
           </p>
         </>
       )}
     </main>
+    </>
   );
 }

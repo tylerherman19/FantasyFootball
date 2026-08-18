@@ -143,14 +143,24 @@ def _shrink(observed_total: float, observed_n: float, prior_mean: float, k: floa
     return (observed_total + prior_mean * k) / (observed_n + k)
 
 
-def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Prediction]:
-    """Project a full stat line per player, then score it under `rules`."""
+def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, float]]:
+    """Projected stat lines, deliberately unscored.
+
+    Scoring is not applied here. Every league scores differently — 42, 64 and 132
+    distinct keys across Tyler's three leagues — so the model projects what a
+    player will *do*, and each league converts that to points under its own
+    rules. Baking one scoring system into the artifact would silently hand two of
+    the three leagues the wrong numbers.
+    """
     history = store.as_of("player_stats", as_of, seasons_back=3).pl()
     if history.height == 0:
-        return []
+        return {}
 
-    needed = {"player_id", "position", "season", "week"}
-    columns = [c for c in {*VOLUME_STATS, *(s for s, _ in RATE_STATS), *(d for _, d in RATE_STATS)} if c in history.columns]
+    columns = [
+        c
+        for c in {*VOLUME_STATS, *(s for s, _ in RATE_STATS), *(d for _, d in RATE_STATS)}
+        if c in history.columns
+    ]
 
     frame = (
         history.filter(pl.col("position").is_in(SKILL_POSITIONS))
@@ -163,11 +173,11 @@ def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Pre
         )
         .sort(["player_id", "season", "week"])
     )
-    if frame.height == 0 or not needed <= set(frame.columns):
-        return []
+    if frame.height == 0:
+        return {}
 
-    # Shrinkage constants are re-estimated at every as-of, from data available
-    # then. Freezing them once would leak the future into early-season weeks.
+    # Re-estimated at every as-of, from data available then. Freezing the
+    # constants would leak the future into early-season weeks.
     volume_shrinkage = {
         (s.position, s.stat): s
         for stat in VOLUME_STATS
@@ -181,14 +191,7 @@ def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Pre
         for s in estimate_shrinkage(frame, stat, denominator)
     }
 
-    score, _ = score_expression(rules, set(frame.columns))
-    scored = frame.with_columns(score.alias("points"))
-    points_sd = {
-        row["position"]: float(row["sd"] or 7.0)
-        for row in scored.group_by("position").agg(pl.col("points").std().alias("sd")).to_dicts()
-    }
-
-    predictions: list[Prediction] = []
+    out: dict[str, dict[str, float]] = {}
 
     for (player_id,), group in frame.group_by(["player_id"], maintain_order=True):
         recent = group.tail(LOOKBACK_GAMES)
@@ -199,45 +202,77 @@ def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Pre
         weights = _weights(recent.height)
         effective_games = float(weights.sum())
 
-        projected: dict[str, float] = {}
+        line: dict[str, float] = {}
 
-        # 1. Volume per game, lightly regressed.
+        # Volume per game, lightly regressed — this is the sticky part.
         for stat in VOLUME_STATS:
             if stat not in recent.columns:
                 continue
             shrink = volume_shrinkage.get((position, stat))
             if shrink is None:
-                projected[stat] = 0.0
+                line[stat] = 0.0
                 continue
             total = float((recent[stat].to_numpy() * weights).sum())
-            projected[stat] = _shrink(total, effective_games, shrink.prior_mean, shrink.k)
+            line[stat] = _shrink(total, effective_games, shrink.prior_mean, shrink.k)
 
-        # 2. Rates per opportunity, regressed hard — this is where the model
-        #    stops believing a 6.1 yards-per-carry hot streak.
+        # Rates per opportunity, regressed hard — this is where the model stops
+        # believing a six-yards-per-carry hot streak.
         for stat, denominator in RATE_STATS:
             if stat not in recent.columns or denominator not in recent.columns:
                 continue
             shrink = rate_shrinkage.get((position, f"{stat}/{denominator}"))
             if shrink is None:
-                projected[stat] = 0.0
+                line[stat] = 0.0
                 continue
 
             stat_total = float((recent[stat].to_numpy() * weights).sum())
             opportunity_total = float((recent[denominator].to_numpy() * weights).sum())
             rate = _shrink(stat_total, opportunity_total, shrink.prior_mean, shrink.k)
 
-            # 3. Recombine: projected opportunities x projected rate.
-            projected[stat] = rate * projected.get(denominator, 0.0)
+            line[stat] = rate * line.get(denominator, 0.0)
 
-        line = pl.DataFrame([{**{c: 0.0 for c in frame.columns if c not in needed}, **projected}])
-        expression, _ = score_expression(rules, set(line.columns))
-        mean = float(line.select(expression.alias("p"))["p"][0])
+        line["_position"] = 0.0  # placeholder keeps the dict homogeneous
+        out[str(player_id)] = {k: v for k, v in line.items() if not k.startswith("_")}
+
+    return out
+
+
+def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Prediction]:
+    """Project stat lines, then score them under `rules`.
+
+    Kept as the harness entry point so the backtest scores exactly what the app
+    serves — same lines, same scoring path, no second implementation to drift.
+    """
+    lines = project_stat_lines(store, as_of)
+    if not lines:
+        return []
+
+    history = store.as_of("player_stats", as_of, seasons_back=3).pl()
+    frame = history.filter(pl.col("position").is_in(SKILL_POSITIONS))
+
+    score, _ = score_expression(rules, set(frame.columns))
+    scored = frame.with_columns(score.alias("points"))
+    points_sd = {
+        row["position"]: float(row["sd"] or 7.0)
+        for row in scored.group_by("position").agg(pl.col("points").std().alias("sd")).to_dicts()
+    }
+    position_of = {
+        str(row["player_id"]): str(row["position"])
+        for row in frame.select(["player_id", "position"]).unique(subset=["player_id"]).to_dicts()
+    }
+
+    predictions: list[Prediction] = []
+
+    for player_id, line in lines.items():
+        row = pl.DataFrame([line])
+        expression, _ = score_expression(rules, set(row.columns))
+        mean = float(row.select(expression.alias("p"))["p"][0])
 
         predictions.append(
             Prediction(
-                player_id=str(player_id),
+                player_id=player_id,
                 mean=max(0.0, mean),
-                sd=points_sd.get(position, 7.0),
+                sd=points_sd.get(position_of.get(player_id, ""), 7.0),
             )
         )
 

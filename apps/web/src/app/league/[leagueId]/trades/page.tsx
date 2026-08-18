@@ -1,5 +1,5 @@
-import Link from 'next/link';
-import { loadLeague } from '@/lib/league-data';
+import { LeagueNav } from '@/components/LeagueNav';
+import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadTrades } from '@/lib/trade-data';
 
 export const revalidate = 900;
@@ -20,13 +20,17 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
   const myTeamId = view.myTeamId;
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <Link href={`/league/${leagueId}`} className="text-sm hover:opacity-60" style={{ color: 'var(--ink-muted)' }}>
-        ← {view.snapshot.league.name}
-      </Link>
-
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight">Trades</h1>
-      <p className="mt-2 mb-8 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+    <>
+      <LeagueNav
+        leagueId={leagueId}
+        leagueName={view.snapshot.league.name}
+        meta={leagueMeta(view.snapshot)}
+        lineupShape={lineupShape(view.snapshot)}
+        active="trades"
+        format={view.snapshot.league.format}
+      />
+      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <p className="mb-8 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
         Market value decides whether they&apos;d accept. Simulation decides whether you should want
         it. Only proposals that clear both are shown.
       </p>
@@ -139,5 +143,6 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
         </>
       )}
     </main>
+    </>
   );
 }

@@ -39,3 +39,7 @@ data/lake/
 
 # Yahoo OAuth tokens — secrets, never commit
 .yahoo-tokens.json
+
+# local dev TLS cert — regenerate with openssl, never commit
+apps/web/certificates/
+apps/web/.env.local

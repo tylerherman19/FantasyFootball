@@ -158,6 +158,8 @@ export interface SleeperLeague {
     readonly league_average_match?: number;
     /** Guillotine only: last week a team gets chopped. */
     readonly last_chopped_leg?: number;
+    /** Season FAAB allowance; absent in waiver-priority leagues. */
+    readonly waiver_budget?: number;
   };
 }
 

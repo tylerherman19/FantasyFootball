@@ -1,52 +1,70 @@
 @import 'tailwindcss';
 
 /*
- * 538-inspired: off-white ground, strong type hierarchy, muted categorical
- * palette, and uncertainty rendered rather than hidden. Light is the default
- * because that is what the reference reads like; dark is supported but secondary.
+ * 538-inspired, light by default and deliberately not following the OS.
+ *
+ * This is a data product read mostly in daylight, and the reference it is
+ * modelled on is a light publication. Following prefers-color-scheme meant a
+ * user on a dark desktop never saw the design at all.
  */
 :root {
   --ground: #f7f7f4;
   --surface: #ffffff;
   --ink: #16161a;
-  --ink-muted: #5b5b63;
-  --rule: #e3e3dd;
+  --ink-muted: #62626b;
+  --ink-faint: #8c8c94;
+  --rule: #e0e0d9;
+  --rule-strong: #c9c9c0;
 
-  /* Sequential ramp for probability. Colour-blind safe, prints legibly. */
-  --p-low: #d8d8d2;
-  --p-mid: #9dc6d8;
-  --p-high: #3a86a8;
+  /* Probability ramp. Colour-blind safe, prints legibly, reads as one family. */
+  --p-low: #dcdcd4;
+  --p-mid: #8fbdd3;
+  --p-high: #2f7d9e;
 
   --good: #2f7d54;
   --bad: #b4442e;
-  --accent: #c05c2c;
-}
+  --accent: #c0562c;
+  --accent-soft: #f6ece5;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #131316;
-    --surface: #1c1c20;
-    --ink: #f2f2ef;
-    --ink-muted: #a0a0a8;
-    --rule: #32323a;
-    --p-low: #3a3a42;
-    --p-mid: #3d6f85;
-    --p-high: #6fb2ce;
-  }
+  /* Categorical palette for positions — muted, evenly spaced in lightness. */
+  --pos-qb: #8a5a9e;
+  --pos-rb: #2f7d54;
+  --pos-wr: #2f6f9e;
+  --pos-te: #b8862b;
+  --pos-k: #7a7a82;
+  --pos-def: #a4553a;
 }
 
 html,
 body {
   background: var(--ground);
   color: var(--ink);
-  font-feature-settings: 'tnum' 1;
 }
 
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Numbers must align in columns; that is most of what makes a table readable. */
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+.rule-top {
+  border-top: 1px solid var(--rule);
+}
+
+/* Wide tables scroll inside their own container rather than the page. */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th {
+  font-weight: 600;
 }

@@ -20,6 +20,12 @@ export {
   type TeamContext,
 } from './sim/roster-projection.js';
 
+// projections
+export { scoreStatLine, scoringCoverage, type StatLine } from './projections/scoring.js';
+
+// metrics
+export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
+
 // decisions — everything priced in championship probability
 export {
   currentOdds,

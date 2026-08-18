@@ -22,6 +22,13 @@ export {
 
 // projections
 export { scoreStatLine, scoringCoverage, type StatLine } from './projections/scoring.js';
+export {
+  applyAvailability,
+  isRuledOut,
+  playProbability,
+  type AvailabilityAdjustment,
+  type InjuryStatus,
+} from './projections/availability.js';
 
 // valuation
 export {

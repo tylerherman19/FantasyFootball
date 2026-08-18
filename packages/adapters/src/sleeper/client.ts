@@ -123,6 +123,25 @@ export class SleeperClient {
     return this.#require(`${V1}/players/nfl`);
   }
 
+  /**
+   * Injury status and bye week only, extracted from the full player file.
+   *
+   * The projection artifact is rebuilt weekly, but injuries change daily — a
+   * player ruled out on Saturday must not be started on Sunday. This is the
+   * one piece that has to be read live rather than baked into the artifact.
+   */
+  async getAvailability(): Promise<Record<string, { injuryStatus: string | null; team: string | null }>> {
+    const players = await this.getAllPlayers();
+    const out: Record<string, { injuryStatus: string | null; team: string | null }> = {};
+
+    for (const [id, player] of Object.entries(players)) {
+      if (player.injury_status == null && player.team == null) continue;
+      out[id] = { injuryStatus: player.injury_status ?? null, team: player.team ?? null };
+    }
+
+    return out;
+  }
+
   async getWeeklyProjections(season: number, week: number): Promise<SleeperProjection[]> {
     const url = `${V2}/projections/nfl/${season}/${week}?season_type=regular`;
     return (await this.#get<SleeperProjection[]>(url, { allow404: true })) ?? [];

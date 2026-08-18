@@ -40,7 +40,11 @@ export default async function RankingsPage({ params }: { params: Promise<{ leagu
   );
   const { teams, hasMarketValues, notDrafted } = await leagueRankings(view, players);
 
-  const anyPlayed = teams.some((team) => (team.luck?.weeksPlayed ?? 0) > 0);
+  // Schedule luck needs a schedule. Guillotine leagues have no pairings at all —
+  // every team scores against the field — so there is no opponent to have been
+  // lucky with, and the best/worst columns would be zeros dressed as a finding.
+  const hasSchedule = snapshot.league.format !== 'guillotine' && snapshot.schedule.length > 0;
+  const anyPlayed = hasSchedule && teams.some((team) => (team.luck?.weeksPlayed ?? 0) > 0);
   const luckiest = [...teams]
     .filter((team) => team.luck !== null)
     .sort((a, b) => Math.abs(b.luck!.luck) - Math.abs(a.luck!.luck))

@@ -54,15 +54,21 @@ export const loadMarketValues = async (
   }
 
   const url = `${API}?isDynasty=${isDynasty}&numQbs=${numQbs}&numTeams=12&ppr=1`;
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
 
-  if (!response.ok) {
-    // A missing market is a degraded experience, not a broken page: odds still
-    // work, only the fairness check goes quiet.
+  // A missing market is a degraded experience, not a broken page: odds still
+  // work, only the fairness check goes quiet. That has to cover the network
+  // failing outright, not just an error status — `fetch` rejects on DNS and
+  // connection errors, and letting that escape would take down every page that
+  // asks for values, including ones that only want replacement levels.
+  let raw: RawValue[];
+  try {
+    const response = await fetch(url, { headers: { accept: 'application/json' } });
+    if (!response.ok) return cache?.values ?? new Map();
+    raw = (await response.json()) as RawValue[];
+  } catch {
     return cache?.values ?? new Map();
   }
 
-  const raw = (await response.json()) as RawValue[];
   const values = new Map<string, MarketValue>();
 
   for (const entry of raw) {

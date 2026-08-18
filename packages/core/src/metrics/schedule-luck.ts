@@ -18,7 +18,7 @@ import type { LeagueSnapshot } from '../domain/index.js';
  *   and the spread between the best and worst of those records is the honest
  *   size of the luck in this league so far.
  *
- * Both use only weeks that have actually been played. Neither is a projection.
+ * Both use only weeks that have finished. Neither is a projection.
  */
 
 export interface ScheduleLuck {
@@ -46,12 +46,22 @@ interface WeekScores {
   readonly points: ReadonlyMap<string, number>;
 }
 
-/** Played weeks only, as a score table per week. */
+/**
+ * Completed weeks only, as a score table per week.
+ *
+ * `played` is not enough on its own. Sleeper reports zeros for future weeks, so
+ * the adapter infers the flag from whether anyone scored — which flips true the
+ * moment the first Thursday game kicks off. Counting the in-progress week would
+ * put a partial score into all-play expected wins while `actualWins` still comes
+ * from standings that have not banked the matchup, so every team would look
+ * unlucky from Thursday night until the week closes. Only weeks strictly before
+ * the current one are finished.
+ */
 const playedWeeks = (snapshot: LeagueSnapshot): WeekScores[] => {
   const byWeek = new Map<number, Map<string, number>>();
 
   for (const score of snapshot.weeklyScores) {
-    if (!score.played) continue;
+    if (!score.played || score.week >= snapshot.asOfWeek) continue;
     const week = byWeek.get(score.week) ?? new Map<string, number>();
     week.set(score.teamId, score.points);
     byWeek.set(score.week, week);

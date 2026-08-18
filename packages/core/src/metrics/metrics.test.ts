@@ -134,6 +134,18 @@ describe('scheduleLuck', () => {
     expect(luck.worstScheduleWins).toBe(0);
   });
 
+  it('ignores the week currently in progress', () => {
+    // Sleeper flips `played` as soon as one player scores, so the current week
+    // arrives partially filled. Counting it would compare a half-played week of
+    // all-play results against standings that have not banked the matchup, and
+    // every team would read as unlucky from Thursday night onward.
+    const inProgress = snapshot({ asOfWeek: 2 });
+    const luck = scheduleLuck(inProgress).get('1')!;
+
+    expect(luck.weeksPlayed).toBe(1);
+    expect(luck.expectedWins).toBeCloseTo(1, 6);
+  });
+
   it('ignores weeks that have not been played', () => {
     const unplayed = weeklyScores().map((score) => ({ ...score, played: score.week === 1 }));
     const luck = scheduleLuck(snapshot({ weeklyScores: unplayed })).get('1')!;

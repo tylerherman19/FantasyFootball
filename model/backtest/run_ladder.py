@@ -10,7 +10,7 @@ from functools import partial
 
 from model.backtest.harness import compare, default_lake, walk_forward
 from model.features.store import FeatureStore
-from model.models import marcel
+from model.models import marcel, v1_usage
 
 #: Full-PPR stat weights, keyed by nflverse player_stats columns.
 SCORING: dict[str, float] = {
@@ -31,16 +31,35 @@ if __name__ == "__main__":
     first = int(sys.argv[1]) if len(sys.argv) > 1 else 2023
     last = int(sys.argv[2]) if len(sys.argv) > 2 else 2024
 
+    #: Scoring keys for v1, which rebuilds a stat line and scores it under real
+    #: Sleeper rules rather than the nflverse column names v0 uses.
+    SLEEPER_RULES = {
+        "pass_yd": 0.04,
+        "pass_td": 4.0,
+        "pass_int": -1.0,
+        "rush_yd": 0.1,
+        "rush_td": 6.0,
+        "rec": 1.0,
+        "rec_yd": 0.1,
+        "rec_td": 6.0,
+    }
+
+    ladder = [
+        ("v0-marcel", partial(marcel.build, scoring=SCORING)),
+        ("v1-usage", partial(v1_usage.build, rules=SLEEPER_RULES)),
+    ]
+
     with FeatureStore(default_lake()) as store:
         results = [
             walk_forward(
                 store,
-                partial(marcel.build, scoring=SCORING),
-                "v0-marcel",
+                model,
+                name,
                 seasons=range(first, last + 1),
                 weeks=range(1, 18),
                 scoring=SCORING,
             )
+            for name, model in ladder
         ]
 
     print(compare(results, baseline_name="v0-marcel"))

@@ -1,38 +1,110 @@
 @import 'tailwindcss';
 
 /*
- * 538-inspired, light by default and deliberately not following the OS.
+ * A data instrument, not a page.
  *
- * This is a data product read mostly in daylight, and the reference it is
- * modelled on is a light publication. Following prefers-color-scheme meant a
- * user on a dark desktop never saw the design at all.
+ * The rules that hold everything together:
+ *
+ * - Ink is for numbers. Chrome recedes — rules are hairlines, labels are small
+ *   and quiet, and nothing decorative competes with a value for attention.
+ * - Colour means something everywhere it appears. The probability ramp always
+ *   reads low-to-high, positions always take their own hue, and good/bad never
+ *   get used for anything that isn't.
+ * - Density is a feature. This is read by someone comparing twelve teams across
+ *   six numbers, so rows are tight and tables are the default shape.
+ *
+ * Both themes are first-class. The original was light-only on the argument that
+ * it's a daylight product, but half of fantasy football happens on a phone on a
+ * Sunday evening — so the palette is defined twice, in the same roles, and the
+ * charts read identically in each because they only ever reference tokens.
  */
+
 :root {
   --ground: #f7f7f4;
   --surface: #ffffff;
+  --surface-sunk: #f1f1ec;
+  --surface-raised: #ffffff;
   --ink: #16161a;
-  --ink-muted: #62626b;
-  --ink-faint: #8c8c94;
-  --rule: #e0e0d9;
+  --ink-muted: #5b5b64;
+  --ink-faint: #8a8a92;
+  --rule: #e2e2db;
   --rule-strong: #c9c9c0;
+  --shadow: 0 1px 2px rgb(20 20 26 / 0.05), 0 1px 3px rgb(20 20 26 / 0.04);
 
-  /* Probability ramp. Colour-blind safe, prints legibly, reads as one family. */
-  --p-low: #dcdcd4;
+  /* Probability ramp: one family, ordered, colour-blind safe, prints legibly. */
+  --p-0: #ecece6;
+  --p-low: #d5e2e8;
   --p-mid: #8fbdd3;
-  --p-high: #2f7d9e;
+  --p-high: #3d87a8;
+  --p-max: #1f5c76;
 
   --good: #2f7d54;
+  --good-soft: #e6f0ea;
   --bad: #b4442e;
+  --bad-soft: #f8e9e5;
+  --warn: #a8761f;
   --accent: #c0562c;
   --accent-soft: #f6ece5;
+  --accent-ink: #ffffff;
 
-  /* Categorical palette for positions — muted, evenly spaced in lightness. */
+  /* Positions. Muted, evenly spaced in lightness, distinct in greyscale. */
   --pos-qb: #8a5a9e;
   --pos-rb: #2f7d54;
   --pos-wr: #2f6f9e;
   --pos-te: #b8862b;
   --pos-k: #7a7a82;
   --pos-def: #a4553a;
+  --pos-dl: #6b7f4a;
+  --pos-lb: #4a6f7f;
+  --pos-db: #7f4a6b;
+
+  --grid: #ececE4;
+}
+
+/*
+ * Dark is a re-mapping of the same roles, not an inversion. The ramp keeps its
+ * direction (dark = low, bright = high) so a heat map means the same thing in
+ * both, and the position hues are lifted rather than re-picked so a chart
+ * legend learned in one theme still reads in the other.
+ */
+:root[data-theme='dark'] {
+  --ground: #0f1114;
+  --surface: #171a1f;
+  --surface-sunk: #12151a;
+  --surface-raised: #1d2127;
+  --ink: #eceef2;
+  --ink-muted: #a0a6b0;
+  --ink-faint: #6f7681;
+  --rule: #262b33;
+  --rule-strong: #39404a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.25);
+
+  --p-0: #1e232a;
+  --p-low: #24404e;
+  --p-mid: #3f7f9c;
+  --p-high: #6bb4d1;
+  --p-max: #a5d8ea;
+
+  --good: #4fbb80;
+  --good-soft: #17301f;
+  --bad: #e2705a;
+  --bad-soft: #33191a;
+  --warn: #d9a441;
+  --accent: #ef7a4a;
+  --accent-soft: #33201a;
+  --accent-ink: #10120f;
+
+  --pos-qb: #b98ccc;
+  --pos-rb: #5cba85;
+  --pos-wr: #62a5d4;
+  --pos-te: #d9ae5c;
+  --pos-k: #a3a9b3;
+  --pos-def: #d08a6d;
+  --pos-dl: #9db877;
+  --pos-lb: #79a6b8;
+  --pos-db: #b87ea0;
+
+  --grid: #232830;
 }
 
 html,
@@ -44,6 +116,30 @@ body {
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Theme changes shouldn't animate every rule and fill on the page at once. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+
+/*
+ * The theme button shows the theme it will switch *to*. Driven by CSS off the
+ * same attribute the head script sets, so it is right on first paint and has no
+ * React state to fall out of sync with the document.
+ */
+.theme-icon-dark {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-icon-light {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-icon-dark {
+  display: inline;
 }
 
 /* Numbers must align in columns; that is most of what makes a table readable. */
@@ -59,6 +155,7 @@ body {
 .scroll-x {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 table {
@@ -67,4 +164,103 @@ table {
 
 th {
   font-weight: 600;
+}
+
+/*
+ * The section label. Every block of data announces itself the same way, which
+ * is what lets a reader skim a long page by its headings alone.
+ */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* A panel of data: hairline border, quiet fill, no ornament. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.panel-head {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.625rem 0.875rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/* Data tables: tight rows, hairline separators, a hover that aids tracking. */
+.data-table {
+  width: 100%;
+  text-align: left;
+  font-size: 0.8125rem;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule-strong);
+  padding: 0.5rem 0.625rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.data-table tbody td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.4375rem 0.625rem;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:hover td {
+  background: var(--surface-sunk);
+}
+
+.data-table tbody tr[data-mine='true'] td {
+  background: var(--accent-soft);
+}
+
+/* A row of small numbers under a chart. */
+.axis-label {
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Position chips, sized to sit inline with a name without pushing it around. */
+.pos-chip {
+  display: inline-block;
+  min-width: 1.9rem;
+  text-align: center;
+  padding: 0.0625rem 0.25rem;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+:root[data-theme='dark'] .pos-chip {
+  color: #10120f;
+}
+
+/* Charts inherit ink so a single fill="currentColor" is always right. */
+svg text {
+  fill: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

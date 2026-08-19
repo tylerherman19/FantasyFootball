@@ -32,17 +32,72 @@ export interface ProjectionArtifact {
   readonly players: Record<string, ArtifactPlayer>;
 }
 
-const ARTIFACT_DIR = join(process.cwd(), '..', '..', 'model', 'artifacts');
+/**
+ * Where the artifacts live, depending on who is asking.
+ *
+ * The Next server runs from `apps/web`, a script run with npm from the repo
+ * root, and a serverless bundle from wherever the platform unpacked it. Trying
+ * each in turn costs one failed `open` and removes a whole class of "renders
+ * empty in production and fine locally" bug.
+ */
+/*
+ * `turbopackIgnore` on the joins below: the bundler cannot see through a
+ * runtime-built path, so it conservatively traces the entire repository into
+ * the deployment — every source file and the whole public folder — which blows
+ * up bundle size for no benefit. What actually needs shipping is declared
+ * explicitly by `outputFileTracingIncludes` in next.config.ts, so the automatic
+ * tracing is redundant here rather than load-bearing.
+ */
+const ARTIFACT_DIRS = [
+  join(/* turbopackIgnore: true */ process.cwd(), '..', '..', 'model', 'artifacts'),
+  join(/* turbopackIgnore: true */ process.cwd(), 'model', 'artifacts'),
+];
+
+const readArtifactFile = async (filename: string): Promise<string | null> => {
+  for (const dir of ARTIFACT_DIRS) {
+    try {
+      return await readFile(join(dir, filename), 'utf8');
+    } catch {
+      continue;
+    }
+  }
+  return null;
+};
+
+export { readArtifactFile };
 
 const SKILL: readonly string[] = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'LB', 'DB'];
 
+/**
+ * Held for the life of the process once read.
+ *
+ * The artifact is a few megabytes of JSON and is rewritten weekly by a batch
+ * job, never in place — so re-reading and re-parsing it on every call, which is
+ * several times per page across projections, players and roster analysis, was
+ * pure repetition. A `null` result is cached too: a missing artifact stays
+ * missing until a deploy, and retrying the same failed open on every render
+ * gains nothing.
+ */
+const artifacts = new Map<string, ProjectionArtifact | null>();
+
 export const loadArtifact = async (season: number, week: number): Promise<ProjectionArtifact | null> => {
-  try {
-    const path = join(ARTIFACT_DIR, `projections-${season}-${String(week).padStart(2, '0')}.json`);
-    return JSON.parse(await readFile(path, 'utf8')) as ProjectionArtifact;
-  } catch {
-    return null;
+  const key = `${season}-${String(week).padStart(2, '0')}`;
+
+  const cached = artifacts.get(key);
+  if (cached !== undefined) return cached;
+
+  let artifact: ProjectionArtifact | null = null;
+  const raw = await readArtifactFile(`projections-${key}.json`);
+  if (raw !== null) {
+    try {
+      artifact = JSON.parse(raw) as ProjectionArtifact;
+    } catch {
+      artifact = null;
+    }
   }
+
+  artifacts.set(key, artifact);
+  return artifact;
 };
 
 const toProjection = (

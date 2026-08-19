@@ -164,12 +164,30 @@ export class SleeperAdapter implements PlatformAdapter {
     const user = await this.#client.getUser(userHandle);
     const leagues = await this.#client.getUserLeagues(user.user_id, season);
 
-    return leagues.map((l) => ({
-      platform: 'sleeper' as const,
-      platformLeagueId: l.league_id,
-      name: l.name,
-      season: Number(l.season),
-    }));
+    return leagues.map((l) => {
+      const slots = l.roster_positions ?? [];
+      const starting = slots.filter((slot) => slot !== 'BN' && slot !== 'IR' && slot !== 'TAXI');
+
+      return {
+        platform: 'sleeper' as const,
+        platformLeagueId: l.league_id,
+        name: l.name,
+        season: Number(l.season),
+        format: toFormat(l),
+        teamCount: l.total_rosters,
+        ppr: l.scoring_settings?.rec ?? 0,
+        superFlex: slots.includes('SUPER_FLEX'),
+        startingSlots: starting.length,
+        rosterSize: slots.length,
+        // Sleeper reports a league as "in_season" or "complete" once it has
+        // drafted; anything earlier has empty rosters and nothing to show.
+        // Omitted rather than guessed when the field is missing — "we don't
+        // know" and "not drafted" are different claims to put on a card.
+        ...(l.status === undefined
+          ? {}
+          : { drafted: l.status !== 'pre_draft' && l.status !== 'drafting' }),
+      };
+    });
   }
 
   async loadSnapshot(platformLeagueId: string, asOfWeek?: number): Promise<LeagueSnapshot> {
@@ -187,10 +205,23 @@ export class SleeperAdapter implements PlatformAdapter {
     // Sleeper exposes matchups and transactions one week at a time. Fetch the
     // full regular season plus playoff weeks in parallel, bounded by the
     // client's concurrency cap.
+    //
+    // Matchups are needed for every week — future weeks carry the pairings the
+    // rest-of-season simulation runs on. Transactions are not: a week that
+    // hasn't happened cannot have had a trade in it, so asking for them is
+    // half the request budget spent on guaranteed-empty responses.
     const weeks = Array.from({ length: league.regularSeasonWeeks }, (_, i) => i + 1);
+    const isSettled = (week: number) => week < currentWeek;
+
     const [weeklyMatchups, weeklyTransactions] = await Promise.all([
-      Promise.all(weeks.map((w) => this.#client.getMatchups(platformLeagueId, w))),
-      Promise.all(weeks.map((w) => this.#client.getTransactions(platformLeagueId, w))),
+      Promise.all(weeks.map((w) => this.#client.getMatchups(platformLeagueId, w, isSettled(w)))),
+      Promise.all(
+        weeks.map((w) =>
+          w > currentWeek
+            ? Promise.resolve<SleeperTransaction[]>([])
+            : this.#client.getTransactions(platformLeagueId, w, isSettled(w)),
+        ),
+      ),
     ]);
 
     const rosterIdToTeamId = new Map(rosters.map((r) => [r.roster_id, String(r.roster_id)]));

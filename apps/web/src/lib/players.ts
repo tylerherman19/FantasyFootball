@@ -20,11 +20,25 @@ export interface PlayerInfo {
   readonly projected: boolean;
 }
 
+/**
+ * Cached per league scoring ruleset.
+ *
+ * Building this walks every player in the crosswalk and the artifact — tens of
+ * thousands of entries — and several pages ask for it. The scoring rules are
+ * part of the key because points are derived per league, so two leagues reading
+ * the same artifact legitimately get different numbers.
+ */
+const cache = new Map<string, Record<string, PlayerInfo>>();
+
 export const loadPlayerInfo = async (
   season: number,
   week: number,
   rules: Readonly<Record<string, number>> = {},
 ): Promise<Record<string, PlayerInfo>> => {
+  const key = `${season}:${week}:${JSON.stringify(rules)}`;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
   const [artifact, identities] = await Promise.all([loadArtifact(season, week), loadIdentities()]);
 
   const out: Record<string, PlayerInfo> = {};
@@ -51,6 +65,10 @@ export const loadPlayerInfo = async (
       projected: true,
     };
   }
+
+  // Bounded: a handful of leagues per process, each with one ruleset.
+  if (cache.size > 16) cache.clear();
+  cache.set(key, out);
 
   return out;
 };

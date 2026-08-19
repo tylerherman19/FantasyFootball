@@ -1,5 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readArtifactFile } from './projections';
 
 /**
  * Player identity, for display.
@@ -24,8 +23,10 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
   if (cache !== null) return cache;
 
   try {
-    const path = join(process.cwd(), '..', '..', 'model', 'artifacts', 'crosswalk.json');
-    const payload = JSON.parse(await readFile(path, 'utf8')) as {
+    const raw = await readArtifactFile('crosswalk.json');
+    if (raw === null) return {};
+
+    const payload = JSON.parse(raw) as {
       by_sleeper_id: Record<
         string,
         { name: string; position: string | null; team: string | null; birthdate: string | null }

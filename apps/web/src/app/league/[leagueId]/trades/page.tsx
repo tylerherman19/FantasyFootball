@@ -1,15 +1,21 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { Section } from '@/components/Section';
 import { TradeBuilder } from '@/components/TradeBuilder';
+import {
+  CellBar,
+  DivergingBar,
+  Legend,
+  PositionChip,
+  StackedBar,
+  formatPct,
+} from '@/components/charts/primitives';
+import { requireSession } from '@/lib/session';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
 import { serializeLeague } from '@/lib/serialize';
 import { loadTrades } from '@/lib/trade-data';
 import { loadPicks } from '@/lib/pick-data';
 import { loadMarketValues } from '@/lib/values';
-
-export const revalidate = 900;
-
-const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
 
 const pct = (value: number) => `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
 
@@ -21,7 +27,8 @@ const VERDICT_COLOR: Record<string, string> = {
 
 export default async function TradesPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
-  const view = await loadLeague(leagueId, USERNAME);
+  const session = await requireSession();
+  const view = await loadLeague(leagueId, session.username);
 
   if (view.myTeamId === null) {
     return <main className="mx-auto max-w-5xl px-6 py-12">Could not find your team in this league.</main>;
@@ -50,46 +57,48 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
         format={snapshot.league.format}
       />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
-        <section className="mb-12">
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-            Trade calculator
-          </h2>
-          <p className="mb-4 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
-            Pick players from either side. Each change re-simulates the rest of the season in your
-            browser: market value for whether they&apos;d accept, championship odds for whether you
-            should want it.
-          </p>
+      <main className="mx-auto max-w-6xl px-5 pb-20">
+        <Section
+          title="Trade calculator"
+          note={
+            <>
+              Pick players from either side. Each change re-simulates the rest of the season in your
+              browser: market value for whether they&apos;d accept, championship odds for whether you
+              should want it.
+            </>
+          }
+        >
           <TradeBuilder league={wire} myTeamId={myTeamId} />
-        </section>
+        </Section>
 
         {trades !== null && trades.partners.length > 0 && (
-          <section className="mb-12">
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Who to call
-            </h2>
-            <p className="mb-4 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
-              Every roster in the league analysed the same way as yours. A trade happens when the
-              piece you are offering is worth more to them than what they give up — so fit is scored
-              in both directions.
-            </p>
-
-            <div className="space-y-3">
+          <Section
+            title="Who to call"
+            note={
+              <>
+                Every roster in the league analysed the same way as yours. A trade happens when the
+                piece you are offering is worth more to them than what they give up — so fit is
+                scored in both directions, and the bar is how well the two rosters complement each
+                other.
+              </>
+            }
+          >
+            <div className="space-y-2">
               {trades.partners.map((partner) => (
-                <article
-                  key={partner.partnerTeamId}
-                  className="rounded border p-4"
-                  style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-medium">
+                <article key={partner.partnerTeamId} className="panel p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">
                       {view.teamNames.get(partner.partnerTeamId) ?? partner.partnerTeamId}
                     </span>
-                    <span className="tabular text-xs" style={{ color: 'var(--ink-faint)' }}>
-                      fit {partner.mutualFit.toFixed(1)}
-                    </span>
+                    <CellBar
+                      value={partner.mutualFit}
+                      max={Math.max(...trades.partners.map((other) => other.mutualFit), 1)}
+                      width={110}
+                      color="var(--p-high)"
+                      label={`fit ${partner.mutualFit.toFixed(1)}`}
+                    />
                   </div>
-                  <p className="mt-1 text-sm" style={{ color: 'var(--ink-muted)' }}>
+                  <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
                     {partner.reason}
                   </p>
 
@@ -101,16 +110,21 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
                       </div>
                       <ul className="text-sm">
                         {partner.offers.map((offer) => (
-                          <li key={offer.playerId} className="flex justify-between gap-4 py-0.5">
-                            <span>
-                              {offer.name}
-                              <span className="ml-1.5 text-xs" style={{ color: 'var(--ink-faint)' }}>
-                                {offer.position}
-                              </span>
-                            </span>
-                            <span className="tabular shrink-0 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                              costs you nothing · worth +{offer.helpsThemBy.toFixed(1)} to them
-                            </span>
+                          <li key={offer.playerId} className="flex items-center gap-2 py-0.5">
+                            <PositionChip position={offer.position} />
+                            <span className="min-w-0 flex-1 truncate text-xs">{offer.name}</span>
+                            <CellBar
+                              value={offer.helpsThemBy}
+                              max={Math.max(
+                                ...trades.partners.flatMap((other) =>
+                                  other.offers.map((entry) => entry.helpsThemBy),
+                                ),
+                                1,
+                              )}
+                              width={80}
+                              color="var(--good)"
+                              label={`+${offer.helpsThemBy.toFixed(1)} to them`}
+                            />
                           </li>
                         ))}
                       </ul>
@@ -119,173 +133,223 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
                 </article>
               ))}
             </div>
-          </section>
+          </Section>
         )}
 
         {trades !== null && trades.depth.length > 0 && (
-          <section className="mb-12">
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              What you can actually spare
-            </h2>
-            <p className="mb-4 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
-              Measured by consequence, not headcount: what your best lineup loses without each
-              player. A backup behind an elite starter reads as spare; a mediocre starter at a thin
-              spot does not.
-            </p>
+          <Section
+            title="What you can actually spare"
+            note={
+              <>
+                Measured by consequence, not headcount: what your best lineup loses without each
+                player. A backup behind an elite starter reads as spare; a mediocre starter at a thin
+                spot does not.
+              </>
+            }
+          >
 
-            <div className="scroll-x mb-6">
-              <table className="w-full min-w-[30rem] text-left text-sm">
-                <thead>
-                  <tr className="border-b text-xs uppercase tracking-widest"
-                    style={{ borderColor: 'var(--rule-strong)', color: 'var(--ink-faint)' }}>
-                    <th className="py-2">Position</th>
-                    <th className="py-2">Depth</th>
-                    <th className="py-2 text-right">Lineup leans on it</th>
-                    <th className="py-2 text-right">If top player lost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...trades.depth]
-                    .sort((a, b) => b.totalMarginal - a.totalMarginal)
-                    .map((assessment) => (
-                      <tr key={assessment.position} className="border-b" style={{ borderColor: 'var(--rule)' }}>
-                        <td className="py-2 font-medium">{assessment.position}</td>
-                        <td className="py-2 font-medium" style={{ color: VERDICT_COLOR[assessment.verdict] }}>
-                          {assessment.verdict}
-                        </td>
-                        <td className="tabular py-2 text-right">{assessment.totalMarginal.toFixed(1)}</td>
-                        <td className="tabular py-2 text-right" style={{ color: 'var(--ink-muted)' }}>
-                          −{assessment.exposureToTopLoss.toFixed(1)}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+            <div className="panel mb-5 divide-y" style={{ borderColor: 'var(--rule)' }}>
+              {[...trades.depth]
+                .sort((a, b) => b.totalMarginal - a.totalMarginal)
+                .map((assessment) => (
+                  <div key={assessment.position} className="flex items-center gap-3 px-3 py-2">
+                    <span className="w-9 shrink-0">
+                      <PositionChip position={assessment.position} />
+                    </span>
+                    <span
+                      className="w-16 shrink-0 text-[11px] font-medium"
+                      style={{ color: VERDICT_COLOR[assessment.verdict] }}
+                    >
+                      {assessment.verdict}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <StackedBar
+                        max={Math.max(...trades.depth.map((entry) => entry.totalMarginal), 1)}
+                        width={300}
+                        height={13}
+                        showLabels={false}
+                        segments={[
+                          { key: 'exposed', value: assessment.exposureToTopLoss, color: 'var(--bad)' },
+                          {
+                            key: 'rest',
+                            value: Math.max(0, assessment.totalMarginal - assessment.exposureToTopLoss),
+                            color: 'var(--p-high)',
+                          },
+                        ]}
+                      />
+                    </span>
+                    <span className="tabular w-12 shrink-0 text-right text-xs">
+                      {assessment.totalMarginal.toFixed(1)}
+                    </span>
+                    <span className="tabular w-12 shrink-0 text-right text-xs" style={{ color: 'var(--bad)' }}>
+                      −{assessment.exposureToTopLoss.toFixed(1)}
+                    </span>
+                  </div>
+                ))}
             </div>
 
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Most movable players
-            </h3>
-            <div className="scroll-x">
-              <table className="w-full min-w-[32rem] text-left text-sm">
+            <h3 className="eyebrow mb-2">Most movable players</h3>
+            <div className="panel scroll-x">
+              <table className="data-table" style={{ minWidth: '34rem' }}>
                 <thead>
-                  <tr className="border-b text-xs uppercase tracking-widest"
-                    style={{ borderColor: 'var(--rule-strong)', color: 'var(--ink-faint)' }}>
-                    <th className="py-2">Player</th>
-                    <th className="py-2 text-right">Projects</th>
-                    <th className="py-2 text-right">Lineup loses</th>
-                    <th className="py-2 text-right">Market value</th>
+                  <tr>
+                    <th style={{ width: '2rem' }} />
+                    <th style={{ minWidth: '10rem' }}>Player</th>
+                    <th style={{ width: '7rem' }}>Projects</th>
+                    <th style={{ width: '7rem' }}>Lineup loses</th>
+                    <th style={{ width: '7rem' }}>Market value</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {trades.marginal.slice(0, 10).map((entry) => (
-                    <tr key={entry.playerId} className="border-b" style={{ borderColor: 'var(--rule)' }}>
-                      <td className="py-2">
-                        <span className="font-medium">{entry.name}</span>
-                        <span className="ml-2 text-xs" style={{ color: 'var(--ink-faint)' }}>
-                          {entry.position}
-                        </span>
+                  {trades.marginal.slice(0, 12).map((entry) => (
+                    <tr key={entry.playerId}>
+                      <td>
+                        <PositionChip position={entry.position} />
                       </td>
-                      <td className="tabular py-2 text-right">{entry.projected.toFixed(1)}</td>
-                      <td className="tabular py-2 text-right font-medium"
-                        style={{ color: entry.marginal < 1 ? 'var(--good)' : 'var(--ink)' }}>
-                        −{entry.marginal.toFixed(1)}
+                      <td className="max-w-[13rem] truncate font-medium">{entry.name}</td>
+                      <td>
+                        <CellBar
+                          value={entry.projected}
+                          max={Math.max(...trades.marginal.map((other) => other.projected), 1)}
+                          width={50}
+                          color="var(--p-low)"
+                          label={entry.projected.toFixed(1)}
+                        />
                       </td>
-                      <td className="tabular py-2 text-right" style={{ color: 'var(--ink-muted)' }}>
-                        {entry.value > 0 ? entry.value.toLocaleString() : '—'}
+                      <td>
+                        <CellBar
+                          value={entry.marginal}
+                          max={Math.max(...trades.marginal.map((other) => other.marginal), 1)}
+                          width={50}
+                          color={entry.marginal < 1 ? 'var(--good)' : 'var(--p-high)'}
+                          label={entry.marginal.toFixed(1)}
+                        />
+                      </td>
+                      <td>
+                        <CellBar
+                          value={entry.value}
+                          max={Math.max(...trades.marginal.map((other) => other.value), 1)}
+                          width={50}
+                          color="var(--pos-qb)"
+                          label={entry.value > 0 ? entry.value.toLocaleString() : '—'}
+                        />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-xs" style={{ color: 'var(--ink-faint)' }}>
-              A player who costs the lineup nothing but carries real market value is the ideal chip:
-              you are selling something the market prices and your roster does not use.
+            <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              A player whose market bar is long and whose &ldquo;lineup loses&rdquo; bar is short is
+              the ideal chip: you are selling something the market prices and your roster does not
+              use.
             </p>
-          </section>
+          </Section>
         )}
 
         {trades !== null && trades.evaluations.length > 0 && (
-          <section>
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Proposals worth making
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
-              Scanned across the league, filtered to packages a real manager might accept.
-            </p>
-
-            <div className="space-y-4">
+          <Section
+            title="Proposals worth making"
+            note="Scanned across the league, filtered to packages a real manager might accept, then simulated. The bars are the change in each side's title probability — a proposal where both bars point right is the rare genuinely mutual trade."
+            aside={
+              <Legend
+                items={[
+                  { label: 'helps', color: 'var(--good)' },
+                  { label: 'hurts', color: 'var(--bad)' },
+                ]}
+              />
+            }
+          >
+            <div className="space-y-3">
               {trades.evaluations.map((evaluation, index) => {
                 const mine = evaluation.odds.get(myTeamId);
                 const theirs = evaluation.odds.get(evaluation.sideB.teamId);
                 const partner = view.teamNames.get(evaluation.sideB.teamId) ?? evaluation.sideB.teamId;
 
+                // A common scale across every proposal, so the bars compare.
+                const widest = Math.max(
+                  ...trades.evaluations.flatMap((other) => [
+                    Math.abs(other.odds.get(myTeamId)?.titleDelta ?? 0),
+                    Math.abs(other.odds.get(other.sideB.teamId)?.titleDelta ?? 0),
+                  ]),
+                  0.005,
+                );
+
                 return (
-                  <article key={index} className="rounded border p-5"
-                    style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
-                    <div className="mb-3 text-xs uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-                      with {partner}
-                    </div>
+                  <article key={index} className="panel p-4">
+                    <div className="eyebrow mb-3">with {partner}</div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>
-                          You send
-                        </div>
+                        <div className="axis-label mb-1 uppercase tracking-wider">You send</div>
                         {evaluation.sideA.sends.map((asset) => (
-                          <div key={String(asset.playerId)} className="font-medium">
-                            {asset.name}{' '}
-                            <span className="text-xs font-normal" style={{ color: 'var(--ink-faint)' }}>
-                              {asset.position}
+                          <div key={String(asset.playerId)} className="flex items-center gap-1.5 py-0.5">
+                            <PositionChip position={asset.position} />
+                            <span className="truncate text-sm font-medium">{asset.name}</span>
+                            <span className="tabular ml-auto text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                              {asset.value.toLocaleString()}
                             </span>
                           </div>
                         ))}
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>
-                          You get
-                        </div>
+                        <div className="axis-label mb-1 uppercase tracking-wider">You get</div>
                         {evaluation.sideB.sends.map((asset) => (
-                          <div key={String(asset.playerId)} className="font-medium">
-                            {asset.name}{' '}
-                            <span className="text-xs font-normal" style={{ color: 'var(--ink-faint)' }}>
-                              {asset.position}
+                          <div key={String(asset.playerId)} className="flex items-center gap-1.5 py-0.5">
+                            <PositionChip position={asset.position} />
+                            <span className="truncate text-sm font-medium">{asset.name}</span>
+                            <span className="tabular ml-auto text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                              {asset.value.toLocaleString()}
                             </span>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t pt-3 text-sm"
-                      style={{ borderColor: 'var(--rule)' }}>
-                      <span>
-                        <span style={{ color: 'var(--ink-muted)' }}>Your title odds </span>
-                        <strong className="tabular"
-                          style={{ color: (mine?.titleDelta ?? 0) > 0 ? 'var(--good)' : 'var(--bad)' }}>
-                          {pct(mine?.titleDelta ?? 0)}
-                        </strong>
-                      </span>
-                      <span>
-                        <span style={{ color: 'var(--ink-muted)' }}>Theirs </span>
-                        <strong className="tabular"
-                          style={{ color: (theirs?.titleDelta ?? 0) > 0 ? 'var(--good)' : 'var(--bad)' }}>
-                          {pct(theirs?.titleDelta ?? 0)}
-                        </strong>
-                      </span>
-                      <span>
-                        <span style={{ color: 'var(--ink-muted)' }}>Market gap </span>
-                        <strong className="tabular">{(evaluation.fairness * 100).toFixed(0)}%</strong>
-                      </span>
+                    <div
+                      className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3"
+                      style={{ borderColor: 'var(--rule)' }}
+                    >
+                      <div>
+                        <div className="axis-label">Your title odds</div>
+                        <DivergingBar
+                          value={mine?.titleDelta ?? 0}
+                          max={widest}
+                          width={140}
+                          label={pct(mine?.titleDelta ?? 0)}
+                        />
+                      </div>
+                      <div>
+                        <div className="axis-label">Their title odds</div>
+                        <DivergingBar
+                          value={theirs?.titleDelta ?? 0}
+                          max={widest}
+                          width={140}
+                          label={pct(theirs?.titleDelta ?? 0)}
+                        />
+                      </div>
+                      <div>
+                        <div className="axis-label">Market gap</div>
+                        <CellBar
+                          value={evaluation.fairness}
+                          max={0.3}
+                          width={90}
+                          color={evaluation.fairness > 0.2 ? 'var(--warn)' : 'var(--p-mid)'}
+                          label={formatPct(evaluation.fairness)}
+                        />
+                      </div>
                     </div>
 
-                    <p className="mt-2 text-sm" style={{ color: 'var(--ink-muted)' }}>{evaluation.verdict}</p>
+                    <p className="mt-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                      {evaluation.verdict}
+                    </p>
                   </article>
                 );
               })}
             </div>
-          </section>
+          </Section>
         )}
+
       </main>
     </>
   );

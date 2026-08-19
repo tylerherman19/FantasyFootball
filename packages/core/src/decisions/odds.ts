@@ -87,6 +87,72 @@ export interface SimContext {
   readonly seed?: number;
 }
 
+/**
+ * Simulated seasons, cached per context.
+ *
+ * Evaluating one trade asks for the same season four times: a baseline for each
+ * side, then the post-trade world for each side. Three of those four are
+ * identical to something already computed — the baseline never changes, and
+ * both sides look at the *same* post-trade world. Screening ten candidate
+ * trades therefore ran forty simulations to learn eleven things.
+ *
+ * Keyed on the context object, so entries vanish with it, and by the exact
+ * roster change so two different questions never collide. Contexts are readonly
+ * by type; a caller that mutates one in place would see a stale answer, which
+ * is why they aren't meant to be mutated.
+ */
+const resultCache = new WeakMap<SimContext, Map<string, SeasonSimResult>>();
+
+/** A stable name for one set of roster changes. Order must not matter. */
+const changeKey = (changes: readonly RosterChange[]): string =>
+  changes
+    .map(
+      (change) =>
+        `${change.teamId}+${[...(change.add ?? [])].sort().join('.')}-${[...(change.drop ?? [])].sort().join('.')}`,
+    )
+    .sort()
+    .join('|');
+
+const simulateCached = (
+  context: SimContext,
+  changes: readonly RosterChange[],
+): SeasonSimResult => {
+  const iterations = context.iterations ?? 4_000;
+  const seed = context.seed ?? 0x5eed;
+  const key = `${iterations}:${seed}:${changeKey(changes)}`;
+
+  const byKey = resultCache.get(context) ?? new Map<string, SeasonSimResult>();
+  const hit = byKey.get(key);
+  if (hit !== undefined) return hit;
+
+  const changeByTeam = new Map(changes.map((change) => [change.teamId, change]));
+  const teams =
+    changes.length === 0
+      ? context.teams
+      : context.teams.map((team) => {
+          const change = changeByTeam.get(team.teamId);
+          if (change === undefined) return team;
+          return withRosterChange(team, {
+            ...(change.add !== undefined ? { add: change.add } : {}),
+            ...(change.drop !== undefined ? { drop: change.drop } : {}),
+          });
+        });
+
+  const result = simulateSeason({
+    snapshot: context.snapshot,
+    projections: projectAll(teams, context.pool, context.weeks),
+    iterations,
+    // Every comparison shares a seed: we are measuring the change, not the
+    // noise between two independent runs.
+    seed,
+  });
+
+  byKey.set(key, result);
+  resultCache.set(context, byKey);
+
+  return result;
+};
+
 export const extractOdds = (result: SeasonSimResult, teamId: string): OddsSnapshot => {
   const team = result.teams.find((t) => t.teamId === teamId);
   return {
@@ -96,15 +162,8 @@ export const extractOdds = (result: SeasonSimResult, teamId: string): OddsSnapsh
   };
 };
 
-export const currentOdds = (context: SimContext, teamId: string): OddsSnapshot => {
-  const result = simulateSeason({
-    snapshot: context.snapshot,
-    projections: projectAll(context.teams, context.pool, context.weeks),
-    iterations: context.iterations ?? 4_000,
-    seed: context.seed ?? 0x5eed,
-  });
-  return extractOdds(result, teamId);
-};
+export const currentOdds = (context: SimContext, teamId: string): OddsSnapshot =>
+  extractOdds(simulateCached(context, []), teamId);
 
 export interface RosterChange {
   readonly teamId: string;
@@ -124,41 +183,8 @@ export const oddsDelta = (
   forTeamId: string,
   before?: OddsSnapshot,
 ): OddsDelta => {
-  const seed = context.seed ?? 0x5eed;
-  const iterations = context.iterations ?? 4_000;
-
-  const baseline =
-    before ??
-    extractOdds(
-      simulateSeason({
-        snapshot: context.snapshot,
-        projections: projectAll(context.teams, context.pool, context.weeks),
-        iterations,
-        seed,
-      }),
-      forTeamId,
-    );
-
-  const changeByTeam = new Map(changes.map((c) => [c.teamId, c]));
-  const modified = context.teams.map((team) => {
-    const change = changeByTeam.get(team.teamId);
-    if (change === undefined) return team;
-    return withRosterChange(team, {
-      ...(change.add !== undefined ? { add: change.add } : {}),
-      ...(change.drop !== undefined ? { drop: change.drop } : {}),
-    });
-  });
-
-  const after = extractOdds(
-    simulateSeason({
-      snapshot: context.snapshot,
-      projections: projectAll(modified, context.pool, context.weeks),
-      iterations,
-      // Same seed as the baseline: we are measuring the change, not the noise.
-      seed,
-    }),
-    forTeamId,
-  );
+  const baseline = before ?? extractOdds(simulateCached(context, []), forTeamId);
+  const after = extractOdds(simulateCached(context, changes), forTeamId);
 
   return {
     before: baseline,

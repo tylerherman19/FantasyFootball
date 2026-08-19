@@ -43,8 +43,14 @@ export interface MarketData {
   readonly picks: Map<string, number>;
 }
 
-/** Cached for an hour: the market moves, but not minute to minute. */
-let cache: { key: string; at: number; data: MarketData } | null = null;
+/**
+ * Cached for an hour: the market moves, but not minute to minute.
+ *
+ * One entry per variant rather than one entry total — a manager with a dynasty
+ * superflex league and a redraft league in the same session would otherwise
+ * evict and re-fetch the whole price list on every navigation between them.
+ */
+const cache = new Map<string, { at: number; data: MarketData }>();
 const CACHE_MS = 60 * 60 * 1000;
 
 export const loadMarketData = async (
@@ -55,17 +61,16 @@ export const loadMarketData = async (
   const numQbs = superFlex ? 2 : 1;
   const key = `${isDynasty}-${numQbs}`;
 
-  if (cache !== null && cache.key === key && Date.now() - cache.at < CACHE_MS) {
-    return cache.data;
-  }
+  const hit = cache.get(key);
+  if (hit !== undefined && Date.now() - hit.at < CACHE_MS) return hit.data;
 
   const url = `${API}?isDynasty=${isDynasty}&numQbs=${numQbs}&numTeams=12&ppr=1`;
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
+  const response = await fetch(url, { headers: { accept: 'application/json' } }).catch(() => null);
 
-  if (!response.ok) {
+  if (response === null || !response.ok) {
     // A missing market is a degraded experience, not a broken page: odds still
-    // work, only the fairness check goes quiet.
-    return cache?.data ?? { players: new Map(), picks: new Map() };
+    // work, only the fairness check goes quiet. Stale prices beat none.
+    return hit?.data ?? { players: new Map(), picks: new Map() };
   }
 
   const raw = (await response.json()) as RawValue[];
@@ -96,7 +101,7 @@ export const loadMarketData = async (
   }
 
   const data: MarketData = { players, picks };
-  cache = { key, at: Date.now(), data };
+  cache.set(key, { at: Date.now(), data });
   return data;
 };
 

@@ -1,4 +1,4 @@
-import type { LeagueSnapshot, Platform } from '@ffe/core/domain';
+import type { LeagueFormat, LeagueSnapshot, Platform } from '@ffe/core/domain';
 
 /**
  * The seam between platforms and the engine.
@@ -21,11 +21,28 @@ export interface PlatformAdapter {
   loadSnapshot(platformLeagueId: string, asOfWeek?: number): Promise<LeagueSnapshot>;
 }
 
+/**
+ * Enough about a league to choose between them.
+ *
+ * The settings come free — the same request that lists a user's leagues returns
+ * each one's full configuration — so carrying them costs nothing and saves the
+ * picker from either showing a column of bare names or loading every league in
+ * full just to label them.
+ */
 export interface LeagueRef {
   readonly platform: Platform;
   readonly platformLeagueId: string;
   readonly name: string;
   readonly season: number;
+  readonly format?: LeagueFormat;
+  readonly teamCount?: number;
+  /** Points per reception, the shorthand everyone identifies a league by. */
+  readonly ppr?: number;
+  readonly superFlex?: boolean;
+  readonly startingSlots?: number;
+  readonly rosterSize?: number;
+  /** True once the draft has happened and there is something to simulate. */
+  readonly drafted?: boolean;
 }
 
 /** Thrown when a platform returns something we can't map. Never swallowed silently. */

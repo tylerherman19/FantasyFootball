@@ -1,7 +1,17 @@
 import { optimalLineup, asPlayerId, type LineupCandidate, type Position } from '@ffe/core';
 import { LeagueNav } from '@/components/LeagueNav';
+import { requireSession } from '@/lib/session';
 import { LineupBoard, type LineupSlotView } from '@/components/LineupBoard';
-import { StatTile } from '@/components/StatTile';
+import { Section, StatRow, StatTile } from '@/components/Section';
+import {
+  CellBar,
+  Legend,
+  PositionChip,
+  StackedBar,
+  formatPct,
+  positionColor,
+} from '@/components/charts/primitives';
+import { buildUsage } from '@/lib/usage';
 import { loadAvailability } from '@/lib/availability';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
@@ -9,13 +19,10 @@ import { loadArtifact, scoreFor } from '@/lib/projections';
 import { serializeLeague } from '@/lib/serialize';
 import { loadMarketValues } from '@/lib/values';
 
-export const revalidate = 900;
-
-const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
-
 export default async function LineupPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
-  const view = await loadLeague(leagueId, USERNAME);
+  const session = await requireSession();
+  const view = await loadLeague(leagueId, session.username);
   const { snapshot, myTeamId } = view;
 
   const [artifact, availability, values, playerInfo] = await Promise.all([
@@ -83,6 +90,31 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
 
   const wire = serializeLeague(view, values, playerInfo);
 
+  const { players: usageAll } = await buildUsage(
+    snapshot.league.season,
+    snapshot.asOfWeek,
+    snapshot.league.scoring.raw,
+  );
+  const usageOf = new Map(usageAll.map((player) => [player.playerId, player]));
+
+  // The spread matters as much as the total: a lineup built on volume floors
+  // and one built on touchdown lottery tickets can project identically and
+  // deliver completely different weeks.
+  const lineupSd = Math.sqrt(slots.reduce((sum, slot) => sum + slot.sd ** 2, 0));
+  const filled = slots.filter((slot) => slot.playerId !== null);
+
+  const tdShare =
+    filled.reduce((sum, slot) => sum + (usageOf.get(slot.playerId ?? '')?.tdDependence ?? 0) * slot.projected, 0) /
+    Math.max(total, 1e-9);
+
+  // Points by position, so the shape of the week is visible at a glance.
+  const byPosition = new Map<string, number>();
+  for (const slot of filled) {
+    byPosition.set(slot.position, (byPosition.get(slot.position) ?? 0) + slot.projected);
+  }
+
+  const maxSlotPoints = Math.max(...slots.map((slot) => slot.projected), ...bench.map((p) => p.projected), 1);
+
   return (
     <>
       <LeagueNav
@@ -92,38 +124,173 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         lineupShape={lineupShape(snapshot)}
         active="lineup"
         format={snapshot.league.format}
+        stamps={[
+          { label: 'Week', value: String(snapshot.asOfWeek) },
+          { label: 'Projected', value: total.toFixed(1) },
+          { label: 'Spread', value: `±${lineupSd.toFixed(1)}` },
+        ]}
       />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
-        <section className="mb-8">
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded border sm:grid-cols-4"
-            style={{ borderColor: 'var(--rule)', background: 'var(--rule)' }}>
-            <StatTile label={`Week ${snapshot.asOfWeek} projection`} value={total.toFixed(1)} sub="starting lineup" />
+      <main className="mx-auto max-w-6xl px-5 pb-20">
+        <Section
+          title={`Week ${snapshot.asOfWeek}`}
+          note={
+            <>
+              The lineup is solved rather than sorted — in superflex that means starting two
+              quarterbacks when the arithmetic says so, which greedy ordering gets wrong. Injured
+              players are discounted by their chance of playing, and ruled-out players cannot be
+              started at all.
+            </>
+          }
+        >
+          <StatRow columns={5}>
+            <StatTile label="Projection" value={total.toFixed(1)} sub="starting lineup" />
             <StatTile
-              label="Starters with a flag"
+              label="Realistic range"
+              value={`${Math.max(0, total - lineupSd).toFixed(0)}–${(total + lineupSd).toFixed(0)}`}
+              sub="one standard deviation"
+            />
+            <StatTile
+              label="TD dependence"
+              value={formatPct(tdShare)}
+              sub="of projected points"
+              tone={tdShare > 0.32 ? 'warn' : undefined}
+            />
+            <StatTile
+              label="Flagged starters"
               value={String(hurtStarters.length)}
               sub={hurtStarters.length === 0 ? 'all clear' : hurtStarters.map((s) => s.name).join(', ')}
-              emphasis={hurtStarters.length > 0}
+              tone={hurtStarters.length > 0 ? 'bad' : 'good'}
             />
-            <StatTile label="Bench" value={String(bench.length)} sub="eligible alternatives" />
             <StatTile
               label="Empty slots"
               value={String(emptySlots.length)}
               sub={emptySlots.length === 0 ? 'lineup full' : emptySlots.map((s) => s.slot).join(', ')}
-              emphasis={emptySlots.length > 0}
+              tone={emptySlots.length > 0 ? 'bad' : undefined}
             />
-          </div>
+          </StatRow>
+        </Section>
 
-          <p className="mt-3 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
-            The lineup is solved rather than sorted — in superflex that means starting two
-            quarterbacks when the arithmetic says so, which greedy ordering gets wrong. Injured
-            players are discounted by their chance of playing, and ruled-out players cannot be
-            started at all.
-          </p>
-        </section>
+        {byPosition.size > 0 && (
+          <Section
+            title="Where this week's points come from"
+            note="Projected starting points by position. A week concentrated in one place is a week that lives or dies with one game script."
+            aside={
+              <Legend
+                items={[...byPosition.keys()].map((position) => ({
+                  label: position,
+                  color: positionColor(position),
+                }))}
+              />
+            }
+          >
+            <div className="panel p-3">
+              <StackedBar
+                max={total}
+                width={640}
+                height={26}
+                segments={[...byPosition.entries()]
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([position, points]) => ({
+                    key: position,
+                    value: points,
+                    color: positionColor(position),
+                    label: `${position} ${points.toFixed(0)}`,
+                  }))}
+              />
+            </div>
+          </Section>
+        )}
+
+        <Section
+          title="Starters and bench, with the volume behind them"
+          note="Every projection alongside the opportunity that produces it. A bench player with more opportunity than the starter ahead of him is the swap worth checking below."
+        >
+          <div className="panel scroll-x">
+            <table className="data-table" style={{ minWidth: '44rem' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '3.5rem' }}>Slot</th>
+                  <th style={{ width: '2rem' }} />
+                  <th style={{ minWidth: '10rem' }}>Player</th>
+                  <th style={{ width: '8rem' }}>Projected</th>
+                  <th className="text-right">±</th>
+                  <th className="text-right">Opp</th>
+                  <th className="text-right">Tgt%</th>
+                  <th className="text-right">TD-dep</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...slots, ...bench].map((entry, index) => {
+                  const usage = entry.playerId === null ? undefined : usageOf.get(entry.playerId);
+                  const isStarter = index < slots.length;
+
+                  return (
+                    <tr key={`${entry.slot}-${entry.playerId ?? index}`} data-mine={isStarter}>
+                      <td className="text-[11px] font-semibold" style={{ color: 'var(--ink-faint)' }}>
+                        {entry.slot}
+                      </td>
+                      <td>{entry.playerId === null ? null : <PositionChip position={entry.position} />}</td>
+                      <td
+                        className="max-w-[13rem] truncate"
+                        style={{
+                          fontWeight: isStarter ? 600 : 400,
+                          color: entry.playerId === null ? 'var(--bad)' : 'var(--ink)',
+                        }}
+                      >
+                        {entry.name}
+                        {entry.team !== '' && (
+                          <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                            {entry.team}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <CellBar
+                          value={entry.projected}
+                          max={maxSlotPoints}
+                          width={56}
+                          color={isStarter ? positionColor(entry.position) : 'var(--p-low)'}
+                          label={entry.projected.toFixed(1)}
+                        />
+                      </td>
+                      <td className="tabular text-right" style={{ color: 'var(--ink-faint)' }}>
+                        {entry.sd === 0 ? '—' : entry.sd.toFixed(1)}
+                      </td>
+                      <td className="tabular text-right">
+                        {usage === undefined || usage.opportunities === 0 ? '—' : usage.opportunities.toFixed(1)}
+                      </td>
+                      <td className="tabular text-right" style={{ color: 'var(--ink-faint)' }}>
+                        {usage === undefined || usage.targets === 0 ? '—' : formatPct(usage.targetShare)}
+                      </td>
+                      <td
+                        className="tabular text-right"
+                        style={{ color: (usage?.tdDependence ?? 0) > 0.35 ? 'var(--warn)' : 'var(--ink-faint)' }}
+                      >
+                        {usage === undefined || usage.points === 0 ? '—' : formatPct(usage.tdDependence)}
+                      </td>
+                      <td
+                        className="text-[11px]"
+                        style={{ color: entry.injuryStatus === null ? 'var(--ink-faint)' : 'var(--bad)' }}
+                      >
+                        {entry.injuryStatus ?? (isStarter ? 'starting' : 'bench')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Section>
 
         {myTeamId !== null && (
-          <LineupBoard league={wire} myTeamId={myTeamId} slots={slots} bench={bench} />
+          <Section
+            title="Price a change"
+            note="Pick a starter to see who could legally take the slot and what each swap does to your title odds — including, often, that it does nothing worth thinking about."
+          >
+            <LineupBoard league={wire} myTeamId={myTeamId} slots={slots} bench={bench} />
+          </Section>
         )}
       </main>
     </>

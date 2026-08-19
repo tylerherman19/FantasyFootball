@@ -1,5 +1,4 @@
-import { optimalLineup, projectTeamWeek, simulateSeason, type Matchup } from '@ffe/core';
-import { projectSeason } from '@ffe/core';
+import { optimalLineup, projectTeamWeek, type Matchup } from '@ffe/core';
 import type { LeagueView } from './league-data';
 
 /**
@@ -92,6 +91,9 @@ export interface Leverage {
   readonly matchupId: string;
   readonly week: number;
   readonly description: string;
+  /** Just the other side, for chart labels that have no room for a sentence. */
+  readonly opponentName: string;
+  readonly isMine: boolean;
   readonly playoffIfWin: number;
   readonly playoffIfLose: number;
   readonly swing: number;
@@ -100,38 +102,25 @@ export interface Leverage {
 /**
  * How much this week's games move your season.
  *
- * Your own game plus every other game in the week: replay the season with each
- * result forced, and the difference in your playoff odds is that game's value to
- * you. This is what turns "root for whoever" into a ranked list.
+ * Every game replayed both ways, and the difference in your playoff odds is
+ * what that result is worth to you. This is what turns "root for whoever" into
+ * a ranked list.
+ *
+ * The simulator prices all of them during the season run the page already
+ * needed, so this is now formatting rather than computation — it used to cost
+ * two full re-simulations per game, which on a six-game week was more work than
+ * everything else on the page combined.
  */
 export const weekLeverage = (view: LeagueView, teamId: string, week: number, limit = 6): Leverage[] => {
-  const { snapshot, context } = view;
-  const games = snapshot.schedule.filter((m) => m.week === week);
-  if (games.length === 0) return [];
+  const priced = view.result.leverage ?? [];
+  if (priced.length === 0 || view.snapshot.asOfWeek !== week) return [];
 
-  const projections = projectSeason(context.teams, context.pool, context.weeks);
-  const iterations = 2_000;
-  const seed = context.seed ?? 0;
-
-  const oddsWith = (matchupId: string, winnerId: string): number => {
-    const result = simulateSeason({
-      snapshot,
-      projections,
-      iterations,
-      seed,
-      forcedResults: new Map([[matchupId, winnerId]]),
-    });
-    return result.teams.find((t) => t.teamId === teamId)?.playoffPct ?? 0;
-  };
-
-  return games
+  return priced
     .map((game) => {
       const [a, b] = game.teamIds;
       const nameA = view.teamNames.get(a) ?? a;
       const nameB = view.teamNames.get(b) ?? b;
-
-      const ifA = oddsWith(game.matchupId, a);
-      const ifB = oddsWith(game.matchupId, b);
+      const [ifA, ifB] = game.playoffPctIfWins;
 
       const isMine = a === teamId || b === teamId;
       const myWin = a === teamId ? ifA : b === teamId ? ifB : Math.max(ifA, ifB);
@@ -144,6 +133,8 @@ export const weekLeverage = (view: LeagueView, teamId: string, week: number, lim
         matchupId: game.matchupId,
         week,
         description: isMine ? `Your game vs ${a === teamId ? nameB : nameA}` : `Root for ${rootFor} over ${against}`,
+        opponentName: isMine ? (a === teamId ? nameB : nameA) : `${rootFor} over ${against}`,
+        isMine,
         playoffIfWin: myWin,
         playoffIfLose: myLoss,
         swing: Math.abs(myWin - myLoss),

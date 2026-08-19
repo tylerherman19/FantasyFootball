@@ -41,9 +41,14 @@ cp .env.example .env.local   # then fill in your keys
 
 ```bash
 npm run smoke:sleeper -- <sleeper-username> <season>   # load real leagues, print the domain model
+npm run dev --workspace=@ffe/web                       # then enter your Sleeper username
 npm run typecheck
 npm test
 ```
+
+Sign-in is just a Sleeper username — the platform's league data is public, so there is no
+password to hold and nothing is written back to your account. It is remembered in a cookie,
+which is what lets the app find *your* team inside each league.
 
 ## Status
 

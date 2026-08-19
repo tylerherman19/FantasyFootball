@@ -1,18 +1,24 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { Section } from '@/components/Section';
 import { WaiverBoard } from '@/components/WaiverBoard';
+import {
+  Legend,
+  PositionChip,
+  StackedBar,
+  formatPct,
+} from '@/components/charts/primitives';
+import { requireSession } from '@/lib/session';
+import { buildUsage } from '@/lib/usage';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
 import { loadFreeAgents, waiverBudgetFor } from '@/lib/waiver-data';
 import { serializeLeague } from '@/lib/serialize';
 import { loadMarketValues } from '@/lib/values';
 
-export const revalidate = 900;
-
-const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
-
 export default async function WaiversPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
-  const view = await loadLeague(leagueId, USERNAME);
+  const session = await requireSession();
+  const view = await loadLeague(leagueId, session.username);
 
   if (view.myTeamId === null) {
     return <main className="mx-auto max-w-5xl px-6 py-12">Could not find your team in this league.</main>;
@@ -27,14 +33,34 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
     loadFreeAgents(view),
   ]);
 
-  const wire = serializeLeague(
-    view,
-    values,
-    players,
-    [],
-    freeAgents,
-    waiverBudgetFor(snapshot, myTeamId),
+  const budget = waiverBudgetFor(snapshot, myTeamId);
+  const wire = serializeLeague(view, values, players, [], freeAgents, budget);
+
+  const { players: usageAll } = await buildUsage(
+    snapshot.league.season,
+    snapshot.asOfWeek,
+    snapshot.league.scoring.raw,
   );
+  const usageOf = new Map(usageAll.map((player) => [player.playerId, player]));
+
+  /**
+   * The wire, by opportunity rather than by points.
+   *
+   * Points on the waiver wire are mostly noise — one touchdown separates the
+   * top of the list from the middle. Volume is the signal that a role has
+   * actually changed hands, and a role change is the only thing on the wire
+   * genuinely worth bidding on.
+   */
+  const byOpportunity = freeAgents
+    .map((agent) => ({ agent, usage: usageOf.get(agent.id) }))
+    .filter(
+      (row): row is { agent: (typeof freeAgents)[number]; usage: NonNullable<typeof row.usage> } =>
+        row.usage !== undefined && row.usage.opportunities > 1,
+    )
+    .sort((a, b) => b.usage.opportunities - a.usage.opportunities)
+    .slice(0, 15);
+
+  const maxOpportunities = Math.max(...byOpportunity.map((row) => row.usage.opportunities), 1);
 
   return (
     <>
@@ -45,17 +71,102 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
         lineupShape={lineupShape(snapshot)}
         active="waivers"
         format={snapshot.league.format}
+        stamps={[
+          { label: 'Free agents', value: freeAgents.length.toLocaleString() },
+          ...(snapshot.league.waiverType === 'faab'
+            ? [{ label: 'FAAB left', value: String(budget) }]
+            : []),
+        ]}
       />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
-        <p className="mb-6 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-          Ranked by what each player does to <em>your</em> title odds, not by projected points. A
-          backup running back is worth a lot to the manager whose starter just went down and nothing
-          to everyone else — same player, same projection. Choose what you&apos;re willing to drop and
-          the board re-ranks against that.
-        </p>
+      <main className="mx-auto max-w-6xl px-5 pb-20">
+        {byOpportunity.length > 0 && (
+          <Section
+            title="Volume on the wire"
+            note={
+              <>
+                Available players ranked by projected opportunity — carries plus targets — rather
+                than by points. One touchdown separates the top of a points-sorted wire from the
+                middle of it; a role does not move that easily, which is why this is the list that
+                tends to be right.
+              </>
+            }
+            aside={
+              <Legend
+                items={[
+                  { label: 'Carries', color: 'var(--pos-rb)' },
+                  { label: 'Targets', color: 'var(--pos-wr)' },
+                ]}
+              />
+            }
+          >
+            <div className="panel scroll-x">
+              <table className="data-table" style={{ minWidth: '44rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '2rem' }} />
+                    <th style={{ minWidth: '10rem' }}>Player</th>
+                    <th>Tm</th>
+                    <th style={{ width: '11rem' }}>Opportunity</th>
+                    <th className="text-right">Opp</th>
+                    <th className="text-right">Tgt%</th>
+                    <th className="text-right">Car%</th>
+                    <th className="text-right">Pts</th>
+                    <th className="text-right">TD-dep</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byOpportunity.map(({ agent, usage }) => (
+                    <tr key={agent.id}>
+                      <td>
+                        <PositionChip position={usage.position} />
+                      </td>
+                      <td className="max-w-[13rem] truncate">{usage.name}</td>
+                      <td className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                        {usage.team}
+                      </td>
+                      <td>
+                        <StackedBar
+                          max={maxOpportunities}
+                          width={170}
+                          height={13}
+                          showLabels={false}
+                          segments={[
+                            { key: 'Carries', value: usage.carries, color: 'var(--pos-rb)' },
+                            { key: 'Targets', value: usage.targets, color: 'var(--pos-wr)' },
+                          ]}
+                        />
+                      </td>
+                      <td className="tabular text-right font-semibold">{usage.opportunities.toFixed(1)}</td>
+                      <td className="tabular text-right">{formatPct(usage.targetShare)}</td>
+                      <td className="tabular text-right">{formatPct(usage.carryShare)}</td>
+                      <td className="tabular text-right">{usage.points.toFixed(1)}</td>
+                      <td
+                        className="tabular text-right"
+                        style={{ color: usage.tdDependence > 0.35 ? 'var(--warn)' : 'var(--ink-faint)' }}
+                      >
+                        {formatPct(usage.tdDependence)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        )}
 
-        <WaiverBoard league={wire} myTeamId={myTeamId} />
+        <Section
+          title="Ranked by what they do to your odds"
+          note={
+            <>
+              Not by projected points. A backup running back is worth a lot to the manager whose
+              starter just went down and nothing to everyone else — same player, same projection.
+              Choose what you&apos;re willing to drop and the board re-ranks against that.
+            </>
+          }
+        >
+          <WaiverBoard league={wire} myTeamId={myTeamId} />
+        </Section>
       </main>
     </>
   );

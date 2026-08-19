@@ -1,17 +1,35 @@
 import { LeagueNav } from '@/components/LeagueNav';
-import { OddsBar } from '@/components/OddsBar';
-import { OutcomeDistribution } from '@/components/OutcomeDistribution';
-import { StatTile } from '@/components/StatTile';
-import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
+import { Section, StatRow, StatTile } from '@/components/Section';
+import {
+  CellBar,
+  DivergingBar,
+  Histogram,
+  Legend,
+  RangeBar,
+  Sparkline,
+  StackedBar,
+  formatPct,
+  positionColor,
+  rampColor,
+  rampInk,
+} from '@/components/charts/primitives';
 import { remainingSchedule, weekLeverage } from '@/lib/analysis';
+import { buildTeamProfiles } from '@/lib/league-analytics';
+import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
+import { requireSession } from '@/lib/session';
 
-export const revalidate = 900;
-
-const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
+/**
+ * Where the season stands, and what moves it.
+ *
+ * Four questions in order of what a manager actually wants: how am I doing,
+ * how uncertain is that, who is in my way, and what should I want to happen
+ * this week. Each gets a picture first and a number second.
+ */
 
 export default async function OutlookPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
-  const view = await loadLeague(leagueId, USERNAME);
+  const session = await requireSession();
+  const view = await loadLeague(leagueId, session.username);
   const { snapshot, result, teamNames, myTeamId } = view;
   const isGuillotine = snapshot.league.format === 'guillotine';
 
@@ -24,14 +42,25 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
       : b.playoffPct - a.playoffPct || b.expectedWins - a.expectedWins,
   );
 
-  const me = myTeamId === null ? null : result.teams.find((t) => t.teamId === myTeamId) ?? null;
+  const me = myTeamId === null ? null : (result.teams.find((t) => t.teamId === myTeamId) ?? null);
   const myRank = me === null ? null : standings.findIndex((t) => t.teamId === me.teamId) + 1;
-  const myRecord = myTeamId === null ? null : snapshot.records.find((r) => r.teamId === myTeamId) ?? null;
+  const myRecord = myTeamId === null ? null : (snapshot.records.find((r) => r.teamId === myTeamId) ?? null);
 
   const schedule = !notDrafted && myTeamId !== null && !isGuillotine ? remainingSchedule(view, myTeamId) : [];
-  const leverage = !notDrafted && myTeamId !== null && !isGuillotine
-    ? weekLeverage(view, myTeamId, snapshot.asOfWeek)
-    : [];
+  const leverage =
+    !notDrafted && myTeamId !== null && !isGuillotine ? weekLeverage(view, myTeamId, snapshot.asOfWeek) : [];
+
+  const profiles = notDrafted ? [] : await buildTeamProfiles(view);
+  const profileOf = new Map(profiles.map((profile) => [profile.teamId, profile]));
+  const maxStarterPoints = Math.max(...profiles.map((p) => p.starterPoints), 1);
+  const corePositions = ['QB', 'RB', 'WR', 'TE'];
+
+  const standardError = (probability: number): number =>
+    Math.sqrt(Math.max(probability * (1 - probability), 0) / Math.max(result.iterations, 1));
+
+  const myProfile = profiles.find((profile) => profile.isMine) ?? null;
+  const leagueAverageStarters =
+    profiles.length > 0 ? profiles.reduce((sum, p) => sum + p.starterPoints, 0) / profiles.length : 0;
 
   return (
     <>
@@ -42,26 +71,36 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
         lineupShape={lineupShape(snapshot)}
         active="outlook"
         format={snapshot.league.format}
+        stamps={[
+          { label: 'Sims', value: result.iterations.toLocaleString() },
+          { label: 'Model', value: view.modelVersion ?? 'none' },
+          { label: 'Built in', value: `${view.loadMs} ms` },
+        ]}
       />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20">
         {notDrafted && (
-          <div
-            className="mb-8 rounded border p-4 text-sm"
-            style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}
-          >
-            <strong>Not drafted yet.</strong> Every roster is empty, so there is nothing to simulate.
-            This page becomes meaningful the moment the draft happens.
+          <div className="panel mb-7 p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
+            <strong style={{ color: 'var(--ink)' }}>Not drafted yet.</strong> Every roster is empty,
+            so there is nothing to simulate. This page becomes meaningful the moment the draft
+            happens.
           </div>
         )}
 
+        {myTeamId === null && !notDrafted && (
+          <div className="panel mb-7 p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
+            <strong style={{ color: 'var(--ink)' }}>
+              Couldn&apos;t find {session.username} in this league.
+            </strong>{' '}
+            League-wide numbers below are still correct; anything personal — start/sit, waivers,
+            leverage — needs to know which team is yours.
+          </div>
+        )}
+
+        {/* ---- your season -------------------------------------------- */}
         {me !== null && !notDrafted && (
-          <section className="mb-10">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Your season
-            </h2>
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded border sm:grid-cols-4"
-              style={{ borderColor: 'var(--rule)', background: 'var(--rule)' }}>
+          <Section title="Your season">
+            <StatRow columns={5}>
               <StatTile label="Projected rank" value={`#${myRank} of ${standings.length}`} />
               <StatTile
                 label="Projected record"
@@ -70,146 +109,410 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
               />
               <StatTile
                 label={isGuillotine ? 'Survive to end' : 'Playoffs'}
-                value={`${((isGuillotine ? me.titlePct : me.playoffPct) * 100).toFixed(0)}%`}
+                value={formatPct(isGuillotine ? me.titlePct : me.playoffPct)}
+                sub={`±${(1.96 * standardError(isGuillotine ? me.titlePct : me.playoffPct) * 100).toFixed(1)} pts`}
                 emphasis
               />
-              <StatTile label="Title" value={`${(me.titlePct * 100).toFixed(1)}%`} emphasis />
-            </div>
-          </section>
+              <StatTile label="Title" value={formatPct(me.titlePct, 1)} emphasis />
+              <StatTile
+                label="Lineup vs field"
+                value={
+                  myProfile === null
+                    ? '—'
+                    : `${myProfile.starterPoints > leagueAverageStarters ? '+' : ''}${(myProfile.starterPoints - leagueAverageStarters).toFixed(1)}`
+                }
+                sub="points per week vs average"
+                tone={
+                  myProfile === null
+                    ? undefined
+                    : myProfile.starterPoints >= leagueAverageStarters
+                      ? 'good'
+                      : 'bad'
+                }
+              />
+            </StatRow>
+          </Section>
         )}
 
+        {/* ---- outcome distribution ------------------------------------ */}
         {me !== null && !notDrafted && !isGuillotine && me.winDistribution.length > 1 && (
-          <section className="mb-10">
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Where your season can land
-            </h2>
-            <p className="mb-3 max-w-2xl text-sm" style={{ color: 'var(--ink-muted)' }}>
-              Every simulated season, by final win total. The spread matters as much as the average.
-            </p>
-            <OutcomeDistribution
-              winDistribution={me.winDistribution}
-              expectedWins={me.expectedWins}
-              playoffPct={me.playoffPct}
-            />
-          </section>
+          <Section
+            title="Where your season can land"
+            note={
+              <>
+                Every simulated season, by final win total. The dashed line is your average; the
+                highlighted bars are the outcomes that make the playoffs. The width of this
+                distribution is the honest answer to how much of your season is already decided.
+              </>
+            }
+          >
+            <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr]">
+              <div className="panel p-3">
+                <Histogram
+                  bins={me.winDistribution}
+                  labels={me.winDistribution.map((_, wins) => String(wins))}
+                  mean={me.expectedWins}
+                  highlightFrom={playoffWinThreshold(me.winDistribution, me.playoffPct)}
+                  height={110}
+                />
+                <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Final wins, out of {snapshot.league.regularSeasonWeeks}
+                  {snapshot.league.medianWins ? ' weeks × 2 (median wins)' : ' weeks'}.
+                </p>
+              </div>
+
+              {me.rankDistribution.length > 1 && (
+                <div className="panel p-3">
+                  <div className="eyebrow mb-2">Finishing position</div>
+                  <div className="flex flex-wrap gap-1">
+                    {me.rankDistribution.map((share, index) => (
+                      <div
+                        key={index}
+                        title={`Finishes #${index + 1} in ${formatPct(share, 1)} of seasons`}
+                        className="tabular flex h-9 flex-1 min-w-[2rem] flex-col items-center justify-center rounded-[3px] text-[10px]"
+                        style={{
+                          background: rampColor(Math.min(1, share * 3)),
+                          color: rampInk(Math.min(1, share * 3)),
+                          outline:
+                            index + 1 === snapshot.league.playoffTeams ? '2px solid var(--ink)' : undefined,
+                          outlineOffset: '-2px',
+                        }}
+                      >
+                        <span className="font-semibold">{index + 1}</span>
+                        <span>{share >= 0.005 ? (share * 100).toFixed(0) : '·'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                    Percent of seasons ending in each position. The outlined cell is the last playoff
+                    spot.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Section>
         )}
 
-        <section className="mb-10">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-            League outlook
-          </h2>
-          <div className="scroll-x">
-            <table className="w-full min-w-[36rem] text-left">
-              <thead>
-                <tr className="border-b text-xs uppercase tracking-widest"
-                  style={{ borderColor: 'var(--rule-strong)', color: 'var(--ink-faint)' }}>
-                  <th className="py-2">#</th>
-                  <th className="py-2">Team</th>
-                  <th className="py-2 text-right">Proj. wins</th>
-                  <th className="py-2 pl-6">{isGuillotine ? 'Survives' : 'Playoffs'}</th>
-                  <th className="py-2 pl-6 text-right">Title</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map((team, index) => {
-                  const isMine = team.teamId === myTeamId;
-                  return (
-                    <tr key={team.teamId} className="border-b" style={{ borderColor: 'var(--rule)' }}>
-                      <td className="tabular py-3 pr-2 text-sm" style={{ color: 'var(--ink-faint)' }}>
-                        {index + 1}
-                      </td>
-                      <td className="py-3" style={{ fontWeight: isMine ? 600 : 400 }}>
-                        {teamNames.get(team.teamId) ?? team.teamId}
-                        {isMine && (
-                          <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-widest"
-                            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
-                            you
-                          </span>
-                        )}
-                      </td>
-                      <td className="tabular py-3 text-right">{team.expectedWins.toFixed(1)}</td>
-                      <td className="py-3 pl-6">
-                        <OddsBar
-                          probability={isGuillotine ? team.titlePct : team.playoffPct}
-                          iterations={result.iterations}
-                        />
-                      </td>
-                      <td className="tabular py-3 pl-6 text-right">{(team.titlePct * 100).toFixed(1)}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        {/* ---- league table -------------------------------------------- */}
+        {!notDrafted && (
+          <Section
+            title="League outlook"
+            note="Every team, with the roster behind the odds. The bar is projected starting points by position — the same total split by where it comes from."
+            aside={<Legend items={corePositions.map((p) => ({ label: p, color: positionColor(p) }))} />}
+          >
+            <div className="panel scroll-x">
+              <table className="data-table" style={{ minWidth: '54rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '2rem' }}>#</th>
+                    <th style={{ minWidth: '9rem' }}>Team</th>
+                    <th style={{ width: '15rem' }}>Roster shape</th>
+                    <th className="text-right">Proj W</th>
+                    <th className="text-right">Rec</th>
+                    <th style={{ width: '9rem' }}>{isGuillotine ? 'Survives' : 'Playoffs'}</th>
+                    <th className="text-right">Title</th>
+                    <th className="text-right">Form</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.map((team, index) => {
+                    const profile = profileOf.get(team.teamId);
+                    const record = snapshot.records.find((r) => r.teamId === team.teamId);
+                    const probability = isGuillotine ? team.titlePct : team.playoffPct;
 
+                    return (
+                      <tr key={team.teamId} data-mine={team.teamId === myTeamId}>
+                        <td className="tabular" style={{ color: 'var(--ink-faint)' }}>
+                          {index + 1}
+                        </td>
+                        <td
+                          className="max-w-[11rem] truncate"
+                          style={{ fontWeight: team.teamId === myTeamId ? 700 : 400 }}
+                        >
+                          {teamNames.get(team.teamId) ?? team.teamId}
+                        </td>
+                        <td>
+                          {profile === undefined ? null : (
+                            <StackedBar
+                              max={maxStarterPoints}
+                              width={230}
+                              height={14}
+                              showLabels={false}
+                              segments={corePositions.map((position) => ({
+                                key: position,
+                                value:
+                                  profile.byPosition.find((slice) => slice.position === position)
+                                    ?.starterPoints ?? 0,
+                                color: positionColor(position),
+                              }))}
+                            />
+                          )}
+                        </td>
+                        <td className="tabular text-right font-semibold">{team.expectedWins.toFixed(1)}</td>
+                        <td className="tabular text-right text-xs" style={{ color: 'var(--ink-faint)' }}>
+                          {record === undefined ? '—' : `${record.wins}-${record.losses}`}
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <RangeBar
+                              value={probability}
+                              low={Math.max(0, probability - 1.96 * standardError(probability))}
+                              high={Math.min(1, probability + 1.96 * standardError(probability))}
+                              width={80}
+                              color={team.teamId === myTeamId ? 'var(--accent)' : 'var(--p-high)'}
+                            />
+                            <span className="tabular text-xs">{formatPct(probability)}</span>
+                          </div>
+                        </td>
+                        <td className="tabular text-right font-semibold">{formatPct(team.titlePct, 1)}</td>
+                        <td>
+                          <div className="flex justify-end">
+                            {profile !== undefined && profile.weeklyScores.length > 1 ? (
+                              <Sparkline
+                                values={profile.weeklyScores}
+                                color={team.teamId === myTeamId ? 'var(--accent)' : 'var(--p-high)'}
+                              />
+                            ) : (
+                              <span className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                                —
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        )}
+
+        {/* ---- remaining schedule -------------------------------------- */}
         {schedule.length > 0 && (
-          <section className="mb-10">
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              Your remaining schedule
-            </h2>
-            <p className="mb-3 text-sm" style={{ color: 'var(--ink-muted)' }}>
-              Win probability from projected totals and their spread, not from record.
-            </p>
+          <Section
+            title="Your remaining schedule"
+            note="Win probability from projected totals and their spread, not from record. The bar under each week is your projected margin."
+          >
             <div className="scroll-x">
-              <div className="flex gap-2 pb-2">
-                {schedule.map((game) => (
-                  <div
-                    key={game.matchupId}
-                    className="min-w-[8.5rem] shrink-0 rounded border p-3"
-                    style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}
-                  >
-                    <div className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-                      Week {game.week}
-                    </div>
-                    <div className="mt-1 truncate text-sm" style={{ color: 'var(--ink-muted)' }}>
-                      vs {game.opponentName}
-                    </div>
+              <div className="flex gap-1.5 pb-1">
+                {schedule.map((game) => {
+                  const margin = game.projectedFor - game.projectedAgainst;
+                  return (
                     <div
-                      className="tabular mt-2 text-xl font-semibold"
+                      key={game.matchupId}
+                      className="panel min-w-[7.5rem] shrink-0 p-2.5"
                       style={{
-                        color:
+                        borderColor:
                           game.winProbability >= 0.6
-                            ? 'var(--good)'
+                            ? 'color-mix(in srgb, var(--good) 35%, var(--rule))'
                             : game.winProbability <= 0.4
-                              ? 'var(--bad)'
-                              : 'var(--ink)',
+                              ? 'color-mix(in srgb, var(--bad) 35%, var(--rule))'
+                              : 'var(--rule)',
                       }}
                     >
-                      {(game.winProbability * 100).toFixed(0)}%
+                      <div className="axis-label">Week {game.week}</div>
+                      <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--ink-muted)' }}>
+                        {game.opponentName}
+                      </div>
+                      <div
+                        className="tabular mt-1.5 text-lg font-semibold"
+                        style={{
+                          color:
+                            game.winProbability >= 0.6
+                              ? 'var(--good)'
+                              : game.winProbability <= 0.4
+                                ? 'var(--bad)'
+                                : 'var(--ink)',
+                        }}
+                      >
+                        {formatPct(game.winProbability)}
+                      </div>
+                      <div className="mt-1">
+                        <DivergingBar value={margin} max={30} width={92} height={8} />
+                      </div>
+                      <div className="tabular mt-1 text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+                        {game.projectedFor.toFixed(0)} – {game.projectedAgainst.toFixed(0)}
+                      </div>
                     </div>
-                    <div className="tabular mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                      {game.projectedFor.toFixed(0)} – {game.projectedAgainst.toFixed(0)}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
-          </section>
+          </Section>
         )}
 
+        {/* ---- leverage ------------------------------------------------- */}
         {leverage.length > 0 && (
-          <section>
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-              What to root for, week {snapshot.asOfWeek}
-            </h2>
-            <p className="mb-3 text-sm" style={{ color: 'var(--ink-muted)' }}>
-              Every game this week replayed both ways. The swing is what the result is worth to your
-              playoff odds.
-            </p>
-            <ul className="divide-y rounded border" style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
-              {leverage.map((item) => (
-                <li key={item.matchupId} className="flex items-center justify-between gap-4 px-4 py-3">
-                  <span className="text-sm">{item.description}</span>
-                  <span className="tabular shrink-0 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
-                    ±{(item.swing * 100).toFixed(1)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <Section
+            title={`What to root for, week ${snapshot.asOfWeek}`}
+            note={
+              <>
+                Every game this week replayed both ways against the same simulated seasons. The bar
+                spans your playoff odds if it goes the wrong way to your odds if it goes your way —
+                the width is what the result is worth to you.
+              </>
+            }
+          >
+            <div className="panel divide-y" style={{ borderColor: 'var(--rule)' }}>
+              {leverage.map((item) => {
+                const low = Math.min(item.playoffIfLose, item.playoffIfWin);
+                const high = Math.max(item.playoffIfLose, item.playoffIfWin);
+
+                return (
+                  <div key={item.matchupId} className="flex items-center gap-3 px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate text-xs" style={{ fontWeight: item.isMine ? 700 : 400 }}>
+                      {item.description}
+                    </span>
+                    <span className="hidden sm:block">
+                      <RangeBar
+                        value={high}
+                        low={low}
+                        high={high}
+                        width={150}
+                        color={item.isMine ? 'var(--accent)' : 'var(--p-high)'}
+                      />
+                    </span>
+                    <span className="tabular w-24 shrink-0 text-right text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                      {formatPct(low)} → {formatPct(high)}
+                    </span>
+                    <span
+                      className="tabular w-14 shrink-0 text-right text-xs font-semibold"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      ±{(item.swing * 100).toFixed(1)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
+        {/* ---- guillotine survival ------------------------------------- */}
+        {isGuillotine && !notDrafted && (
+          <Section
+            title="Survival curve"
+            note="Chance of still being alive at the end of each week. In a guillotine league this replaces the playoff race entirely — there is no bracket, only elimination."
+          >
+            <div className="panel scroll-x p-3">
+              <table className="data-table" style={{ minWidth: '40rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: '9rem' }}>Team</th>
+                    {(standings[0]?.survivalByWeek ?? []).map((_, week) =>
+                      week === 0 ? null : (
+                        <th key={week} className="text-center">
+                          {week}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.map((team) => (
+                    <tr key={team.teamId} data-mine={team.teamId === myTeamId}>
+                      <td className="max-w-[11rem] truncate">{teamNames.get(team.teamId) ?? team.teamId}</td>
+                      {team.survivalByWeek.map((share, week) =>
+                        week === 0 ? null : (
+                          <td key={week} className="p-px">
+                            <div
+                              title={`Week ${week}: ${formatPct(share, 1)} alive`}
+                              className="tabular flex h-6 items-center justify-center rounded-[2px] text-[10px]"
+                              style={{ background: rampColor(share), color: rampInk(share) }}
+                            >
+                              {(share * 100).toFixed(0)}
+                            </div>
+                          </td>
+                        ),
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        )}
+
+        {/* ---- positional edge ----------------------------------------- */}
+        {myProfile !== null && profiles.length > 1 && (
+          <Section
+            title="Where you win and lose"
+            note="Your projected starting points at each position against the league average. This is the shortlist for what to trade for and what to trade away."
+          >
+            <div className="panel divide-y" style={{ borderColor: 'var(--rule)' }}>
+              {myProfile.byPosition
+                .filter((slice) => slice.count > 0)
+                .map((slice) => {
+                  const average =
+                    profiles.reduce(
+                      (sum, profile) =>
+                        sum + (profile.byPosition.find((s) => s.position === slice.position)?.starterPoints ?? 0),
+                      0,
+                    ) / profiles.length;
+                  const gap = slice.starterPoints - average;
+
+                  return (
+                    <div key={slice.position} className="flex items-center gap-3 px-3 py-2">
+                      <span className="w-10 shrink-0">
+                        <span className="pos-chip" style={{ background: positionColor(slice.position) }}>
+                          {slice.position}
+                        </span>
+                      </span>
+                      <span className="tabular w-16 shrink-0 text-xs" style={{ color: 'var(--ink-faint)' }}>
+                        #{slice.rank} of {profiles.length}
+                      </span>
+                      <span className="flex-1">
+                        <DivergingBar
+                          value={gap}
+                          max={Math.max(
+                            ...profiles.map((profile) =>
+                              Math.abs(
+                                (profile.byPosition.find((s) => s.position === slice.position)?.starterPoints ?? 0) -
+                                  average,
+                              ),
+                            ),
+                            1,
+                          )}
+                          width={200}
+                          label={`${gap >= 0 ? '+' : ''}${gap.toFixed(1)}`}
+                        />
+                      </span>
+                      <span className="tabular w-16 shrink-0 text-right text-xs">
+                        {slice.starterPoints.toFixed(1)}
+                      </span>
+                      <span className="hidden w-24 shrink-0 sm:block">
+                        <CellBar
+                          value={slice.strength}
+                          max={1}
+                          width={80}
+                          color={positionColor(slice.position)}
+                        />
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </Section>
         )}
       </main>
     </>
   );
 }
+
+/**
+ * The lowest win total that still makes the playoffs, read back out of the
+ * simulation rather than assumed.
+ *
+ * There is no fixed number of wins that qualifies — it depends on the league —
+ * so the threshold is found by walking down from the top until the cumulative
+ * share of seasons matches the playoff probability the simulation reported.
+ */
+const playoffWinThreshold = (winDistribution: readonly number[], playoffPct: number): number => {
+  let cumulative = 0;
+  for (let wins = winDistribution.length - 1; wins >= 0; wins -= 1) {
+    cumulative += winDistribution[wins] ?? 0;
+    if (cumulative >= playoffPct) return wins;
+  }
+  return 0;
+};

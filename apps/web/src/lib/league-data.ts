@@ -13,6 +13,7 @@ import {
   type TeamContext,
 } from '@ffe/core';
 import { loadAvailability } from './availability';
+import { ttlCache } from './cache';
 import { loadIdentities } from './crosswalk';
 import { buildPool, loadArtifact } from './projections';
 
@@ -23,12 +24,27 @@ import { buildPool, loadArtifact } from './projections';
  * iteration season is a second or two of work that shouldn't repeat on every
  * navigation. What-if interactions — trade toggles, start/sit — run client-side
  * against the same engine, since those need to feel instant.
+ *
+ * The cache is keyed by league and viewer and shared across every tab, which is
+ * the whole point: outlook, lineup, waivers, trades, roster and schedule are
+ * six routes rendering six views of *one* snapshot and *one* simulation.
+ * Without this each of them paid the full cost again.
  */
 
 const adapter = new SleeperAdapter();
 
 /** How many iterations page loads use. Final answers re-run at full count. */
 const PAGE_ITERATIONS = 4_000;
+
+/**
+ * How long a loaded league stays fresh.
+ *
+ * Long enough that clicking through the tabs never re-simulates, short enough
+ * that a waiver claim shows up while you still care. Live scoring is not served
+ * from here — the numbers on these pages are projections, which do not move
+ * minute to minute.
+ */
+const LEAGUE_TTL_MS = 5 * 60 * 1000;
 
 export interface LeagueView {
   readonly snapshot: LeagueSnapshot;
@@ -39,10 +55,24 @@ export interface LeagueView {
   readonly modelVersion: string | null;
   readonly generatedAt: string | null;
   readonly efficiencies: ReadonlyMap<string, import('@ffe/core').EfficiencyResult>;
+  /** Wall-clock cost of building this view, for the footer's honesty line. */
+  readonly loadMs: number;
 }
 
-export const listLeagues = async (username: string, season: number) =>
-  adapter.listLeagues(username, season);
+export const listLeagues = ttlCache(
+  LEAGUE_TTL_MS,
+  (username: string, season: number) => `${username.toLowerCase()}:${season}`,
+  async (username: string, season: number) => adapter.listLeagues(username, season),
+);
+
+/** Resolve a Sleeper handle, or null when no such user exists. */
+export const resolveUser = async (username: string): Promise<string | null> => {
+  try {
+    return await adapter.resolveUserId(username);
+  } catch {
+    return null;
+  }
+};
 
 const FORMAT_LABEL: Record<string, string> = {
   dynasty: 'Dynasty',
@@ -97,10 +127,8 @@ export const leagueMeta = (snapshot: LeagueSnapshot): string => {
 
 
 
-export const loadLeague = async (
-  platformLeagueId: string,
-  username: string,
-): Promise<LeagueView> => {
+const buildLeague = async (platformLeagueId: string, username: string): Promise<LeagueView> => {
+  const startedAt = Date.now();
   const snapshot = await adapter.loadSnapshot(platformLeagueId);
 
   const weeks: number[] = [];
@@ -142,34 +170,53 @@ export const loadLeague = async (
     seed: seedFrom(snapshot.league.id, snapshot.asOfWeek),
   };
 
-  const result = simulateSeason({
-    snapshot,
-    projections: projectSeason(teams, pool, weeks),
-    iterations: PAGE_ITERATIONS,
-    seed: context.seed ?? 0,
-  });
-
   const teamNames = new Map(snapshot.managers.map((m) => [m.id, m.teamName]));
 
   // Match on the platform account id, not the display name. Display names differ
   // between leagues and change mid-season; matching on them silently fails to
   // find your own team, which reads as "you are not in this league".
-  const myUserId = await adapter.resolveUserId(username);
+  //
+  // Resolved before simulating rather than after, because knowing whose team is
+  // whose lets this week's games be priced inside the same run.
+  const myUserId = await resolveUser(username);
   const me =
-    snapshot.managers.find((m) => m.platformUserId === myUserId) ??
-    snapshot.managers.find((m) => m.coOwnerUserIds.includes(myUserId)) ??
-    snapshot.managers.find((m) => m.displayName.toLowerCase() === username.toLowerCase());
+    myUserId === null
+      ? undefined
+      : (snapshot.managers.find((m) => m.platformUserId === myUserId) ??
+        snapshot.managers.find((m) => m.coOwnerUserIds.includes(myUserId)));
+  const mine =
+    me ?? snapshot.managers.find((m) => m.displayName.toLowerCase() === username.toLowerCase());
+
+  const result = simulateSeason({
+    snapshot,
+    projections: projectSeason(teams, pool, weeks),
+    iterations: PAGE_ITERATIONS,
+    seed: context.seed ?? 0,
+    // Free: pricing this week's games rides along on the season we already
+    // simulate, instead of costing two more simulations per game.
+    ...(mine === undefined ? {} : { leverage: { teamId: mine.id, week: snapshot.asOfWeek } }),
+  });
 
   return {
     snapshot,
     context,
     result,
     teamNames,
-    myTeamId: me?.id ?? null,
+    myTeamId: mine?.id ?? null,
     modelVersion: artifact?.modelVersion ?? null,
     generatedAt: artifact?.generatedAt ?? null,
     efficiencies,
+    loadMs: Date.now() - startedAt,
   };
 };
+
+/**
+ * One league, loaded and simulated once for every tab that needs it.
+ */
+export const loadLeague = ttlCache(
+  LEAGUE_TTL_MS,
+  (platformLeagueId: string, username: string) => `${platformLeagueId}:${username.toLowerCase()}`,
+  buildLeague,
+);
 
 export { currentOdds };

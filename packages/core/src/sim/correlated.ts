@@ -44,6 +44,26 @@ export const sampleWeek = (
   players: readonly CorrelatedPlayer[],
   rng: Rng,
 ): Map<PlayerId, number> => {
+  const drawn = new Float64Array(players.length);
+  sampleWeekInto(players, rng, drawn);
+
+  const out = new Map<PlayerId, number>();
+  for (let i = 0; i < players.length; i += 1) out.set(players[i]!.playerId, drawn[i]!);
+  return out;
+};
+
+/**
+ * The same draw, written into a caller-owned array by player index.
+ *
+ * The season simulator calls this millions of times, and at that rate building
+ * a fresh keyed map per team-week costs more than the arithmetic it wraps.
+ * Callers that already know where each player sits pass a buffer instead.
+ */
+export const sampleWeekInto = (
+  players: readonly CorrelatedPlayer[],
+  rng: Rng,
+  out: Float64Array,
+): void => {
   // One environment draw per NFL game, shared by everyone playing in it.
   const gameFactors = new Map<string, number>();
   for (const player of players) {
@@ -52,9 +72,8 @@ export const sampleWeek = (
     }
   }
 
-  const out = new Map<PlayerId, number>();
-
-  for (const player of players) {
+  for (let i = 0; i < players.length; i += 1) {
+    const player = players[i]!;
     const shared = gameFactors.get(player.gameId) ?? 0;
     const loading = Math.min(1, Math.max(0, player.gameLoading));
 
@@ -67,10 +86,8 @@ export const sampleWeek = (
 
     const shock = Math.sqrt(loading) * shared + Math.sqrt(1 - loading) * own;
 
-    out.set(player.playerId, Math.max(0, player.mean + player.sd * shock));
+    out[i] = Math.max(0, player.mean + player.sd * shock);
   }
-
-  return out;
 };
 
 /**

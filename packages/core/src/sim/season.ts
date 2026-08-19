@@ -1,5 +1,5 @@
-import type { LeagueSnapshot, PlayerId } from '../domain/index.js';
-import { sampleWeek, type CorrelatedPlayer } from './correlated.js';
+import type { LeagueSnapshot, Matchup } from '../domain/index.js';
+import { sampleWeek, sampleWeekInto, type CorrelatedPlayer } from './correlated.js';
 import { seededRng, type Rng } from './random.js';
 
 /**
@@ -18,6 +18,11 @@ import { seededRng, type Rng } from './random.js';
  *   the pairings ignored.
  * - The playoff bracket runs inside every iteration, so title odds inherit the
  *   full uncertainty of the regular season rather than being bolted on after.
+ *
+ * This is the hot path of the whole product — a page load is one call, and a
+ * what-if is two — so everything that does not vary between iterations is
+ * indexed once up front and the inner loop works on typed arrays keyed by team
+ * and player index rather than on maps keyed by string.
  */
 
 export interface TeamWeekProjection {
@@ -32,6 +37,38 @@ export interface TeamWeekProjection {
   readonly lineupEfficiency: number;
 }
 
+/**
+ * Ask for this week's games to be priced while the season is being simulated.
+ *
+ * Answering "how much is this game worth to me" by re-simulating the season
+ * once per possible result costs one full simulation per game per side — the
+ * single most expensive thing the app used to do. It is also noisier than it
+ * needs to be, because each re-run draws its own random seasons.
+ *
+ * Forcing a result only changes who is credited with a win; nobody's *scores*
+ * change. So the same simulated seasons can answer every version of the
+ * question at once: re-credit the game inside each iteration, re-rank, and
+ * count. One simulation, every game priced, and the comparison is made against
+ * identical seasons rather than independent ones — which removes the sampling
+ * noise that otherwise swamps a two-point swing.
+ */
+export interface LeverageRequest {
+  /** Whose playoff odds the games are priced against. */
+  readonly teamId: string;
+  readonly week: number;
+}
+
+export interface MatchupLeverage {
+  readonly matchupId: string;
+  readonly week: number;
+  readonly teamIds: readonly [string, string];
+  /**
+   * The requested team's playoff probability when each side of this game is
+   * forced to win — indexed to match `teamIds`.
+   */
+  readonly playoffPctIfWins: readonly [number, number];
+}
+
 export interface SeasonSimInput {
   readonly snapshot: LeagueSnapshot;
   readonly projections: readonly TeamWeekProjection[];
@@ -39,9 +76,12 @@ export interface SeasonSimInput {
   readonly seed?: number;
   /**
    * Force a week's result to test "what if I win": maps matchupId to the team
-   * that wins. Used for leverage and the rooting guide.
+   * that wins. Used for one-off counterfactuals; to price a whole week, prefer
+   * `leverage`, which answers the same question in a single run.
    */
   readonly forcedResults?: ReadonlyMap<string, string>;
+  /** Price every game in one week against one team's playoff odds. */
+  readonly leverage?: LeverageRequest;
 }
 
 export interface TeamOutcome {
@@ -66,11 +106,12 @@ export interface TeamOutcome {
 export interface SeasonSimResult {
   readonly iterations: number;
   readonly teams: readonly TeamOutcome[];
+  /** Present only when `leverage` was requested and the league plays matchups. */
+  readonly leverage?: readonly MatchupLeverage[];
 }
 
 interface MutableTally {
   wins: number;
-  pointsFor: number;
   playoffs: number;
   titles: number;
   byes: number;
@@ -79,30 +120,66 @@ interface MutableTally {
   survivedThrough: number[];
 }
 
-const buildProjectionIndex = (
+/**
+ * One week, arranged for the inner loop.
+ *
+ * `entries` preserves the order the projections arrived in, because that order
+ * decides the order random draws are consumed and therefore what a given seed
+ * produces. `players` is every entry's players concatenated once, so the common
+ * case samples a flat array instead of rebuilding one per iteration.
+ */
+interface WeekPlan {
+  readonly week: number;
+  readonly entries: readonly {
+    readonly teamIndex: number;
+    readonly players: readonly CorrelatedPlayer[];
+    readonly efficiency: number;
+    /** Where this entry's players sit in `players`. */
+    readonly start: number;
+    readonly end: number;
+  }[];
+  readonly players: readonly CorrelatedPlayer[];
+  readonly matchups: readonly Matchup[];
+}
+
+const buildWeekPlans = (
   projections: readonly TeamWeekProjection[],
-): Map<number, Map<string, TeamWeekProjection>> => {
-  const byWeek = new Map<number, Map<string, TeamWeekProjection>>();
+  teamIndexOf: ReadonlyMap<string, number>,
+  scheduleByWeek: ReadonlyMap<number, readonly Matchup[]>,
+  fromWeek: number,
+): WeekPlan[] => {
+  const byWeek = new Map<number, TeamWeekProjection[]>();
   for (const projection of projections) {
-    const week = byWeek.get(projection.week) ?? new Map<string, TeamWeekProjection>();
-    week.set(projection.teamId, projection);
-    byWeek.set(projection.week, week);
+    const bucket = byWeek.get(projection.week);
+    if (bucket === undefined) byWeek.set(projection.week, [projection]);
+    else bucket.push(projection);
   }
-  return byWeek;
-};
 
-/** Score one team for one week: sample its players, apply manager efficiency. */
-const scoreTeam = (
-  projection: TeamWeekProjection | undefined,
-  sampled: Map<PlayerId, number>,
-): number => {
-  if (projection === undefined) return 0;
+  return [...byWeek.keys()]
+    .filter((week) => week >= fromWeek)
+    .sort((a, b) => a - b)
+    .map((week) => {
+      const players: CorrelatedPlayer[] = [];
+      const entries = (byWeek.get(week) ?? []).flatMap((projection) => {
+        const teamIndex = teamIndexOf.get(projection.teamId);
+        if (teamIndex === undefined) return [];
 
-  let total = 0;
-  for (const player of projection.players) {
-    total += sampled.get(player.playerId) ?? 0;
-  }
-  return total * projection.lineupEfficiency;
+        const start = players.length;
+        players.push(...projection.players);
+
+        return [
+          {
+            teamIndex,
+            players: projection.players,
+            efficiency: projection.lineupEfficiency,
+            start,
+            end: players.length,
+          },
+        ];
+      });
+
+      return { week, entries, players, matchups: scheduleByWeek.get(week) ?? [] };
+    });
 };
 
 export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
@@ -112,83 +189,121 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
 
   const teamIds = snapshot.rosters.map((r) => r.teamId);
   const teamCount = teamIds.length;
+  const teamIndexOf = new Map(teamIds.map((id, index) => [id, index]));
   const isGuillotine = snapshot.league.format === 'guillotine';
 
-  const byWeek = buildProjectionIndex(projections);
-  const remainingWeeks = [...byWeek.keys()].filter((w) => w >= snapshot.asOfWeek).sort((a, b) => a - b);
+  const scheduleByWeek = new Map<number, Matchup[]>();
+  for (const matchup of snapshot.schedule) {
+    const bucket = scheduleByWeek.get(matchup.week);
+    if (bucket === undefined) scheduleByWeek.set(matchup.week, [matchup]);
+    else bucket.push(matchup);
+  }
+
+  const weekPlans = buildWeekPlans(projections, teamIndexOf, scheduleByWeek, snapshot.asOfWeek);
 
   const playoffTeams = Math.max(1, Math.min(snapshot.league.playoffTeams, teamCount));
 
-  const tallies = new Map<string, MutableTally>(
-    teamIds.map((id) => [
-      id,
-      {
-        wins: 0,
-        pointsFor: 0,
-        playoffs: 0,
-        titles: 0,
-        byes: 0,
-        rankCounts: Array(teamCount).fill(0),
-        // Median-win leagues award up to two wins a week, so the ceiling is
-        // twice the schedule rather than once.
-        winCounts: Array(snapshot.league.regularSeasonWeeks * (snapshot.league.medianWins ? 2 : 1) + 1).fill(0),
-        survivedThrough: Array(snapshot.league.regularSeasonWeeks + 1).fill(0),
-      },
-    ]),
+  // Wins and points carried in from games already played.
+  const startingWins = new Float64Array(teamCount);
+  const startingPoints = new Float64Array(teamCount);
+  for (const record of snapshot.records) {
+    const index = teamIndexOf.get(record.teamId);
+    if (index === undefined) continue;
+    startingWins[index] = record.wins + 0.5 * record.ties;
+    startingPoints[index] = record.pointsFor;
+  }
+
+  const tallies = teamIds.map(
+    (): MutableTally => ({
+      wins: 0,
+      playoffs: 0,
+      titles: 0,
+      byes: 0,
+      rankCounts: Array(teamCount).fill(0),
+      // Median-win leagues award up to two wins a week, so the ceiling is
+      // twice the schedule rather than once.
+      winCounts: Array(snapshot.league.regularSeasonWeeks * (snapshot.league.medianWins ? 2 : 1) + 1).fill(0),
+      survivedThrough: Array(snapshot.league.regularSeasonWeeks + 1).fill(0),
+    }),
   );
 
+  const wins = new Float64Array(teamCount);
+  const points = new Float64Array(teamCount);
+  const scores = new Float64Array(teamCount);
+  const scored = new Uint8Array(teamCount);
+  const ranked: number[] = teamIds.map((_, index) => index);
+
+  const maxPlayers = weekPlans.reduce((most, plan) => Math.max(most, plan.players.length), 0);
+  const sampled = new Float64Array(maxPlayers);
+
+  // Only a week that is actually being simulated can be priced.
+  const leverage =
+    isGuillotine || !weekPlans.some((plan) => plan.week === input.leverage?.week)
+      ? undefined
+      : prepareLeverage(input.leverage, scheduleByWeek, teamIndexOf);
+
   for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const record = new Map<string, { wins: number; points: number }>(
-      teamIds.map((id) => {
-        const existing = snapshot.records.find((r) => r.teamId === id);
-        return [
-          id,
-          { wins: (existing?.wins ?? 0) + 0.5 * (existing?.ties ?? 0), points: existing?.pointsFor ?? 0 },
-        ];
-      }),
-    );
+    wins.set(startingWins);
+    points.set(startingPoints);
 
     // Guillotine: everyone starts alive and the lowest scorer is chopped weekly.
-    const alive = new Set(teamIds);
+    const alive = isGuillotine ? new Set(teamIds) : null;
 
-    for (const week of remainingWeeks) {
-      const weekProjections = byWeek.get(week);
-      if (weekProjections === undefined) continue;
+    for (const plan of weekPlans) {
+      scored.fill(0);
 
-      const allPlayers = [...weekProjections.values()]
-        .filter((p) => !isGuillotine || alive.has(p.teamId))
-        .flatMap((p) => p.players);
-      const sampled = sampleWeek(allPlayers, rng);
+      if (alive === null) {
+        sampleWeekInto(plan.players, rng, sampled);
 
-      const scores = new Map<string, number>();
-      for (const teamId of teamIds) {
-        if (isGuillotine && !alive.has(teamId)) continue;
-        scores.set(teamId, scoreTeam(weekProjections.get(teamId), sampled));
-      }
-
-      for (const [teamId, points] of scores) {
-        record.get(teamId)!.points += points;
-      }
-
-      if (isGuillotine) {
-        for (const teamId of alive) {
-          const survived = tallies.get(teamId)!.survivedThrough;
-          survived[week] = (survived[week] ?? 0) + 1;
+        for (const entry of plan.entries) {
+          let total = 0;
+          for (let i = entry.start; i < entry.end; i += 1) total += sampled[i]!;
+          scores[entry.teamIndex] = total * entry.efficiency;
+          scored[entry.teamIndex] = 1;
         }
-        chopLowest(scores, alive, rng);
+      } else {
+        // The field shrinks every week, so a dead team's players must not be
+        // drawn at all — the surviving draws would shift with them.
+        const live = plan.entries.filter((entry) => alive.has(teamIds[entry.teamIndex]!));
+        const drawn = sampleWeek(live.flatMap((entry) => entry.players), rng);
+
+        for (const entry of live) {
+          let total = 0;
+          for (const player of entry.players) total += drawn.get(player.playerId) ?? 0;
+          scores[entry.teamIndex] = total * entry.efficiency;
+          scored[entry.teamIndex] = 1;
+        }
+      }
+
+      for (let team = 0; team < teamCount; team += 1) {
+        if (alive !== null && !alive.has(teamIds[team]!)) continue;
+        if (scored[team] === 0) scores[team] = 0;
+        points[team]! += scores[team]!;
+      }
+
+      if (alive !== null) {
+        for (const teamId of alive) {
+          const survived = tallies[teamIndexOf.get(teamId)!]!.survivedThrough;
+          survived[plan.week] = (survived[plan.week] ?? 0) + 1;
+        }
+        chopLowest(scores, alive, teamIds, teamIndexOf, rng);
         continue;
       }
 
-      settleMatchups(snapshot, week, scores, record, input.forcedResults, rng);
+      settleMatchups(snapshot, plan, scores, wins, teamIndexOf, input.forcedResults, leverage);
     }
 
-    recordFinish(snapshot, teamIds, record, tallies, playoffTeams, isGuillotine, alive, rng);
+    if (leverage !== undefined) {
+      recordLeverage(leverage, wins, points, teamCount, playoffTeams);
+    }
+
+    recordFinish(teamIds, teamIndexOf, wins, points, ranked, tallies, playoffTeams, isGuillotine, alive, rng);
   }
 
   return {
     iterations,
-    teams: teamIds.map((teamId) => {
-      const tally = tallies.get(teamId)!;
+    teams: teamIds.map((teamId, index) => {
+      const tally = tallies[index]!;
       return {
         teamId,
         expectedWins: tally.wins / iterations,
@@ -200,6 +315,19 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
         survivalByWeek: tally.survivedThrough.map((c) => c / iterations),
       };
     }),
+    ...(leverage === undefined
+      ? {}
+      : {
+          leverage: leverage.matchups.map((matchup, index) => ({
+            matchupId: matchup.matchupId,
+            week: matchup.week,
+            teamIds: [teamIds[matchup.a]!, teamIds[matchup.b]!] as const,
+            playoffPctIfWins: [
+              leverage.playoffsIfA[index]! / iterations,
+              leverage.playoffsIfB[index]! / iterations,
+            ] as const,
+          })),
+        }),
   };
 };
 
@@ -211,101 +339,224 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
  * tiebreak then hands the same team a 100% survival rate in every iteration,
  * which is a confidently wrong answer rather than an honest "we don't know yet".
  */
-const chopLowest = (scores: Map<string, number>, alive: Set<string>, rng: Rng): void => {
+const chopLowest = (
+  scores: Float64Array,
+  alive: Set<string>,
+  teamIds: readonly string[],
+  teamIndexOf: ReadonlyMap<string, number>,
+  rng: Rng,
+): void => {
   let lowestScore = Number.POSITIVE_INFINITY;
   let tied: string[] = [];
 
-  for (const [teamId, points] of scores) {
-    if (points < lowestScore) {
-      lowestScore = points;
+  for (const teamId of alive) {
+    const value = scores[teamIndexOf.get(teamId)!]!;
+    if (value < lowestScore) {
+      lowestScore = value;
       tied = [teamId];
-    } else if (points === lowestScore) {
+    } else if (value === lowestScore) {
       tied.push(teamId);
     }
   }
 
   const chopped = tied[Math.floor(rng() * tied.length)];
   if (chopped !== undefined) alive.delete(chopped);
+  void teamIds;
+};
+
+/** Per-iteration bookkeeping for pricing one week's games. See `LeverageRequest`. */
+interface LeverageState {
+  readonly teamIndex: number;
+  readonly week: number;
+  readonly matchups: readonly { matchupId: string; week: number; a: number; b: number }[];
+  /** Win credit each side actually earned this iteration, before re-crediting. */
+  readonly creditA: Float64Array;
+  readonly creditB: Float64Array;
+  readonly playoffsIfA: Float64Array;
+  readonly playoffsIfB: Float64Array;
+}
+
+const prepareLeverage = (
+  request: LeverageRequest | undefined,
+  scheduleByWeek: ReadonlyMap<number, readonly Matchup[]>,
+  teamIndexOf: ReadonlyMap<string, number>,
+): LeverageState | undefined => {
+  if (request === undefined) return undefined;
+
+  const teamIndex = teamIndexOf.get(request.teamId);
+  if (teamIndex === undefined) return undefined;
+
+  const matchups = (scheduleByWeek.get(request.week) ?? []).flatMap((matchup) => {
+    const a = teamIndexOf.get(matchup.teamIds[0]);
+    const b = teamIndexOf.get(matchup.teamIds[1]);
+    if (a === undefined || b === undefined) return [];
+    return [{ matchupId: matchup.matchupId, week: matchup.week, a, b }];
+  });
+
+  if (matchups.length === 0) return undefined;
+
+  return {
+    teamIndex,
+    week: request.week,
+    matchups,
+    creditA: new Float64Array(matchups.length),
+    creditB: new Float64Array(matchups.length),
+    playoffsIfA: new Float64Array(matchups.length),
+    playoffsIfB: new Float64Array(matchups.length),
+  };
+};
+
+/**
+ * Replay one week's games with each result forced, against the season that was
+ * just simulated.
+ *
+ * Only the two teams in a game move, so their standing is recomputed rather
+ * than the whole table re-sorted. Rank is "how many teams finished strictly
+ * ahead" on wins then points, which is the same ordering `recordFinish` sorts
+ * by; exact ties on both are possible only before a draft, when nothing here
+ * is meaningful anyway.
+ */
+const recordLeverage = (
+  state: LeverageState,
+  wins: Float64Array,
+  points: Float64Array,
+  teamCount: number,
+  playoffTeams: number,
+): void => {
+  const me = state.teamIndex;
+
+  const isAhead = (team: number, teamWins: number, myWins: number): boolean =>
+    team !== me && (teamWins > myWins || (teamWins === myWins && points[team]! > points[me]!));
+
+  let baseAhead = 0;
+  for (let team = 0; team < teamCount; team += 1) {
+    if (isAhead(team, wins[team]!, wins[me]!)) baseAhead += 1;
+  }
+
+  for (let index = 0; index < state.matchups.length; index += 1) {
+    const { a, b } = state.matchups[index]!;
+    const creditA = state.creditA[index]!;
+    const creditB = state.creditB[index]!;
+
+    const madePlayoffs = (winner: number, loser: number): boolean => {
+      const winnerWins = wins[winner]! + 1 - (winner === a ? creditA : creditB);
+      const loserWins = wins[loser]! - (loser === a ? creditA : creditB);
+
+      // My own win total moved, so every comparison has to be redone.
+      if (winner === me || loser === me) {
+        const myWins = winner === me ? winnerWins : loserWins;
+        let ahead = 0;
+        for (let team = 0; team < teamCount; team += 1) {
+          const teamWins =
+            team === winner ? winnerWins : team === loser ? loserWins : wins[team]!;
+          if (isAhead(team, teamWins, myWins)) ahead += 1;
+        }
+        return ahead < playoffTeams;
+      }
+
+      let ahead = baseAhead;
+      const myWins = wins[me]!;
+      ahead += Number(isAhead(winner, winnerWins, myWins)) - Number(isAhead(winner, wins[winner]!, myWins));
+      ahead += Number(isAhead(loser, loserWins, myWins)) - Number(isAhead(loser, wins[loser]!, myWins));
+      return ahead < playoffTeams;
+    };
+
+    if (madePlayoffs(a, b)) state.playoffsIfA[index]! += 1;
+    if (madePlayoffs(b, a)) state.playoffsIfB[index]! += 1;
+  }
 };
 
 const settleMatchups = (
   snapshot: LeagueSnapshot,
-  week: number,
-  scores: Map<string, number>,
-  record: Map<string, { wins: number; points: number }>,
+  plan: WeekPlan,
+  scores: Float64Array,
+  wins: Float64Array,
+  teamIndexOf: ReadonlyMap<string, number>,
   forcedResults: ReadonlyMap<string, string> | undefined,
-  rng: Rng,
+  leverage: LeverageState | undefined,
 ): void => {
-  const matchups = snapshot.schedule.filter((m) => m.week === week);
+  const capture = leverage !== undefined && leverage.week === plan.week;
 
-  for (const matchup of matchups) {
-    const [a, b] = matchup.teamIds;
+  for (let index = 0; index < plan.matchups.length; index += 1) {
+    const matchup = plan.matchups[index]!;
+    const a = teamIndexOf.get(matchup.teamIds[0]);
+    const b = teamIndexOf.get(matchup.teamIds[1]);
+    if (a === undefined || b === undefined) continue;
+
     const forced = forcedResults?.get(matchup.matchupId);
-
     if (forced !== undefined) {
-      record.get(forced)!.wins += 1;
+      const winner = teamIndexOf.get(forced);
+      if (winner !== undefined) wins[winner]! += 1;
+      if (capture) {
+        leverage.creditA[index] = winner === a ? 1 : 0;
+        leverage.creditB[index] = winner === b ? 1 : 0;
+      }
       continue;
     }
 
-    const scoreA = scores.get(a) ?? 0;
-    const scoreB = scores.get(b) ?? 0;
+    const scoreA = scores[a]!;
+    const scoreB = scores[b]!;
 
-    if (scoreA > scoreB) record.get(a)!.wins += 1;
-    else if (scoreB > scoreA) record.get(b)!.wins += 1;
-    else {
-      // Exact ties are vanishingly rare with decimal scoring, but they exist.
-      record.get(a)!.wins += 0.5;
-      record.get(b)!.wins += 0.5;
+    // Exact ties are vanishingly rare with decimal scoring, but they exist.
+    const creditA = scoreA > scoreB ? 1 : scoreA === scoreB ? 0.5 : 0;
+    const creditB = 1 - creditA;
+
+    wins[a]! += creditA;
+    wins[b]! += creditB;
+
+    if (capture) {
+      leverage.creditA[index] = creditA;
+      leverage.creditB[index] = creditB;
     }
   }
 
-  // Median-win leagues award a second win for beating the weekly median.
-  if (snapshot.league.medianWins && scores.size > 0) {
-    const sorted = [...scores.values()].sort((x, y) => x - y);
-    const mid = sorted.length >> 1;
-    const median =
-      sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  // Median-win leagues award a second win for beating the weekly median. It is
+  // decided by scores, so forcing a head-to-head result never changes it — and
+  // that is why leverage only has to re-credit the game itself.
+  if (snapshot.league.medianWins && scores.length > 0) {
+    const values = Array.from(scores).sort((x, y) => x - y);
+    const mid = values.length >> 1;
+    const median = values.length % 2 === 1 ? values[mid]! : (values[mid - 1]! + values[mid]!) / 2;
 
-    for (const [teamId, points] of scores) {
-      if (points > median) record.get(teamId)!.wins += 1;
-      else if (points === median) record.get(teamId)!.wins += 0.5;
+    for (let team = 0; team < scores.length; team += 1) {
+      const value = scores[team]!;
+      if (value > median) wins[team]! += 1;
+      else if (value === median) wins[team]! += 0.5;
     }
   }
-
-  void rng;
 };
 
 const recordFinish = (
-  snapshot: LeagueSnapshot,
   teamIds: readonly string[],
-  record: Map<string, { wins: number; points: number }>,
-  tallies: Map<string, MutableTally>,
+  teamIndexOf: ReadonlyMap<string, number>,
+  wins: Float64Array,
+  points: Float64Array,
+  ranked: number[],
+  tallies: readonly MutableTally[],
   playoffTeams: number,
   isGuillotine: boolean,
-  alive: Set<string>,
+  alive: Set<string> | null,
   rng: Rng,
 ): void => {
   if (isGuillotine) {
     // The survivor wins; there is no bracket.
-    const winner = [...alive][0];
-    if (winner !== undefined) tallies.get(winner)!.titles += 1;
-    for (const teamId of teamIds) {
-      tallies.get(teamId)!.wins += record.get(teamId)!.points / 100;
+    const winner = alive === null ? undefined : [...alive][0];
+    if (winner !== undefined) tallies[teamIndexOf.get(winner)!]!.titles += 1;
+    for (let team = 0; team < teamIds.length; team += 1) {
+      tallies[team]!.wins += points[team]! / 100;
     }
     return;
   }
 
   // Standings: wins first, total points as the tiebreaker — the near-universal
-  // fantasy convention.
-  const standings = [...teamIds].sort((a, b) => {
-    const recordA = record.get(a)!;
-    const recordB = record.get(b)!;
-    return recordB.wins - recordA.wins || recordB.points - recordA.points;
-  });
+  // fantasy convention. Sorted from team order every iteration, so a tie on
+  // both falls back to the same order the snapshot listed rosters in.
+  for (let team = 0; team < teamIds.length; team += 1) ranked[team] = team;
+  ranked.sort((a, b) => wins[b]! - wins[a]! || points[b]! - points[a]!);
 
-  standings.forEach((teamId, index) => {
-    const tally = tallies.get(teamId)!;
-    const finalWins = record.get(teamId)!.wins;
+  ranked.forEach((team, index) => {
+    const tally = tallies[team]!;
+    const finalWins = wins[team]!;
 
     tally.wins += finalWins;
     tally.rankCounts[index] = (tally.rankCounts[index] ?? 0) + 1;
@@ -318,18 +569,18 @@ const recordFinish = (
     if (index < playoffTeams) tally.playoffs += 1;
   });
 
-  const bracket = standings.slice(0, playoffTeams);
+  const bracket = ranked.slice(0, playoffTeams);
 
   // A bye exists whenever the field isn't a power of two: the top seeds sit out
   // round one.
   const byes = nextPowerOfTwo(playoffTeams) - playoffTeams;
   for (let i = 0; i < byes; i += 1) {
-    const teamId = bracket[i];
-    if (teamId !== undefined) tallies.get(teamId)!.byes += 1;
+    const team = bracket[i];
+    if (team !== undefined) tallies[team]!.byes += 1;
   }
 
-  const champion = simulateBracket(bracket, record, rng);
-  if (champion !== null) tallies.get(champion)!.titles += 1;
+  const champion = simulateBracket(bracket, points, rng);
+  if (champion !== null) tallies[champion]!.titles += 1;
 };
 
 const nextPowerOfTwo = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(1, n)));
@@ -341,17 +592,13 @@ const nextPowerOfTwo = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(
  * more than it buys — each game is decided by a draw around the teams' realized
  * scoring rate, preserving both seeding advantage and genuine upset risk.
  */
-const simulateBracket = (
-  seeds: readonly string[],
-  record: Map<string, { wins: number; points: number }>,
-  rng: Rng,
-): string | null => {
+const simulateBracket = (seeds: readonly number[], points: Float64Array, rng: Rng): number | null => {
   if (seeds.length === 0) return null;
 
   let field = [...seeds];
 
   while (field.length > 1) {
-    const next: string[] = [];
+    const next: number[] = [];
     const byes = nextPowerOfTwo(field.length) - field.length;
 
     for (let i = 0; i < byes; i += 1) {
@@ -369,8 +616,8 @@ const simulateBracket = (
         continue;
       }
 
-      const strengthHome = record.get(home)?.points ?? 1;
-      const strengthAway = record.get(away)?.points ?? 1;
+      const strengthHome = points[home] ?? 1;
+      const strengthAway = points[away] ?? 1;
       const total = strengthHome + strengthAway;
       const probabilityHome = total > 0 ? strengthHome / total : 0.5;
 

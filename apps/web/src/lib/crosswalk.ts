@@ -15,6 +15,14 @@ export interface Identity {
   readonly team: string | null;
   /** ISO date. Age drives the contention-window read in dynasty leagues. */
   readonly birthdate: string | null;
+  /**
+   * nflverse's player id.
+   *
+   * The bridge to everything historical: Sleeper keys rosters by its own id,
+   * every league-independent dataset keys by gsis, and without this the two
+   * halves of the product cannot be joined at all.
+   */
+  readonly gsisId: string | null;
 }
 
 let cache: Record<string, Identity> | null = null;
@@ -29,7 +37,13 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
     const payload = JSON.parse(raw) as {
       by_sleeper_id: Record<
         string,
-        { name: string; position: string | null; team: string | null; birthdate: string | null }
+        {
+          name: string;
+          position: string | null;
+          team: string | null;
+          birthdate: string | null;
+          gsis_id: string | null;
+        }
       >;
     };
 
@@ -40,6 +54,7 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
         position: entry.position,
         team: entry.team,
         birthdate: entry.birthdate ?? null,
+        gsisId: entry.gsis_id ?? null,
       };
     }
 

@@ -27,6 +27,7 @@ export interface NavProps {
 
 const TABS = [
   { key: 'outlook', label: 'Outlook', href: '' },
+  { key: 'dynasty', label: 'Verdict', href: '/dynasty' },
   { key: 'power', label: 'Power', href: '/power' },
   { key: 'lineup', label: 'Lineup', href: '/lineup' },
   { key: 'waivers', label: 'Waivers', href: '/waivers' },

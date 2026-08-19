@@ -34,6 +34,7 @@ const TABS = [
   { key: 'roster', label: 'Roster', href: '/roster' },
   { key: 'schedule', label: 'Schedule', href: '/schedule' },
   { key: 'usage', label: 'Usage', href: '/usage' },
+  { key: 'scheme', label: 'Scheme', href: '/scheme' },
 ] as const;
 
 export const LeagueNav = ({ leagueId, leagueName, meta, active, lineupShape, stamps }: NavProps) => (

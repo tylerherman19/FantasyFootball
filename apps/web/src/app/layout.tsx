@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { themeScript } from '@/components/ThemeToggle';
+import { themeScript } from '@/lib/theme-script';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Ahead of the bundle on purpose: see ThemeToggle. */}
+        {/* Ahead of the bundle on purpose: see lib/theme-script. */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="antialiased">{children}</body>

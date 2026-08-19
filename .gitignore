@@ -44,3 +44,6 @@ data/lake/
 apps/web/certificates/
 apps/web/.env.local
 .vercel
+
+# nflverse CSV mirror for the defense exporter — large, re-downloadable
+model/artifacts/.cache/

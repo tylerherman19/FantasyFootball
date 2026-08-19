@@ -43,6 +43,8 @@ export interface PlayerUsage {
   readonly position: string;
   readonly team: string;
   readonly active: boolean;
+  /** The NFL game he appears in, `2026_01_WAS_PHI`. Carries the opponent. */
+  readonly gameId: string;
 
   // Volume
   readonly passAttempts: number;
@@ -190,6 +192,7 @@ export const buildUsage = async (
       position: player.position,
       team: player.team,
       active: player.active,
+      gameId: player.gameId,
 
       passAttempts,
       carries,

@@ -11,28 +11,15 @@
  * Which icon shows is decided by CSS reading the same `data-theme` attribute,
  * so the button is correct before hydration and there is no state to get out of
  * sync with the document. All this component contributes is the click.
+ *
+ * The head script itself lives in `lib/theme-script` — a server module — since
+ * the root layout cannot depend on reading a constant back out of a client
+ * module. See the comment there.
  */
+
+import { THEME_STORAGE_KEY } from '@/lib/theme-script';
 
 export type Theme = 'light' | 'dark';
-
-const STORAGE_KEY = 'ffe-theme';
-
-/**
- * Runs before first paint. Kept as a string because it has to be inlined into
- * the document head, ahead of the bundle.
- */
-export const themeScript = `
-(function () {
-  try {
-    var stored = localStorage.getItem('${STORAGE_KEY}');
-    var dark = stored ? stored === 'dark'
-      : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  } catch (e) {
-    document.documentElement.dataset.theme = 'light';
-  }
-})();
-`;
 
 export const ThemeToggle = () => {
   const toggle = () => {
@@ -46,7 +33,7 @@ export const ThemeToggle = () => {
     window.setTimeout(() => root.classList.remove('theme-switching'), 0);
 
     try {
-      localStorage.setItem(STORAGE_KEY, next);
+      localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
       // Private browsing. The choice just won't outlive the tab.
     }

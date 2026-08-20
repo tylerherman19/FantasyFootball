@@ -20,6 +20,36 @@ interface Entry<T> {
   readonly value: T;
 }
 
+/**
+ * The stores live on `globalThis`, not in module scope.
+ *
+ * Next bundles the instrumentation hook and the route handlers separately, so a
+ * plain module-level `Map` is instantiated more than once inside one server
+ * process. Each copy then caches independently: a background warm-up fills one
+ * while requests read another and miss every time, which looks exactly like the
+ * cache not working. Anchoring on a global symbol keeps one store per name no
+ * matter how many times this module is evaluated.
+ */
+const REGISTRY = Symbol.for('ffe.cache.registry');
+
+type Registry = Map<string, { entries: Map<string, unknown>; inFlight: Map<string, unknown> }>;
+
+const registry = (): Registry => {
+  const host = globalThis as { [REGISTRY]?: Registry };
+  host[REGISTRY] ??= new Map();
+  return host[REGISTRY];
+};
+
+const storesFor = <T>(name: string) => {
+  const all = registry();
+  let store = all.get(name);
+  if (store === undefined) {
+    store = { entries: new Map(), inFlight: new Map() };
+    all.set(name, store);
+  }
+  return store as { entries: Map<string, Entry<T>>; inFlight: Map<string, Promise<T>> };
+};
+
 export interface TtlCache<Args extends readonly unknown[], T> {
   (...args: Args): Promise<T>;
   /** Drop one key, or everything when no key is given. */
@@ -30,10 +60,10 @@ export const ttlCache = <Args extends readonly unknown[], T>(
   ttlMs: number,
   keyOf: (...args: Args) => string,
   compute: (...args: Args) => Promise<T>,
-  { maxEntries = 64 }: { maxEntries?: number } = {},
+  { maxEntries = 64, name }: { maxEntries?: number; name?: string } = {},
 ): TtlCache<Args, T> => {
-  const entries = new Map<string, Entry<T>>();
-  const inFlight = new Map<string, Promise<T>>();
+  // Named so the store survives this module being evaluated more than once.
+  const { entries, inFlight } = storesFor<T>(name ?? compute.name);
 
   const cached = async (...args: Args): Promise<T> => {
     const key = keyOf(...args);

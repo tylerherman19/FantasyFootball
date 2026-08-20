@@ -217,6 +217,7 @@ export const loadLeague = ttlCache(
   LEAGUE_TTL_MS,
   (platformLeagueId: string, username: string) => `${platformLeagueId}:${username.toLowerCase()}`,
   buildLeague,
+  { name: 'league' },
 );
 
 export { currentOdds };

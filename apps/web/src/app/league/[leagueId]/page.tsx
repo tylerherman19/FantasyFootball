@@ -15,7 +15,9 @@ import {
 } from '@/components/charts/primitives';
 import { remainingSchedule, weekLeverage } from '@/lib/analysis';
 import { buildTeamProfiles } from '@/lib/league-analytics';
+import { PositionalHeatmap } from '@/components/PositionalHeatmap';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
+import { positionalStrength } from '@/lib/positional-strength';
 import { requireSession } from '@/lib/session';
 
 /**
@@ -495,6 +497,11 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
             </div>
           </Section>
         )}
+        <PositionalHeatmap
+          strengths={positionalStrength(view)}
+          teamNames={view.teamNames}
+          myTeamId={view.myTeamId}
+        />
       </main>
     </>
   );

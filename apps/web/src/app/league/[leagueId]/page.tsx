@@ -16,6 +16,7 @@ import {
 import { remainingSchedule, weekLeverage } from '@/lib/analysis';
 import { buildTeamProfiles } from '@/lib/league-analytics';
 import { PositionalHeatmap } from '@/components/PositionalHeatmap';
+import { Takeaway } from '@/components/Takeaway';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { positionalStrength } from '@/lib/positional-strength';
 import { requireSession } from '@/lib/session';
@@ -53,6 +54,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
     !notDrafted && myTeamId !== null && !isGuillotine ? weekLeverage(view, myTeamId, snapshot.asOfWeek) : [];
 
   const profiles = notDrafted ? [] : await buildTeamProfiles(view);
+  const strengths = notDrafted ? [] : positionalStrength(view);
   const profileOf = new Map(profiles.map((profile) => [profile.teamId, profile]));
   const maxStarterPoints = Math.max(...profiles.map((p) => p.starterPoints), 1);
   const corePositions = ['QB', 'RB', 'WR', 'TE'];
@@ -81,6 +83,30 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
+        {/*
+         * The conclusion before the evidence.
+         *
+         * Everything below this is a chart or a table, and none of them say
+         * what to do about it. Leading with the finding — where the season
+         * stands, which position is actually short, what move follows — is the
+         * difference between a page that reports and a page that advises.
+         */}
+        <Takeaway
+          input={{
+            teamName: myTeamId === null ? 'This team' : (teamNames.get(myTeamId) ?? 'This team'),
+            rank: me === null ? 0 : result.teams.filter((t) => t.titlePct > me.titlePct).length + 1,
+            teamCount: snapshot.league.teamCount,
+            playoffPct: me?.playoffPct ?? 0,
+            titlePct: me?.titlePct ?? 0,
+            expectedWins: me?.expectedWins ?? 0,
+            regularSeasonWeeks: snapshot.league.regularSeasonWeeks,
+            strength:
+              myTeamId === null
+                ? null
+                : (strengths.find((team) => team.teamId === myTeamId) ?? null),
+            undrafted: notDrafted,
+          }}
+        />
         {notDrafted && (
           <div className="panel mb-7 p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>Not drafted yet.</strong> Every roster is empty,
@@ -498,7 +524,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
           </Section>
         )}
         <PositionalHeatmap
-          strengths={positionalStrength(view)}
+          strengths={strengths}
           teamNames={view.teamNames}
           myTeamId={view.myTeamId}
         />

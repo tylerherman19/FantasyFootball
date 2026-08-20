@@ -1,4 +1,5 @@
 import type { OddsSnapshot, ProjectionSnapshot, SnapshotStore } from './snapshot-store.js';
+import type { ValueSnapshot } from './values.js';
 
 /**
  * Supabase-backed store, over PostgREST.
@@ -61,7 +62,7 @@ export class PostgrestSnapshotStore implements SnapshotStore {
     );
   }
 
-  async writeValues(rows: readonly import('./values.js').ValueSnapshot[]): Promise<number> {
+  async writeValues(rows: readonly ValueSnapshot[]): Promise<number> {
     return this.#post(
       'value_snapshots?on_conflict=sleeper_id,is_dynasty,super_flex,captured_date',
       rows.map((r) => ({
@@ -124,6 +125,11 @@ export class TeeSnapshotStore implements SnapshotStore {
 
   async writeOdds(rows: readonly OddsSnapshot[]): Promise<number> {
     const counts = await Promise.all(this.stores.map((s) => s.writeOdds(rows)));
+    return Math.max(0, ...counts);
+  }
+
+  async writeValues(rows: readonly ValueSnapshot[]): Promise<number> {
+    const counts = await Promise.all(this.stores.map((s) => s.writeValues(rows)));
     return Math.max(0, ...counts);
   }
 }

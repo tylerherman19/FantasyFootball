@@ -159,7 +159,16 @@ export const LeagueNav = async ({
         </div>
       )}
 
-      <nav className="scroll-x mt-3 flex gap-0.5">
+      {/*
+        * One navigation at a time.
+        *
+        * The rail and this strip are the same ten links, and showing both at
+        * desktop width is the kind of duplication that makes a page feel
+        * cluttered without adding a single thing a reader can do. The strip is
+        * for narrow screens, where a fixed rail would take width the tables
+        * need more.
+        */}
+      <nav className="scroll-x mt-3 flex gap-0.5 lg:hidden">
         {TABS.map((tab) => {
           const isActive = tab.key === active;
           return (

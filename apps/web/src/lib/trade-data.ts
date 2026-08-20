@@ -13,6 +13,7 @@ import {
   type TradeAsset,
   type TradeEvaluation,
 } from '@ffe/core';
+import { unstable_cache } from 'next/cache';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
@@ -110,7 +111,88 @@ export interface TradeQuery {
   readonly targetPosition?: string | null;
 }
 
+/*
+ * The trade search, cached where a cold instance can reach it.
+ *
+ * Enumerating packages across every roster and simulating the survivors is the
+ * most expensive thing this app does after the season itself, and like the
+ * season it is deterministic — same rosters, same seed, same answer. So it goes
+ * through the data cache rather than being recomputed by whichever instance
+ * happens to take the request.
+ *
+ * `TradeEvaluation` carries its per-team numbers in Maps, which do not survive
+ * JSON, so they are written out as entries and rebuilt on the way back. That is
+ * the only reason this wrapper exists.
+ */
+interface CachedTrades {
+  readonly evaluations: readonly {
+    readonly sideA: TradeEvaluation['sideA'];
+    readonly sideB: TradeEvaluation['sideB'];
+    readonly odds: readonly (readonly [string, TradeEvaluation['odds'] extends ReadonlyMap<string, infer V> ? V : never])[];
+    readonly valueDelta: readonly (readonly [string, number])[];
+    readonly fairness: number;
+    readonly verdict: string;
+  }[];
+  readonly needs: TradeView['needs'];
+  readonly surplus: TradeView['surplus'];
+  readonly valuesAvailable: boolean;
+  readonly depth: TradeView['depth'];
+  readonly partners: TradeView['partners'];
+  readonly marginal: TradeView['marginal'];
+}
+
+const toCacheable = (view: TradeView): CachedTrades => ({
+  ...view,
+  evaluations: view.evaluations.map((evaluation) => ({
+    sideA: evaluation.sideA,
+    sideB: evaluation.sideB,
+    odds: [...evaluation.odds.entries()],
+    valueDelta: [...evaluation.valueDelta.entries()],
+    fairness: evaluation.fairness,
+    verdict: evaluation.verdict,
+  })),
+});
+
+const fromCacheable = (cached: CachedTrades): TradeView => ({
+  ...cached,
+  evaluations: cached.evaluations.map((evaluation) => ({
+    ...evaluation,
+    odds: new Map(evaluation.odds.map(([k, v]) => [k, v])),
+    valueDelta: new Map(evaluation.valueDelta.map(([k, v]) => [k, v])),
+  })) as unknown as readonly TradeEvaluation[],
+});
+
 export const loadTrades = async (
+  view: LeagueView,
+  teamId: string,
+  query: TradeQuery = {},
+): Promise<TradeView | null> => {
+  const rosterSignature = view.snapshot.rosters
+    .map((roster) => `${roster.teamId}:${[...roster.playerIds].sort().join('.')}`)
+    .join('|');
+
+  const cached = await unstable_cache(
+    async () => {
+      const result = await buildTrades(view, teamId, query);
+      return result === null ? null : toCacheable(result);
+    },
+    [
+      'trade-search',
+      view.snapshot.league.id,
+      String(view.snapshot.asOfWeek),
+      teamId,
+      query.objective ?? 'balanced',
+      query.targetPlayerId ?? '',
+      query.targetPosition ?? '',
+      rosterSignature,
+    ],
+    { revalidate: 900 },
+  )();
+
+  return cached === null ? null : fromCacheable(cached);
+};
+
+const buildTrades = async (
   view: LeagueView,
   teamId: string,
   query: TradeQuery = {},

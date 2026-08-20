@@ -9,7 +9,7 @@ import {
 } from '../domain/index.js';
 import type { PlayerProjection, TeamContext } from '../sim/roster-projection.js';
 import { oddsDelta, type SimContext } from './odds.js';
-import { fairnessGap, findTrades, evaluateTrade, type TradeAsset } from './trades.js';
+import { fairnessGap, findTrades, evaluateTrade, noiseFloor, type TradeAsset } from './trades.js';
 import { rankWaivers, suggestBid } from './waivers.js';
 
 const TEAM_IDS = ['1', '2', '3', '4'];
@@ -212,7 +212,7 @@ describe('trades', () => {
     expect(evaluation.verdict).toBeTruthy();
   });
 
-  it('only proposes trades that improve my odds', () => {
+  it('proposes trades that help on at least one currency', () => {
     const { context } = buildContext();
 
     const assetsByTeam = new Map<string, TradeAsset[]>([
@@ -230,15 +230,185 @@ describe('trades', () => {
       finalists: 4,
     });
 
-    for (const evaluation of found) {
-      expect(evaluation.odds.get('1')!.titleDelta).toBeGreaterThan(0);
+    /*
+     * Requiring a positive title delta on every proposal was the old contract,
+     * and it is why the trade page went blank: below the simulation's noise
+     * floor the sign of that delta is sampling noise, so a genuine upgrade is
+     * discarded roughly half the time. A proposal now has to improve either the
+     * odds or the projected starter points.
+     *
+     * This fixture is the case where nothing qualifies — team 1's only receiver
+     * is `wr1`, so every package that sends it leaves the WR slot empty and
+     * costs more starter points than the incoming back returns. The finder is
+     * then required to say so with its closest few rather than render nothing.
+     */
+    const floor = noiseFloor(context.iterations ?? 4_000);
+    const helps = (evaluation: (typeof found)[number]): boolean =>
+      evaluation.odds.get('1')!.titleDelta > floor || evaluation.pointsDelta.get('1')! > 0;
+
+    if (found.some(helps)) {
+      for (const evaluation of found) expect(helps(evaluation)).toBe(true);
+    } else {
+      expect(found.length).toBeGreaterThan(0);
+      expect(found.length).toBeLessThanOrEqual(3);
     }
-    // Results are ordered by how much they help me.
+  });
+
+  it('still finds trades when no position is flagged thin or surplus', () => {
+    const { context } = buildContext();
+
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('wr1', 'WR', 1000), asset('rb1', 'RB', 1000)]],
+      ['2', [asset('rb2', 'RB', 1050), asset('wr2', 'WR', 1050)]],
+    ]);
+
+    /*
+     * The balanced roster: the depth heuristic finds nothing thin and nothing
+     * spare. This used to enumerate zero candidates and report that no good
+     * trades existed, which was a statement about the heuristic rather than
+     * about the trade market.
+     */
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: [],
+      surplus: [],
+      finalists: 4,
+    });
+
+    expect(found.length).toBeGreaterThan(0);
+  });
+
+  it('ranks on starter points when the odds move is below the noise floor', () => {
+    const { context } = buildContext();
+
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('wr1', 'WR', 1000), asset('rb1', 'RB', 1000)]],
+      ['2', [asset('rb2', 'RB', 1050)]],
+      ['3', [asset('rb3', 'RB', 1050)]],
+    ]);
+
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: ['RB'],
+      surplus: ['WR'],
+      finalists: 4,
+    });
+
+    const floor = noiseFloor(context.iterations ?? 4_000);
+    const key = (evaluation: (typeof found)[number]): [number, number] => {
+      const titleDelta = evaluation.odds.get('1')!.titleDelta;
+      return [
+        Math.abs(titleDelta) >= floor ? titleDelta : 0,
+        evaluation.pointsDelta.get('1')!,
+      ];
+    };
+
     for (let i = 1; i < found.length; i += 1) {
-      expect(found[i - 1]!.odds.get('1')!.titleDelta).toBeGreaterThanOrEqual(
-        found[i]!.odds.get('1')!.titleDelta,
-      );
+      const [prevTitle, prevPoints] = key(found[i - 1]!);
+      const [title, points] = key(found[i]!);
+      expect(prevTitle > title || (prevTitle === title && prevPoints >= points)).toBe(true);
     }
+  });
+
+  it('reports a trade as too close to call rather than hiding it', () => {
+    const { context } = buildContext();
+
+    // Two backs of near-identical value: a real trade, and one no simulation of
+    // this size can separate. It must still be evaluated and returned.
+    const evaluation = evaluateTrade(
+      context,
+      { teamId: '1', sends: [asset('rb1', 'RB', 1000)] },
+      { teamId: '2', sends: [asset('rb2', 'RB', 1000)] },
+    );
+
+    expect(evaluation.pointsDelta.has('1')).toBe(true);
+    expect(typeof evaluation.belowNoiseFloor).toBe('boolean');
+    expect(evaluation.verdict).toBeTruthy();
+  });
+
+  it('only proposes packages that acquire a named target', () => {
+    const { context } = buildContext();
+
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('wr1', 'WR', 1000), asset('rb1', 'RB', 1000)]],
+      ['2', [asset('rb2', 'RB', 1050), asset('wr2', 'WR', 1050)]],
+    ]);
+
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: [],
+      surplus: [],
+      targetPlayerIds: [asPlayerId('rb2')],
+    });
+
+    expect(found.length).toBeGreaterThan(0);
+    for (const evaluation of found) {
+      const incoming = evaluation.sideB.sends.map((a) => String(a.playerId));
+      expect(incoming).toContain('rb2');
+    }
+  });
+
+  it('only proposes packages that acquire a targeted position', () => {
+    const { context } = buildContext();
+
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('wr1', 'WR', 1000), asset('rb1', 'RB', 1000)]],
+      ['2', [asset('rb2', 'RB', 1050), asset('wr2', 'WR', 1050)]],
+    ]);
+
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: [],
+      surplus: [],
+      targetPositions: ['RB'],
+    });
+
+    expect(found.length).toBeGreaterThan(0);
+    for (const evaluation of found) {
+      for (const asset of evaluation.sideB.sends) expect(asset.position).toBe('RB');
+    }
+  });
+
+  it('rebuilding prefers market value and youth over this season\u2019s points', () => {
+    const { context } = buildContext();
+
+    // An old, productive back for a young, slightly more valuable one.
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('rb1', 'RB', 1000)]],
+      ['2', [asset('rb2', 'RB', 1100)]],
+    ]);
+
+    const ages = new Map<string, number>([
+      ['rb1', 30],
+      ['rb2', 22],
+    ]);
+
+    const rebuild = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: [],
+      surplus: [],
+      objective: 'rebuild',
+      ages,
+    });
+
+    /*
+     * The point of the objective: a rebuilding team accepts a package the
+     * balanced ranker might reject, because the thing being bought is the
+     * younger, more valuable asset rather than this week's points.
+     */
+    expect(rebuild.length).toBeGreaterThan(0);
+    const first = rebuild[0]!;
+    expect(first.valueDelta.get('1')!).toBeGreaterThan(0);
   });
 
   it('rejects packages outside the fairness band before simulating them', () => {

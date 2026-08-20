@@ -1,38 +1,63 @@
 @import 'tailwindcss';
 
 /*
- * 538-inspired, light by default and deliberately not following the OS.
+ * Editorial data journalism, light.
  *
- * This is a data product read mostly in daylight, and the reference it is
- * modelled on is a light publication. Following prefers-color-scheme meant a
- * user on a dark desktop never saw the design at all.
+ * The reference is a newsroom chart desk: a light page, a narrow set of hues
+ * used consistently, numbers set in tabular figures so columns line up, and
+ * rules doing the work that boxes and shadows do elsewhere. Density is a
+ * feature — this is a page you read, not a dashboard you glance at.
+ *
+ * The categorical hues below were checked rather than chosen by eye: every
+ * adjacent pair clears an OKLab ΔE of 8 under deuteranope and protanope
+ * simulation and 15 under normal vision, and each clears 3:1 against the page
+ * except the gold, which is why gold series are always directly labelled.
  */
 :root {
-  --ground: #f7f7f4;
+  --ground: #ffffff;
   --surface: #ffffff;
-  --ink: #16161a;
-  --ink-muted: #62626b;
-  --ink-faint: #8c8c94;
-  --rule: #e0e0d9;
-  --rule-strong: #c9c9c0;
+  --surface-sunk: #f4f3f0;
+  --ink: #11100f;
+  --ink-muted: #5c5a57;
+  --ink-faint: #8b8884;
+  --rule: #e4e2dd;
+  --rule-strong: #11100f;
 
-  /* Probability ramp. Colour-blind safe, prints legibly, reads as one family. */
-  --p-low: #dcdcd4;
-  --p-mid: #8fbdd3;
-  --p-high: #2f7d9e;
+  /*
+   * Categorical, in fixed order. A series keeps its hue when filters change
+   * the set — colour follows the entity, never its rank.
+   */
+  --cat-1: #008fd5;
+  --cat-2: #fc4f30;
+  --cat-3: #4a7f3a;
+  --cat-4: #cf9500;
+  --cat-5: #6a2f8f;
+  --cat-other: #8b8b8b;
 
-  --good: #2f7d54;
-  --bad: #b4442e;
-  --accent: #c0562c;
-  --accent-soft: #f6ece5;
+  /* Positions are entities, so each owns a hue permanently. */
+  --pos-qb: #6a2f8f;
+  --pos-rb: #4a7f3a;
+  --pos-wr: #008fd5;
+  --pos-te: #cf9500;
+  --pos-k: #8b8b8b;
+  --pos-def: #fc4f30;
 
-  /* Categorical palette for positions — muted, evenly spaced in lightness. */
-  --pos-qb: #8a5a9e;
-  --pos-rb: #2f7d54;
-  --pos-wr: #2f6f9e;
-  --pos-te: #b8862b;
-  --pos-k: #7a7a82;
-  --pos-def: #a4553a;
+  /* Sequential: one hue, light to dark. Probability only. */
+  --p-1: #e3eff7;
+  --p-2: #b8d8ea;
+  --p-3: #7ab8db;
+  --p-4: #3397cd;
+  --p-5: #008fd5;
+  --p-6: #00587f;
+
+  /* Diverging: two poles, neutral middle. Deltas only. */
+  --neg: #c1392b;
+  --neg-soft: #f7e2df;
+  --mid: #d8d6d1;
+  --pos: #2f7d54;
+  --pos-soft: #e0efe6;
+
+  --accent: #fc4f30;
 }
 
 html,
@@ -42,17 +67,85 @@ body {
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'kern' 1;
 }
 
-/* Numbers must align in columns; that is most of what makes a table readable. */
-.tabular {
+/*
+ * Headlines carry the editorial voice. Tight tracking and a heavy weight is
+ * what makes a chart title read as a headline rather than a form label.
+ */
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+}
+
+/* Every number in the product. Columns only read if the digits align. */
+.tabular,
+td,
+th {
   font-variant-numeric: tabular-nums;
 }
 
-.rule-top {
-  border-top: 1px solid var(--rule);
+/* The label above a headline — the newsroom kicker. */
+.kicker {
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The sentence under a headline that says what the reader should take away. */
+.standfirst {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  max-width: 62ch;
+}
+
+/*
+ * Tables are the primary visual form here, so they get real typographic care:
+ * a heavy rule under the header, hairlines between rows, and a hover state
+ * that makes a wide row traceable across the screen.
+ */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+thead th {
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 2px solid var(--rule-strong);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+tbody td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+tbody tr:hover {
+  background: var(--surface-sunk);
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Wide tables scroll inside their own container rather than the page. */
@@ -61,10 +154,50 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-table {
-  border-collapse: collapse;
+/*
+ * The inline bar that turns a column of numbers into a chart.
+ *
+ * Anchored to the baseline with the data-end rounded, which is what keeps a
+ * row of bars readable at this size without gridlines.
+ */
+.bar {
+  height: 0.5rem;
+  border-radius: 0 2px 2px 0;
+  display: block;
 }
 
-th {
-  font-weight: 600;
+.bar-neg {
+  border-radius: 2px 0 0 2px;
+}
+
+/* Position chip. Identity is never carried by colour alone — it has the text. */
+.chip {
+  display: inline-block;
+  min-width: 2.1rem;
+  text-align: center;
+  padding: 0.05rem 0.3rem;
+  border-radius: 2px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+/* Sits under a number to say how sure we are of it. */
+.uncertainty {
+  font-size: 0.6875rem;
+  color: var(--ink-faint);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fade-in {
+    animation: fade-in 0.4s ease both;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }

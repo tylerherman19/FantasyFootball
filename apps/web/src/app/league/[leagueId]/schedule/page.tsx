@@ -1,4 +1,3 @@
-import { LeagueNav } from '@/components/LeagueNav';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { remainingSchedule, teamWeekStrength, winProbability } from '@/lib/analysis';
 
@@ -48,16 +47,8 @@ export default async function SchedulePage({ params }: { params: Promise<{ leagu
 
   return (
     <>
-      <LeagueNav
-        leagueId={leagueId}
-        leagueName={snapshot.league.name}
-        meta={leagueMeta(snapshot)}
-        lineupShape={lineupShape(snapshot)}
-        active="schedule"
-        format={snapshot.league.format}
-      />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <>
         {isGuillotine && (
           <div className="mb-8 rounded border p-4 text-sm" style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
             <strong>No schedule in a guillotine league.</strong> Nobody plays anybody — every team
@@ -99,9 +90,9 @@ export default async function SchedulePage({ params }: { params: Promise<{ leagu
                         style={{
                           color:
                             game.winProbability >= 0.6
-                              ? 'var(--good)'
+                              ? 'var(--pos)'
                               : game.winProbability <= 0.4
-                                ? 'var(--bad)'
+                                ? 'var(--neg)'
                                 : 'var(--ink)',
                         }}
                       >
@@ -140,7 +131,7 @@ export default async function SchedulePage({ params }: { params: Promise<{ leagu
                       className="block h-full"
                       style={{
                         width: `${row.averageWinChance * 100}%`,
-                        background: row.teamId === myTeamId ? 'var(--accent)' : 'var(--p-mid)',
+                        background: row.teamId === myTeamId ? 'var(--accent)' : 'var(--p-4)',
                       }}
                     />
                   </span>
@@ -155,7 +146,7 @@ export default async function SchedulePage({ params }: { params: Promise<{ leagu
             </ul>
           </section>
         )}
-      </main>
+      </>
     </>
   );
 }

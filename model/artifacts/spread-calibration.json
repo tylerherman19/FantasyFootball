@@ -4,9 +4,9 @@
     2024
   ],
   "multipliers": {
-    "TE": 0.823,
     "WR": 0.813,
     "RB": 0.7643,
+    "TE": 0.823,
     "QB": 0.8678
   },
   "note": "composed with prior calibration"

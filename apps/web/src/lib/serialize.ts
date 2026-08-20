@@ -24,6 +24,15 @@ export interface WirePlayer {
   readonly gameLoading: number;
   readonly active: boolean;
   readonly value: number;
+  /**
+   * Whether the model has a projection for this player at all.
+   *
+   * A 2026 rookie has no NFL snaps, so the projection artifact does not contain
+   * him and `mean` falls back to zero. That is "we don't know", not "he will
+   * score nothing" — and conflating the two made the waiver board nominate the
+   * best rookies on a roster as the obvious players to cut.
+   */
+  readonly projected: boolean;
 }
 
 export interface WirePick {
@@ -122,6 +131,7 @@ export const serializeLeague = (
       gameLoading: projection?.gameLoading ?? 0.3,
       active: projection?.active ?? false,
       value: values.get(id)?.value ?? 0,
+      projected: projection !== undefined,
     };
   }
 

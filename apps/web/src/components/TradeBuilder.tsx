@@ -14,14 +14,14 @@ import type { WireLeague } from '@/lib/serialize';
  */
 
 const GRADE_COLOR: Record<string, string> = {
-  'A+': 'var(--good)',
-  A: 'var(--good)',
-  'B+': 'var(--good)',
+  'A+': 'var(--pos)',
+  A: 'var(--pos)',
+  'B+': 'var(--pos)',
   B: 'var(--ink)',
   'C+': 'var(--ink)',
   C: 'var(--ink-muted)',
-  D: 'var(--bad)',
-  F: 'var(--bad)',
+  D: 'var(--neg)',
+  F: 'var(--neg)',
 };
 
 const pct = (value: number) => `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
@@ -180,7 +180,7 @@ const Metric = ({ label, value, good }: { label: string; value: string; good?: b
     </div>
     <div
       className="tabular text-lg font-semibold"
-      style={{ color: good === undefined ? 'var(--ink)' : good ? 'var(--good)' : 'var(--bad)' }}
+      style={{ color: good === undefined ? 'var(--ink)' : good ? 'var(--pos)' : 'var(--neg)' }}
     >
       {value}
     </div>
@@ -230,7 +230,7 @@ const PlayerColumn = ({
               onClick={() => onToggle(player.id)}
               className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm"
               style={{
-                background: isSelected ? 'var(--accent-soft)' : 'transparent',
+                background: isSelected ? 'var(--surface-sunk)' : 'transparent',
                 fontWeight: isSelected ? 600 : 400,
               }}
             >

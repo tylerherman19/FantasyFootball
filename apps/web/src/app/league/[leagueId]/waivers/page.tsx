@@ -1,4 +1,3 @@
-import { LeagueNav } from '@/components/LeagueNav';
 import { WaiverBoard } from '@/components/WaiverBoard';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
@@ -15,7 +14,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
   const view = await loadLeague(leagueId, USERNAME);
 
   if (view.myTeamId === null) {
-    return <main className="mx-auto max-w-5xl px-6 py-12">Could not find your team in this league.</main>;
+    return <p className="text-sm">Could not find your team in this league.</p>;
   }
 
   const myTeamId = view.myTeamId;
@@ -24,7 +23,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
   const [values, players, freeAgents] = await Promise.all([
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-    loadFreeAgents(view),
+    loadFreeAgents(view, view.myTeamId),
   ]);
 
   const wire = serializeLeague(
@@ -38,16 +37,8 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
 
   return (
     <>
-      <LeagueNav
-        leagueId={leagueId}
-        leagueName={snapshot.league.name}
-        meta={leagueMeta(snapshot)}
-        lineupShape={lineupShape(snapshot)}
-        active="waivers"
-        format={snapshot.league.format}
-      />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <>
         <p className="mb-6 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
           Ranked by what each player does to <em>your</em> title odds, not by projected points. A
           backup running back is worth a lot to the manager whose starter just went down and nothing
@@ -56,7 +47,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
         </p>
 
         <WaiverBoard league={wire} myTeamId={myTeamId} />
-      </main>
+      </>
     </>
   );
 }

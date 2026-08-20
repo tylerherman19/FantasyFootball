@@ -78,7 +78,7 @@ export const LineupBoard = ({
                   type="button"
                   onClick={() => setSelectedSlot(isSelected ? null : index)}
                   className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm"
-                  style={{ background: isSelected ? 'var(--accent-soft)' : 'transparent' }}
+                  style={{ background: isSelected ? 'var(--surface-sunk)' : 'transparent' }}
                 >
                   <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-widest"
                     style={{ color: 'var(--ink-faint)' }}>
@@ -90,7 +90,7 @@ export const LineupBoard = ({
                       {slot.position} {slot.team}
                     </span>
                     {slot.injuryStatus !== null && (
-                      <span className="ml-2 text-xs" style={{ color: 'var(--bad)' }}>
+                      <span className="ml-2 text-xs" style={{ color: 'var(--neg)' }}>
                         {slot.injuryStatus}
                       </span>
                     )}
@@ -168,8 +168,8 @@ export const LineupBoard = ({
                               color: verdict.negligible
                                 ? 'var(--ink-muted)'
                                 : verdict.titleDelta > 0
-                                  ? 'var(--good)'
-                                  : 'var(--bad)',
+                                  ? 'var(--pos)'
+                                  : 'var(--neg)',
                             }}>
                             {pct(verdict.titleDelta)}
                           </strong>

@@ -13,6 +13,8 @@ import {
   type TradeAsset,
   type TradeEvaluation,
 } from '@ffe/core';
+import { LEAGUE_TTL_MS, memoize } from './cache';
+import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
 import { loadMarketData } from './values';
@@ -103,7 +105,17 @@ const inferNeeds = (
   return { needs, surplus };
 };
 
-export const loadTrades = async (view: LeagueView, teamId: string): Promise<TradeView | null> => {
+export interface TradeQuery {
+  readonly objective?: 'winNow' | 'balanced' | 'rebuild';
+  readonly targetPlayerId?: string | null;
+  readonly targetPosition?: string | null;
+}
+
+const buildTrades = async (
+  view: LeagueView,
+  teamId: string,
+  query: TradeQuery = {},
+): Promise<TradeView | null> => {
   const { snapshot, context } = view;
 
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
@@ -111,6 +123,21 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
 
   const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex);
   const values = market.players;
+
+  /*
+   * Ages, for the rebuild objective.
+   *
+   * Derived from the crosswalk's birthdates rather than assumed: a rebuild that
+   * cannot tell a 22-year-old from a 30-year-old is not a rebuild.
+   */
+  const identities = await loadIdentities();
+  const ages = new Map<string, number>();
+  for (const [id, identity] of Object.entries(identities)) {
+    if (identity.birthdate === null) continue;
+    const born = Date.parse(identity.birthdate);
+    if (Number.isNaN(born)) continue;
+    ages.set(id, (Date.now() - born) / (365.25 * 24 * 60 * 60 * 1000));
+  }
 
   const assetFor = (playerId: string): TradeAsset | null => {
     const projection = artifact.players[playerId];
@@ -220,12 +247,21 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     })
     .sort((a, b) => a.marginal - b.marginal);
 
-  if (needs.length === 0 || surplus.length === 0 || values.size === 0) {
+  /*
+   * Market values are the only hard requirement.
+   *
+   * Fairness is what makes a proposal plausible, and without values there is no
+   * way to judge it — so that case genuinely has nothing to show. Needs and
+   * surplus are different: they are a heuristic for *narrowing* the search, and
+   * treating them as preconditions meant a balanced roster got an empty page
+   * that read as "there are no good trades" when nothing had been searched.
+   */
+  if (values.size === 0) {
     return {
       evaluations: [],
       needs,
       surplus,
-      valuesAvailable: values.size > 0,
+      valuesAvailable: false,
       depth,
       partners,
       marginal: marginalDetail,
@@ -234,6 +270,17 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
 
   // Screen cheaply, then re-simulate the survivors precisely — the same
   // two-stage shape the waiver page uses.
+  const targeting = {
+    ...(query.objective !== undefined ? { objective: query.objective } : {}),
+    ...(query.targetPlayerId != null
+      ? { targetPlayerIds: [asPlayerId(query.targetPlayerId)] }
+      : {}),
+    ...(query.targetPosition != null
+      ? { targetPositions: [query.targetPosition as Position] }
+      : {}),
+    ages,
+  };
+
   const screened = findTrades({
     context: { ...context, iterations: SCREEN_ITERATIONS },
     myTeamId: teamId,
@@ -241,6 +288,7 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     needs,
     surplus,
     finalists: 6,
+    ...targeting,
   });
 
   const evaluations = screened
@@ -256,6 +304,7 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
         needs,
         surplus,
         finalists: 1,
+        ...targeting,
       }),
     )
     .flat();
@@ -270,3 +319,26 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     marginal: marginalDetail,
   };
 };
+
+/**
+ * One trade search per league view.
+ *
+ * The search enumerates packages across every roster and scores each with a
+ * lineup solve, which is the most expensive thing this app does outside the
+ * simulation itself. It depends only on the league state, so it is computed
+ * once and shared for as long as that state is.
+ */
+export const loadTrades = memoize(
+  buildTrades,
+  (view, teamId, query = {}) =>
+    [
+      view.snapshot.league.id,
+      view.snapshot.asOfWeek,
+      teamId,
+      query.objective ?? 'balanced',
+      query.targetPlayerId ?? '',
+      query.targetPosition ?? '',
+    ].join(':'),
+  LEAGUE_TTL_MS,
+  'trades',
+);

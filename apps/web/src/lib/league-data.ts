@@ -13,16 +13,18 @@ import {
   type TeamContext,
 } from '@ffe/core';
 import { loadAvailability } from './availability';
+import { LEAGUE_TTL_MS, memoize } from './cache';
 import { loadIdentities } from './crosswalk';
 import { buildPool, loadArtifact } from './projections';
 
 /**
  * Server-side league loading and simulation.
  *
- * Simulation runs on the server and is cached per league, because a 10,000
- * iteration season is a second or two of work that shouldn't repeat on every
- * navigation. What-if interactions — trade toggles, start/sit — run client-side
- * against the same engine, since those need to feel instant.
+ * Simulation runs on the server and is cached per league (see `loadLeague` at
+ * the bottom of this file), because a four-thousand iteration season is a
+ * second or two of work that shouldn't repeat on every navigation. What-if
+ * interactions — trade toggles, start/sit — run client-side against the same
+ * engine, since those need to feel instant.
  */
 
 const adapter = new SleeperAdapter();
@@ -97,7 +99,7 @@ export const leagueMeta = (snapshot: LeagueSnapshot): string => {
 
 
 
-export const loadLeague = async (
+const buildLeague = async (
   platformLeagueId: string,
   username: string,
 ): Promise<LeagueView> => {
@@ -171,5 +173,20 @@ export const loadLeague = async (
     efficiencies,
   };
 };
+
+/**
+ * One league load — and one season simulation — shared across a page view.
+ *
+ * Every league tab needs the same `LeagueView`, and the simulation inside it is
+ * seeded, so re-running it per navigation burned a second or two of server time
+ * to produce numbers that were identical by construction. The comment that used
+ * to sit at the top of this file claimed this cache existed; now it does.
+ */
+export const loadLeague = memoize(
+  buildLeague,
+  (platformLeagueId, username) => `${platformLeagueId}:${username}`,
+  LEAGUE_TTL_MS,
+  'league',
+);
 
 export { currentOdds };

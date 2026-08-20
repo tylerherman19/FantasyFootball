@@ -25,9 +25,20 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
       .sort((a, b) => a.mean - b.mean);
   }, [league, myTeamId]);
 
-  // Default to the three weakest players — the ones a manager would consider
-  // cutting — but every choice stays available.
-  const [dropIds, setDropIds] = useState<string[]>(() => myRoster.slice(0, 3).map((p) => p.id));
+  /*
+   * Default to the three weakest *projected* players.
+   *
+   * Players the model cannot project — rookies, most obviously — sort to the
+   * bottom on a mean of zero, so the old default nominated a manager's best
+   * incoming rookies as the players to cut. An unknown projection is not a low
+   * one, and the drop list is the last place to guess.
+   */
+  const [dropIds, setDropIds] = useState<string[]>(() =>
+    myRoster
+      .filter((player) => player.projected)
+      .slice(0, 3)
+      .map((player) => player.id),
+  );
   const [results, setResults] = useState<WaiverResult[] | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -42,7 +53,22 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
     setResults(null);
   };
 
-  const helpful = (results ?? []).filter((r) => r.titleDelta > 0);
+  /*
+   * Ranked, not filtered.
+   *
+   * This filter — keep only adds with a positive title delta — is why the wire
+   * page reported that nothing helps, almost every week. A fourth receiver moves
+   * a season's title probability by less than a browser-side simulation can
+   * resolve, so the sign of that delta is close to a coin flip and roughly half
+   * of every genuine upgrade was discarded. Showing the ranking and naming the
+   * resolution is the honest version: "the best add is worth +0.1%" tells a
+   * manager to save their FAAB, which is a real answer.
+   */
+  const ranked = [...(results ?? [])].sort((a, b) => b.titleDelta - a.titleDelta);
+
+  // Two standard errors at the iteration count the browser sim uses.
+  const RESOLUTION = 2 / Math.sqrt(2_000);
+  const anyDecisive = ranked.some((r) => r.titleDelta > RESOLUTION);
   const isFaab = league.waiverType === 'faab';
 
   return (
@@ -72,13 +98,18 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
                 onClick={() => toggleDrop(player.id)}
                 className="rounded px-2 py-1 text-xs"
                 style={{
-                  background: selected ? 'var(--accent-soft)' : 'var(--ground)',
+                  background: selected ? 'var(--surface-sunk)' : 'var(--ground)',
                   color: selected ? 'var(--accent)' : 'var(--ink-muted)',
                   fontWeight: selected ? 600 : 400,
                   border: `1px solid ${selected ? 'var(--accent)' : 'var(--rule)'}`,
                 }}
               >
-                {player.name} <span style={{ opacity: 0.7 }}>{player.mean.toFixed(1)}</span>
+                {player.name}{' '}
+                {/* "n/a" rather than 0.0: the model has no read on this player,
+                    which is a different statement from projecting him at zero. */}
+                <span style={{ opacity: 0.7 }} title={player.projected ? undefined : 'No projection — the model has no NFL data for this player yet'}>
+                  {player.projected ? player.mean.toFixed(1) : 'n/a'}
+                </span>
               </button>
             );
           })}
@@ -95,15 +126,23 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
         </button>
       </div>
 
-      {results !== null && helpful.length === 0 && (
-        <div className="rounded border p-4 text-sm" style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
-          <strong>Nothing on the wire helps.</strong> Of the {league.freeAgents.length} best available
-          players, none improves your title odds given what you are willing to drop.
-          {isFaab && ' Save the FAAB.'}
+      {results !== null && ranked.length > 0 && !anyDecisive && (
+        <div className="mb-3 border-l-2 px-3 py-2 text-sm"
+          style={{ borderColor: 'var(--accent)', background: 'var(--surface-sunk)' }}>
+          <strong>No decisive add.</strong> Every option below moves your title odds by less than
+          the ±{(RESOLUTION * 100).toFixed(1)}pp this simulation can resolve — they are ranked, but
+          the ordering among them is close to a tie.
+          {isFaab && ' This is a week to save the FAAB.'}
         </div>
       )}
 
-      {helpful.length > 0 && (
+      {results !== null && ranked.length === 0 && (
+        <div className="rounded border p-4 text-sm" style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
+          <strong>No free agents to rank.</strong> Nothing is available on this wire.
+        </div>
+      )}
+
+      {ranked.length > 0 && (
         <div className="scroll-x">
           <table className="w-full min-w-[36rem] text-left text-sm">
             <thead>
@@ -118,7 +157,7 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
               </tr>
             </thead>
             <tbody>
-              {helpful.map((result) => (
+              {ranked.map((result) => (
                 <tr key={result.playerId} className="border-b" style={{ borderColor: 'var(--rule)' }}>
                   <td className="py-2">
                     <span className="font-medium">{result.name}</span>
@@ -133,7 +172,15 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
                   <td className="tabular py-2 text-right" style={{ color: 'var(--ink-muted)' }}>
                     {pct(result.playoffDelta)}
                   </td>
-                  <td className="tabular py-2 text-right font-medium" style={{ color: 'var(--good)' }}>
+                  <td className="tabular py-2 text-right font-medium"
+                    style={{
+                      color:
+                        result.titleDelta > RESOLUTION
+                          ? 'var(--pos)'
+                          : result.titleDelta < -RESOLUTION
+                            ? 'var(--neg)'
+                            : 'var(--ink-faint)',
+                    }}>
                     {pct(result.titleDelta)}
                   </td>
                   {isFaab && (

@@ -1,4 +1,3 @@
-import { LeagueNav } from '@/components/LeagueNav';
 import { StatTile } from '@/components/StatTile';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { analyzeRoster } from '@/lib/roster-analysis';
@@ -8,9 +7,9 @@ export const revalidate = 900;
 const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
 
 const VERDICT_COLOR: Record<string, string> = {
-  thin: 'var(--bad)',
+  thin: 'var(--neg)',
   balanced: 'var(--ink-muted)',
-  surplus: 'var(--good)',
+  surplus: 'var(--pos)',
 };
 
 export default async function RosterPage({ params }: { params: Promise<{ leagueId: string }> }) {
@@ -23,16 +22,8 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
   return (
     <>
-      <LeagueNav
-        leagueId={leagueId}
-        leagueName={snapshot.league.name}
-        meta={leagueMeta(snapshot)}
-        lineupShape={lineupShape(snapshot)}
-        active="roster"
-        format={snapshot.league.format}
-      />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <>
         {analysis === null && (
           <p style={{ color: 'var(--ink-muted)' }}>No roster analysis available for this league yet.</p>
         )}
@@ -103,7 +94,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                         </td>
                         <td
                           className="py-2 text-xs"
-                          style={{ color: player.injuryStatus === null ? 'var(--ink-faint)' : 'var(--bad)' }}
+                          style={{ color: player.injuryStatus === null ? 'var(--ink-faint)' : 'var(--neg)' }}
                         >
                           {player.injuryStatus ?? (player.starting ? 'starting' : 'bench')}
                         </td>
@@ -149,7 +140,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                             {player.position}
                           </span>
                         </span>
-                        <span className="tabular shrink-0" style={{ color: 'var(--good)' }}>
+                        <span className="tabular shrink-0" style={{ color: 'var(--pos)' }}>
                           {player.marketValue.toLocaleString()}
                         </span>
                       </li>
@@ -225,7 +216,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             </section>
           </>
         )}
-      </main>
+      </>
     </>
   );
 }

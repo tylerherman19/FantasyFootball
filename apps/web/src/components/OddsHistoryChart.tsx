@@ -79,7 +79,7 @@ export const OddsHistoryChart = ({
         {series
           .filter((s) => !s.isMine)
           .map((s) => (
-            <path key={s.teamId} d={path(s.points)} fill="none" stroke="var(--p-low)" strokeWidth={1.5} />
+            <path key={s.teamId} d={path(s.points)} fill="none" stroke="var(--p-2)" strokeWidth={1.5} />
           ))}
 
         {series

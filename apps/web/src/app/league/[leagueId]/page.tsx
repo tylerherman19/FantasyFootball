@@ -1,9 +1,10 @@
-import { LeagueNav } from '@/components/LeagueNav';
 import { OddsBar } from '@/components/OddsBar';
+import { PositionalHeatmap } from '@/components/PositionalHeatmap';
 import { OutcomeDistribution } from '@/components/OutcomeDistribution';
 import { StatTile } from '@/components/StatTile';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { remainingSchedule, weekLeverage } from '@/lib/analysis';
+import { positionalStrength } from '@/lib/positional-strength';
 
 export const revalidate = 900;
 
@@ -35,16 +36,8 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
 
   return (
     <>
-      <LeagueNav
-        leagueId={leagueId}
-        leagueName={snapshot.league.name}
-        meta={leagueMeta(snapshot)}
-        lineupShape={lineupShape(snapshot)}
-        active="outlook"
-        format={snapshot.league.format}
-      />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <>
         {notDrafted && (
           <div
             className="mb-8 rounded border p-4 text-sm"
@@ -122,7 +115,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
                         {teamNames.get(team.teamId) ?? team.teamId}
                         {isMine && (
                           <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-widest"
-                            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                            style={{ background: 'var(--surface-sunk)', color: 'var(--accent)' }}>
                             you
                           </span>
                         )}
@@ -170,9 +163,9 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
                       style={{
                         color:
                           game.winProbability >= 0.6
-                            ? 'var(--good)'
+                            ? 'var(--pos)'
                             : game.winProbability <= 0.4
-                              ? 'var(--bad)'
+                              ? 'var(--neg)'
                               : 'var(--ink)',
                       }}
                     >
@@ -209,7 +202,12 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
             </ul>
           </section>
         )}
-      </main>
+        <PositionalHeatmap
+          strengths={positionalStrength(view)}
+          teamNames={view.teamNames}
+          myTeamId={view.myTeamId}
+        />
+      </>
     </>
   );
 }

@@ -92,6 +92,53 @@ export const projectSeason = (
   weeks.flatMap((week) => teams.map((team) => projectTeamWeek(team, pool, week)));
 
 /**
+ * Projected points from the optimal starting lineup, summed over the weeks given.
+ *
+ * This is the decision currency that survives August. Championship probability
+ * is the number that matters, but in the preseason a fourth receiver moves it by
+ * less than the simulation can resolve, so a roster full of real upgrades prices
+ * out at "0.0%" and the product looks broken when it is merely early.
+ *
+ * Starter points have no such problem: they come from the lineup solver rather
+ * than from sampling, so they are exact, they respond to every change, and they
+ * are denominated in the units managers already argue in.
+ */
+const starterPointsCache = new WeakMap<TeamContext, Map<string, number>>();
+
+export const starterPoints = (
+  team: TeamContext,
+  pool: ProjectionPool,
+  weeks: readonly number[],
+): number => {
+  /*
+   * The unchanged roster is scored once per search, not once per candidate.
+   *
+   * Every package the trade finder considers compares a modified roster against
+   * the same baseline, and the baseline is the identical object each time, so
+   * without this the finder pays for tens of thousands of identical lineup
+   * solves. Modified rosters are fresh objects and fall through, which is
+   * correct — they genuinely differ.
+   */
+  const key = weeks.join(',');
+  const cached = starterPointsCache.get(team);
+  const hit = cached?.get(key);
+  if (hit !== undefined) return hit;
+
+  const total = weeks.reduce(
+    (sum, week) =>
+      sum +
+      projectTeamWeek(team, pool, week).players.reduce((points, player) => points + player.mean, 0),
+    0,
+  );
+
+  const byWeeks = cached ?? new Map<string, number>();
+  byWeeks.set(key, total);
+  starterPointsCache.set(team, byWeeks);
+
+  return total;
+};
+
+/**
  * Apply a roster change without mutating the original.
  *
  * Used by every what-if in the product: adding a waiver claim, executing a

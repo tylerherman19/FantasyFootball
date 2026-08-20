@@ -49,14 +49,37 @@ npm test
 
 - [x] Phase 0 — scaffold
 - [x] Phase 1 — Sleeper adapter + domain model
-- [ ] Phase 2 — historical data lake + point-in-time feature store
-- [ ] Phase 3 — backtest harness
-- [ ] Phase 4 — projection engine (v0 Marcel → v4 ensemble)
-- [ ] Phase 5 — simulation engine
-- [ ] Phase 6 — odds calibration
-- [ ] Phase 7 — rankings and metrics
-- [ ] Phase 8 — trades, waivers, lineups
-- [ ] Phase 9 — Yahoo adapter
+- [x] Phase 2 — historical data lake + point-in-time feature store
+- [x] Phase 3 — backtest harness
+- [~] Phase 4 — projection engine (Marcel → v1 usage + positional; v2+ not started)
+- [x] Phase 4b — defensive scheme profiles, exported and surfaced per matchup
+- [x] Phase 5 — simulation engine
+- [~] Phase 6 — odds calibration (spread calibration exported; reliability curve not in-app)
+- [x] Phase 7 — rankings and metrics
+- [x] Phase 8 — trades, waivers, lineups
+- [~] Phase 9 — Yahoo adapter (client + OAuth written, not wired to the UI)
 - [ ] Phase 10 — compounding data
 
 Full plan: `docs/PLAN.md`
+
+## Two things worth knowing before reading the numbers
+
+**Decisions are priced in three currencies, not one.** Championship probability
+is the one that matters, but a season simulated 4,000 times resolves it no finer
+than a couple of percentage points — so in August, and after any small move, it
+cannot tell a real upgrade from noise. Filtering on it is what made the trade and
+waiver pages render empty. Every decision therefore reports market value, exact
+projected starter points, *and* title odds, and says out loud when an odds move
+is inside the simulation's resolution.
+
+**Projections are exported one week at a time.** `buildPool` reuses the latest
+week for the rest of the season, which is honest for a rest-of-season simulation
+but is not a per-week forecast. Multi-week export is the next correctness item.
+
+## Serving path
+
+Nothing in the request path recomputes what it can remember. The projection
+artifact, the identity crosswalk, the league load (including its season
+simulation), the trade search and week leverage are all memoized per league for
+sixty seconds. Before that, a single page view parsed a megabyte of JSON three
+times and re-ran a 4,000-iteration season on every tab click.

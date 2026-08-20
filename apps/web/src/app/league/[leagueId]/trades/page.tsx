@@ -1,5 +1,5 @@
-import { LeagueNav } from '@/components/LeagueNav';
 import { TradeBuilder } from '@/components/TradeBuilder';
+import { TradeObjectiveBar } from '@/components/TradeObjectiveBar';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
 import { serializeLeague } from '@/lib/serialize';
@@ -14,24 +14,42 @@ const USERNAME = process.env.SLEEPER_USERNAME ?? 'tylerherman';
 const pct = (value: number) => `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
 
 const VERDICT_COLOR: Record<string, string> = {
-  thin: 'var(--bad)',
+  thin: 'var(--neg)',
   balanced: 'var(--ink-muted)',
-  surplus: 'var(--good)',
+  surplus: 'var(--pos)',
 };
 
-export default async function TradesPage({ params }: { params: Promise<{ leagueId: string }> }) {
+export default async function TradesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ leagueId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { leagueId } = await params;
+  const query = await searchParams;
   const view = await loadLeague(leagueId, USERNAME);
 
+  const one = (value: string | string[] | undefined): string | null =>
+    typeof value === 'string' && value !== '' ? value : null;
+
+  const objectiveParam = one(query.objective);
+  const tradeQuery = {
+    objective:
+      objectiveParam === 'winNow' || objectiveParam === 'rebuild' ? objectiveParam : 'balanced',
+    targetPlayerId: one(query.target),
+    targetPosition: one(query.pos),
+  } as const;
+
   if (view.myTeamId === null) {
-    return <main className="mx-auto max-w-5xl px-6 py-12">Could not find your team in this league.</main>;
+    return <p className="text-sm">Could not find your team in this league.</p>;
   }
 
   const myTeamId = view.myTeamId;
   const { snapshot } = view;
 
   const [trades, values, players, picks] = await Promise.all([
-    loadTrades(view, myTeamId),
+    loadTrades(view, myTeamId, tradeQuery),
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadPicks(view),
@@ -39,18 +57,36 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
 
   const wire = serializeLeague(view, values, players, picks);
 
+  /*
+   * Everyone else's rostered players, as targets.
+   *
+   * Own players are excluded because "trade for a player you already have" is
+   * not a request, and the list is sorted by market value so the names a
+   * manager is most likely to want are reachable without scrolling.
+   */
+  const targetable = snapshot.rosters
+    .filter((roster) => roster.teamId !== myTeamId)
+    .flatMap((roster) =>
+      roster.playerIds.map((id) => {
+        const player = players[String(id)];
+        return {
+          id: String(id),
+          name: player?.name ?? String(id),
+          position: player?.position ?? '?',
+          teamName: view.teamNames.get(roster.teamId) ?? roster.teamId,
+          value: values.get(String(id))?.value ?? 0,
+        };
+      }),
+    )
+    .filter((player) => player.name !== player.id)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 300);
+
   return (
     <>
-      <LeagueNav
-        leagueId={leagueId}
-        leagueName={snapshot.league.name}
-        meta={leagueMeta(snapshot)}
-        lineupShape={lineupShape(snapshot)}
-        active="trades"
-        format={snapshot.league.format}
-      />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <>
+        <TradeObjectiveBar players={targetable} />
         <section className="mb-12">
           <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
             Trade calculator
@@ -188,7 +224,7 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
                       </td>
                       <td className="tabular py-2 text-right">{entry.projected.toFixed(1)}</td>
                       <td className="tabular py-2 text-right font-medium"
-                        style={{ color: entry.marginal < 1 ? 'var(--good)' : 'var(--ink)' }}>
+                        style={{ color: entry.marginal < 1 ? 'var(--pos)' : 'var(--ink)' }}>
                         −{entry.marginal.toFixed(1)}
                       </td>
                       <td className="tabular py-2 text-right" style={{ color: 'var(--ink-muted)' }}>
@@ -219,6 +255,7 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
               {trades.evaluations.map((evaluation, index) => {
                 const mine = evaluation.odds.get(myTeamId);
                 const theirs = evaluation.odds.get(evaluation.sideB.teamId);
+                const points = evaluation.pointsDelta.get(myTeamId) ?? 0;
                 const partner = view.teamNames.get(evaluation.sideB.teamId) ?? evaluation.sideB.teamId;
 
                 return (
@@ -262,21 +299,43 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
                       <span>
                         <span style={{ color: 'var(--ink-muted)' }}>Your title odds </span>
                         <strong className="tabular"
-                          style={{ color: (mine?.titleDelta ?? 0) > 0 ? 'var(--good)' : 'var(--bad)' }}>
+                          style={{ color: (mine?.titleDelta ?? 0) > 0 ? 'var(--pos)' : 'var(--neg)' }}>
                           {pct(mine?.titleDelta ?? 0)}
                         </strong>
                       </span>
                       <span>
                         <span style={{ color: 'var(--ink-muted)' }}>Theirs </span>
                         <strong className="tabular"
-                          style={{ color: (theirs?.titleDelta ?? 0) > 0 ? 'var(--good)' : 'var(--bad)' }}>
+                          style={{ color: (theirs?.titleDelta ?? 0) > 0 ? 'var(--pos)' : 'var(--neg)' }}>
                           {pct(theirs?.titleDelta ?? 0)}
+                        </strong>
+                      </span>
+                      {/*
+                       * The third currency, and in August the only one that
+                       * resolves. Starter points come from the lineup solver
+                       * rather than from sampling, so they are exact where the
+                       * odds deltas are still inside the noise.
+                       */}
+                      <span>
+                        <span style={{ color: 'var(--ink-muted)' }}>Starter points </span>
+                        <strong
+                          className="tabular"
+                          style={{ color: points > 0 ? 'var(--pos)' : points < 0 ? 'var(--neg)' : 'var(--ink)' }}
+                        >
+                          {points >= 0 ? '+' : ''}
+                          {points.toFixed(1)}
                         </strong>
                       </span>
                       <span>
                         <span style={{ color: 'var(--ink-muted)' }}>Market gap </span>
                         <strong className="tabular">{(evaluation.fairness * 100).toFixed(0)}%</strong>
                       </span>
+                      {evaluation.belowNoiseFloor && (
+                        <span className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                          ±{(evaluation.resolution * 100).toFixed(1)}pp resolution — this move is
+                          inside it
+                        </span>
+                      )}
                     </div>
 
                     <p className="mt-2 text-sm" style={{ color: 'var(--ink-muted)' }}>{evaluation.verdict}</p>
@@ -286,7 +345,7 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
             </div>
           </section>
         )}
-      </main>
+      </>
     </>
   );
 }

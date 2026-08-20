@@ -1,5 +1,6 @@
 import { optimalLineup, projectTeamWeek, simulateSeason, type Matchup } from '@ffe/core';
 import { projectSeason } from '@ffe/core';
+import { LEAGUE_TTL_MS, memoizeSync } from './cache';
 import type { LeagueView } from './league-data';
 
 /**
@@ -104,7 +105,7 @@ export interface Leverage {
  * result forced, and the difference in your playoff odds is that game's value to
  * you. This is what turns "root for whoever" into a ranked list.
  */
-export const weekLeverage = (view: LeagueView, teamId: string, week: number, limit = 6): Leverage[] => {
+const computeWeekLeverage = (view: LeagueView, teamId: string, week: number, limit = 6): Leverage[] => {
   const { snapshot, context } = view;
   const games = snapshot.schedule.filter((m) => m.week === week);
   if (games.length === 0) return [];
@@ -214,3 +215,20 @@ export const rosterWithLineup = (
     })
     .sort((a, b) => Number(b.starting) - Number(a.starting) || b.mean - a.mean);
 };
+
+/**
+ * Leverage, computed once per league-week.
+ *
+ * Each game costs two full season simulations — "what if this team wins" against
+ * "what if the other does" — so a ten-team week is twenty thousand simulated
+ * seasons. It is seeded and therefore identical on every reload, which made
+ * recomputing it per request the single most expensive thing the outlook page
+ * did, and the easiest to stop doing.
+ */
+export const weekLeverage = memoizeSync(
+  computeWeekLeverage,
+  (view, teamId, week, limit = 6) =>
+    `${view.snapshot.league.id}:${view.snapshot.asOfWeek}:${teamId}:${week}:${limit}`,
+  LEAGUE_TTL_MS,
+  'leverage',
+);

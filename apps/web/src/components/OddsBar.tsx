@@ -20,7 +20,7 @@ export const OddsBar = ({
   const high = Math.min(1, probability + 1.96 * standardError);
 
   const tone =
-    probability >= 0.66 ? 'var(--p-high)' : probability >= 0.33 ? 'var(--p-mid)' : 'var(--p-low)';
+    probability >= 0.66 ? 'var(--p-6)' : probability >= 0.33 ? 'var(--p-4)' : 'var(--p-2)';
 
   return (
     <div className="flex items-center gap-2">

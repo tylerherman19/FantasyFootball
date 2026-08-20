@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { applyAvailability, asPlayerId, scoreStatLine, type PlayerId, type Position } from '@ffe/core';
 import type { PlayerProjection, ProjectionPool } from '@ffe/core';
+import { ARTIFACT_TTL_MS, memoize } from './cache';
 
 /**
  * Load the projection artifact the model exports.
@@ -36,7 +37,7 @@ const ARTIFACT_DIR = join(process.cwd(), '..', '..', 'model', 'artifacts');
 
 const SKILL: readonly string[] = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'LB', 'DB'];
 
-export const loadArtifact = async (season: number, week: number): Promise<ProjectionArtifact | null> => {
+const readArtifact = async (season: number, week: number): Promise<ProjectionArtifact | null> => {
   try {
     const path = join(ARTIFACT_DIR, `projections-${season}-${String(week).padStart(2, '0')}.json`);
     return JSON.parse(await readFile(path, 'utf8')) as ProjectionArtifact;
@@ -44,6 +45,20 @@ export const loadArtifact = async (season: number, week: number): Promise<Projec
     return null;
   }
 };
+
+/**
+ * The artifact, parsed once per process rather than once per caller.
+ *
+ * The league, trade and waiver loaders each ask for this independently, so a
+ * single page view used to parse the same megabyte of JSON three times before
+ * any football was simulated.
+ */
+export const loadArtifact = memoize(
+  readArtifact,
+  (season, week) => `${season}-${week}`,
+  ARTIFACT_TTL_MS,
+  'artifact',
+);
 
 const toProjection = (
   player: ArtifactPlayer,

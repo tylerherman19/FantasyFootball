@@ -2,6 +2,8 @@ import {
   asPlayerId,
   estimateFutureGain,
   rankWaivers,
+  starterPoints,
+  withRosterChange,
   type PlayerId,
   type WaiverRecommendation,
 } from '@ffe/core';
@@ -113,11 +115,17 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
     candidates: candidates.map(toCandidate),
   });
 
+  /*
+   * Take the best of the screen, whatever its sign.
+   *
+   * Requiring a positive title delta here threw away the entire wire in the
+   * preseason and most weeks besides: at 400 iterations the odds change from
+   * adding a fourth receiver is far below what the screen can resolve, so the
+   * sign is close to a coin flip and the finalist round came back empty. The
+   * screen's job is ordering, not judgement.
+   */
   const finalistIds = new Set(
-    screened
-      .filter((r) => r.delta.titleDelta > 0)
-      .slice(0, FINALIST_COUNT)
-      .map((r) => String(r.candidate.playerId)),
+    screened.slice(0, FINALIST_COUNT).map((r) => String(r.candidate.playerId)),
   );
 
   // Price future opportunity off the *full* screened field. Deriving it from the
@@ -138,7 +146,10 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
   });
 
   return {
-    recommendations: recommendations.filter((r) => r.delta.titleDelta > 0),
+    // Ranked, not filtered. A wire where the best add is worth +0.1% is a
+    // finding a manager can act on — it says save the FAAB. An empty list says
+    // the tool is broken, which is what this page used to say every week.
+    recommendations,
     candidateCount: freeAgents.length,
     simulatedCount: candidates.length,
     remainingBudget,
@@ -154,8 +165,8 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
  * and a player who cannot start cannot change your odds. Simulating them would
  * cost time to prove a foregone conclusion.
  */
-export const loadFreeAgents = async (view: LeagueView) => {
-  const { snapshot } = view;
+export const loadFreeAgents = async (view: LeagueView, teamId: string | null) => {
+  const { snapshot, context } = view;
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return [];
 
@@ -166,7 +177,7 @@ export const loadFreeAgents = async (view: LeagueView) => {
     for (const id of roster.playerIds) rostered.add(String(id));
   }
 
-  return Object.values(artifact.players)
+  const available = Object.values(artifact.players)
     .filter((player) => !rostered.has(player.playerId) && player.active)
     .map((player) => ({
       id: player.playerId,
@@ -179,9 +190,47 @@ export const loadFreeAgents = async (view: LeagueView) => {
       gameLoading: player.gameLoading,
       active: player.active,
       value: 0,
+      // Everyone here came out of the projection artifact by definition.
+      projected: true,
+    }));
+
+  const team = teamId === null ? undefined : context.teams.find((t) => t.teamId === teamId);
+
+  /*
+   * Rank by what a player adds to *this* lineup, not by raw projected points.
+   *
+   * Ranking on raw points is why the wire read as nonsense: in a superflex
+   * league every rosterable quarterback out-projects every available receiver,
+   * so the board filled with backup and retired quarterbacks who could never
+   * crack a lineup already starting two better ones. The counterfactual — how
+   * much the optimal lineup gains by adding this player — is replacement-aware
+   * by construction, and it prices a third quarterback at approximately zero,
+   * which is what he is worth.
+   *
+   * Scored on the first remaining week: one lineup solve per free agent.
+   */
+  if (team === undefined) {
+    return available.sort((a, b) => b.mean - a.mean).slice(0, SCREEN_TOP);
+  }
+
+  const week = context.weeks.slice(0, 1);
+  const base = starterPoints(team, context.pool, week);
+
+  return available
+    .map((player) => ({
+      player,
+      gain:
+        starterPoints(
+          withRosterChange(team, { add: [asPlayerId(player.id)] }),
+          context.pool,
+          week,
+        ) - base,
     }))
-    .sort((a, b) => b.mean - a.mean)
-    .slice(0, SCREEN_TOP);
+    // Ties on zero gain are broken by raw projection, so the most useful of the
+    // unusable options still sorts to the top of that group.
+    .sort((a, b) => b.gain - a.gain || b.player.mean - a.player.mean)
+    .slice(0, SCREEN_TOP)
+    .map((entry) => entry.player);
 };
 
 /** Remaining FAAB for one team, or zeroes in a priority league. */

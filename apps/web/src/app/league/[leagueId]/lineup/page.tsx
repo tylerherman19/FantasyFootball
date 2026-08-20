@@ -1,10 +1,11 @@
 import { optimalLineup, asPlayerId, type LineupCandidate, type Position } from '@ffe/core';
-import { LeagueNav } from '@/components/LeagueNav';
 import { LineupBoard, type LineupSlotView } from '@/components/LineupBoard';
+import { SchemeMatchups, type MatchupRow } from '@/components/SchemeMatchups';
 import { StatTile } from '@/components/StatTile';
 import { loadAvailability } from '@/lib/availability';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
+import { loadScheme, readScheme } from '@/lib/scheme';
 import { loadArtifact, scoreFor } from '@/lib/projections';
 import { serializeLeague } from '@/lib/serialize';
 import { loadMarketValues } from '@/lib/values';
@@ -18,11 +19,12 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
   const view = await loadLeague(leagueId, USERNAME);
   const { snapshot, myTeamId } = view;
 
-  const [artifact, availability, values, playerInfo] = await Promise.all([
+  const [artifact, availability, values, playerInfo, scheme] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
     loadAvailability(),
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+    loadScheme(snapshot.league.season, snapshot.asOfWeek),
   ]);
 
   const roster = myTeamId === null ? undefined : snapshot.rosters.find((r) => r.teamId === myTeamId);
@@ -83,18 +85,52 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
 
   const wire = serializeLeague(view, values, playerInfo);
 
+  /*
+   * Scheme context for the players actually being started.
+   *
+   * Only starters, because this is the start/sit page and a scheme read on a
+   * player who cannot crack the lineup is noise. Positions that stream weekly
+   * are skipped for the same reason.
+   */
+  const SCHEME_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+
+  const matchupRows: MatchupRow[] = slots.flatMap((slot) => {
+    if (slot.playerId === null || !SCHEME_POSITIONS.has(slot.position)) return [];
+    if (scheme === null) return [];
+
+    const matchup = scheme.matchups[slot.team];
+    if (matchup === undefined) return [];
+
+    const defense = scheme.defenses[matchup.opponent] ?? null;
+
+    return [
+      {
+        playerId: slot.playerId,
+        name: slot.name,
+        position: slot.position,
+        team: slot.team,
+        opponent: matchup.opponent,
+        venue: matchup.venue,
+        defense,
+        projected: slot.projected,
+        sd: slot.sd,
+        reads:
+          defense === null
+            ? []
+            : readScheme(
+                defense,
+                slot.position,
+                scheme.offences[slot.team],
+                scheme.defenseVsPosition[matchup.opponent]?.[slot.position],
+              ),
+      },
+    ];
+  });
+
   return (
     <>
-      <LeagueNav
-        leagueId={leagueId}
-        leagueName={snapshot.league.name}
-        meta={leagueMeta(snapshot)}
-        lineupShape={lineupShape(snapshot)}
-        active="lineup"
-        format={snapshot.league.format}
-      />
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
+      <>
         <section className="mb-8">
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded border sm:grid-cols-4"
             style={{ borderColor: 'var(--rule)', background: 'var(--rule)' }}>
@@ -125,7 +161,11 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         {myTeamId !== null && (
           <LineupBoard league={wire} myTeamId={myTeamId} slots={slots} bench={bench} />
         )}
-      </main>
+
+        {scheme !== null && matchupRows.length > 0 && (
+          <SchemeMatchups rows={matchupRows} schemeSeason={scheme.schemeSeason} />
+        )}
+      </>
     </>
   );
 }

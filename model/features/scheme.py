@@ -76,7 +76,14 @@ def defensive_profiles(store: FeatureStore, as_of: AsOf, seasons_back: int = 2) 
 
     frame = _defense_from_game_id(raw)
 
-    passes = frame.filter(pl.col("defense_man_zone_type").is_not_null())
+    # Dropbacks only, and note that the non-dropback rows are marked with an
+    # empty string rather than null — so `is_not_null()` keeps every run play
+    # in the denominator. That dilution is not cosmetic: roughly half of all
+    # rows are runs, and they carry `defenders_in_box = 0` and
+    # `number_of_pass_rushers = 0`, which counted as "light box" and "not a
+    # blitz". It put light-box rates near 75% (the real figure is nearer 25%)
+    # and halved every coverage rate.
+    passes = frame.filter(pl.col("defense_man_zone_type").is_in(["MAN_COVERAGE", "ZONE_COVERAGE"]))
     if passes.height == 0:
         return []
 
@@ -88,11 +95,30 @@ def defensive_profiles(store: FeatureStore, as_of: AsOf, seasons_back: int = 2) 
             pl.col("was_pressure").cast(pl.Float64).mean().alias("pressure_rate"),
             (pl.col("defense_man_zone_type") == "MAN_COVERAGE").mean().alias("man_rate"),
             pl.col("defense_coverage_type").is_in(TWO_HIGH_SHELLS).mean().alias("two_high_rate"),
-            (pl.col("defenders_in_box") <= LIGHT_BOX_MAX).mean().alias("light_box_rate"),
             pl.col("time_to_throw").cast(pl.Float64).mean().alias("mean_time_to_throw"),
         )
         .drop_nulls("defense")
-        .sort(["season", "blitz_rate"], descending=[True, True])
+    )
+
+    # Box counts are measured on runs, not dropbacks.
+    #
+    # On a dropback a light box is unremarkable — nickel and dime personnel put
+    # six or fewer in the box as a matter of course, which is why that rate sits
+    # near 75% league-wide and separates nobody. The number that means something
+    # to a running back is how often this defense stays light *when the offense
+    # runs*, and that is a different population of plays entirely.
+    runs = frame.filter(pl.col("defense_man_zone_type") == "")
+    box = (
+        runs.group_by(["defense", "season"])
+        .agg(
+            (pl.col("defenders_in_box") <= LIGHT_BOX_MAX).mean().alias("light_box_rate"),
+            pl.len().alias("run_plays"),
+        )
+        .drop_nulls("defense")
+    )
+
+    aggregated = aggregated.join(box, on=["defense", "season"], how="left").sort(
+        ["season", "blitz_rate"], descending=[True, True]
     )
 
     return [

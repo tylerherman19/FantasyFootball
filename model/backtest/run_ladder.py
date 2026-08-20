@@ -10,7 +10,7 @@ from functools import partial
 
 from model.backtest.harness import compare, default_lake, walk_forward
 from model.features.store import FeatureStore
-from model.models import marcel, v1_usage
+from model.models import marcel, v1_usage, v2_matchup
 
 #: Full-PPR stat weights, keyed by nflverse player_stats columns.
 SCORING: dict[str, float] = {
@@ -48,6 +48,9 @@ if __name__ == "__main__":
     ladder = [
         ("v0-marcel", partial(marcel.build, scoring=SCORING)),
         ("v1-usage", partial(v1_usage.build, rules=SLEEPER_RULES)),
+        ("v2-w0.35", partial(v2_matchup.build, rules=SLEEPER_RULES, weight=0.35)),
+        ("v2-w0.70", partial(v2_matchup.build, rules=SLEEPER_RULES, weight=0.70)),
+        ("v2-w1.00", partial(v2_matchup.build, rules=SLEEPER_RULES, weight=1.00)),
     ]
 
     with FeatureStore(default_lake()) as store:

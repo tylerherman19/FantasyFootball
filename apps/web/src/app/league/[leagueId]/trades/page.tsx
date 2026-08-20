@@ -101,6 +101,68 @@ export default async function TradesPage({
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
+        {/*
+         * The finding, before the machinery.
+         *
+         * This page previously opened with a calculator and left the reader to
+         * work out whether any of it mattered. Saying what the search actually
+         * found — and saying plainly when it found nothing that clears the
+         * simulation's resolution — is the difference between a tool that
+         * advises and one that merely computes.
+         */}
+        {trades !== null && (
+          <div
+            className="mb-5 border-l-2 px-4 py-3 text-sm leading-relaxed"
+            style={{ borderColor: 'var(--accent)', background: 'var(--surface-sunk)' }}
+          >
+            {trades.evaluations.length === 0 ? (
+              <>
+                <strong>No package cleared the fairness band.</strong>{' '}
+                <span style={{ color: 'var(--ink-muted)' }}>
+                  Every trade the search built was too lopsided for the other manager to accept.
+                  Widening what you will send — or naming a target above — is the way through.
+                </span>
+              </>
+            ) : (
+              (() => {
+                const best = trades.evaluations[0]!;
+                const delta = best.odds.get(myTeamId)?.titleDelta ?? 0;
+                const floor = 2 / Math.sqrt(1_200);
+                const partner =
+                  view.teamNames.get(best.sideB.teamId) ?? best.sideB.teamId;
+                const gets = best.sideB.sends.map((asset) => asset.name).join(' and ');
+                const sends = best.sideA.sends.map((asset) => asset.name).join(' and ');
+
+                return (
+                  <>
+                    <strong>
+                      {trades.evaluations.length}{' '}
+                      {trades.evaluations.length === 1 ? 'package' : 'packages'} worth proposing.
+                      The best is {sends} to {partner} for {gets}.
+                    </strong>{' '}
+                    <span style={{ color: 'var(--ink-muted)' }}>
+                      {Math.abs(delta) > floor ? (
+                        <>
+                          It moves your title odds {delta > 0 ? 'up' : 'down'}{' '}
+                          {Math.abs(delta * 100).toFixed(1)} points, which is larger than this
+                          simulation&apos;s ±{(floor * 100).toFixed(1)}pp resolution — a real
+                          difference rather than noise.
+                        </>
+                      ) : (
+                        <>
+                          Its effect on your title odds is inside the ±{(floor * 100).toFixed(1)}pp
+                          this simulation can resolve, so treat the ordering below as a shortlist
+                          to judge rather than a ranking to trust to the decimal.
+                        </>
+                      )}
+                    </span>
+                  </>
+                )
+              })()
+            )}
+          </div>
+        )}
+
         <TradeObjectiveBar players={targetable} />
 
         <Section

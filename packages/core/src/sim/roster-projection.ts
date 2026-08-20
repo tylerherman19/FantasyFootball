@@ -92,6 +92,31 @@ export const projectSeason = (
   weeks.flatMap((week) => teams.map((team) => projectTeamWeek(team, pool, week)));
 
 /**
+ * Projected points from the optimal starting lineup, over the weeks given.
+ *
+ * This is the measure that survives the preseason. Championship probability is
+ * the number that matters, but in August a fourth receiver moves it by less
+ * than the simulation can resolve, so a roster full of real upgrades prices out
+ * at "0.0%" and the product looks broken when it is merely early.
+ *
+ * Starter points have no such problem: they come from the lineup solver rather
+ * than from sampling, so they are exact, they respond to every change, and they
+ * are replacement-aware by construction — a third quarterback who cannot crack
+ * the lineup adds nothing, which is the correct answer.
+ */
+export const starterPoints = (
+  team: TeamContext,
+  pool: ProjectionPool,
+  weeks: readonly number[],
+): number =>
+  weeks.reduce(
+    (total, week) =>
+      total +
+      projectTeamWeek(team, pool, week).players.reduce((points, player) => points + player.mean, 0),
+    0,
+  );
+
+/**
  * Apply a roster change without mutating the original.
  *
  * Used by every what-if in the product: adding a waiver claim, executing a

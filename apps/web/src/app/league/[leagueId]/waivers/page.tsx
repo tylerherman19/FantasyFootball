@@ -30,7 +30,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
   const [values, players, freeAgents] = await Promise.all([
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-    loadFreeAgents(view),
+    loadFreeAgents(view, view.myTeamId),
   ]);
 
   const budget = waiverBudgetFor(snapshot, myTeamId);

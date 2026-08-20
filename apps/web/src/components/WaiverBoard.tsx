@@ -25,9 +25,20 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
       .sort((a, b) => a.mean - b.mean);
   }, [league, myTeamId]);
 
-  // Default to the three weakest players — the ones a manager would consider
-  // cutting — but every choice stays available.
-  const [dropIds, setDropIds] = useState<string[]>(() => myRoster.slice(0, 3).map((p) => p.id));
+  /*
+   * Default to the three weakest *projected* players.
+   *
+   * Players the model cannot project — rookies, most obviously — sort to the
+   * bottom on a mean of zero, so the old default nominated a manager's best
+   * incoming rookies as the players to cut. An unknown projection is not a low
+   * one, and the drop list is the last place to guess.
+   */
+  const [dropIds, setDropIds] = useState<string[]>(() =>
+    myRoster
+      .filter((player) => player.projected)
+      .slice(0, 3)
+      .map((player) => player.id),
+  );
   const [results, setResults] = useState<WaiverResult[] | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -88,7 +99,15 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
                   border: `1px solid ${selected ? 'var(--accent)' : 'var(--rule)'}`,
                 }}
               >
-                {player.name} <span style={{ opacity: 0.7 }}>{player.mean.toFixed(1)}</span>
+                {player.name}{' '}
+                {/* "n/a" rather than 0.0: no read is a different statement
+                    from a projection of zero. */}
+                <span
+                  style={{ opacity: 0.7 }}
+                  title={player.projected ? undefined : 'No projection — no NFL data for this player yet'}
+                >
+                  {player.projected ? player.mean.toFixed(1) : 'n/a'}
+                </span>
               </button>
             );
           })}

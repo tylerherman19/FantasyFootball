@@ -24,6 +24,8 @@ export interface WirePlayer {
   readonly gameLoading: number;
   readonly active: boolean;
   readonly value: number;
+  /** False when the model has no projection for this player at all. */
+  readonly projected: boolean;
 }
 
 export interface WirePick {
@@ -117,6 +119,15 @@ export const serializeLeague = (
       position: info?.position ?? projection?.position ?? '?',
       team: info?.team ?? '',
       mean: projection?.mean ?? 0,
+      /*
+       * Whether the model has a projection at all.
+       *
+       * A rookie has no NFL snaps, so he is absent from the artifact and `mean`
+       * falls back to zero. That is "we don't know", not "he will score
+       * nothing" — and conflating the two made the waiver board nominate a
+       * manager's best rookies as the obvious players to cut.
+       */
+      projected: projection !== undefined,
       sd: projection?.sd ?? 0,
       gameId: projection?.gameId ?? `none-${id}`,
       gameLoading: projection?.gameLoading ?? 0.3,

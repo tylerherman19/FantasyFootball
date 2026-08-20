@@ -16,6 +16,7 @@ export {
 export {
   projectSeason,
   projectTeamWeek,
+  starterPoints,
   withRosterChange,
   type PlayerProjection,
   type ProjectionPool,

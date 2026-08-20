@@ -1,4 +1,6 @@
 import {
+  starterPoints,
+  withRosterChange,
   asPlayerId,
   estimateFutureGain,
   rankWaivers,
@@ -154,8 +156,8 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
  * and a player who cannot start cannot change your odds. Simulating them would
  * cost time to prove a foregone conclusion.
  */
-export const loadFreeAgents = async (view: LeagueView) => {
-  const { snapshot } = view;
+export const loadFreeAgents = async (view: LeagueView, teamId: string | null = null) => {
+  const { snapshot, context } = view;
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return [];
 
@@ -166,7 +168,7 @@ export const loadFreeAgents = async (view: LeagueView) => {
     for (const id of roster.playerIds) rostered.add(String(id));
   }
 
-  return Object.values(artifact.players)
+  const available = Object.values(artifact.players)
     .filter((player) => !rostered.has(player.playerId) && player.active)
     .map((player) => ({
       id: player.playerId,
@@ -179,9 +181,43 @@ export const loadFreeAgents = async (view: LeagueView) => {
       gameLoading: player.gameLoading,
       active: player.active,
       value: 0,
+      // Everyone here came out of the projection artifact by definition.
+      projected: true,
+    }));
+
+  const team = teamId === null ? undefined : context.teams.find((t) => t.teamId === teamId);
+  if (team === undefined) return available.sort((a, b) => b.mean - a.mean).slice(0, SCREEN_TOP);
+
+  /*
+   * Rank by what a player adds to *this* lineup, not by raw projected points.
+   *
+   * Raw points is why the wire read as nonsense: in a superflex league every
+   * rosterable quarterback out-projects every available receiver, so the board
+   * filled with backup and retired quarterbacks who could never crack a lineup
+   * already starting two better ones. The counterfactual — how much the optimal
+   * lineup gains by adding this player — is replacement-aware by construction,
+   * and prices a third quarterback at roughly zero, which is what he is worth.
+   *
+   * One lineup solve per free agent, on the first remaining week.
+   */
+  const week = context.weeks.slice(0, 1);
+  const base = starterPoints(team, context.pool, week);
+
+  return available
+    .map((player) => ({
+      player,
+      gain:
+        starterPoints(
+          withRosterChange(team, { add: [asPlayerId(player.id)] }),
+          context.pool,
+          week,
+        ) - base,
     }))
-    .sort((a, b) => b.mean - a.mean)
-    .slice(0, SCREEN_TOP);
+    // Ties on zero gain break by raw projection, so the most useful of the
+    // unusable options still sorts to the top of that group.
+    .sort((a, b) => b.gain - a.gain || b.player.mean - a.player.mean)
+    .slice(0, SCREEN_TOP)
+    .map((entry) => entry.player);
 };
 
 /** Remaining FAAB for one team, or zeroes in a priority league. */

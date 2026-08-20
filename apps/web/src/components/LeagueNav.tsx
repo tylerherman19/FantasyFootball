@@ -1,5 +1,8 @@
 import Link from 'next/link';
+import { LeagueSwitcher } from './LeagueSwitcher';
 import { ThemeToggle } from './ThemeToggle';
+import { listLeagues } from '@/lib/league-data';
+import { readSession } from '@/lib/session';
 
 /**
  * League-scoped navigation.
@@ -38,7 +41,37 @@ const TABS = [
   { key: 'scheme', label: 'Scheme', href: '/scheme' },
 ] as const;
 
-export const LeagueNav = ({ leagueId, leagueName, meta, active, lineupShape, stamps }: NavProps) => (
+export const LeagueNav = async ({
+  leagueId,
+  leagueName,
+  meta,
+  active,
+  lineupShape,
+  stamps,
+}: NavProps) => {
+  /*
+   * Every league the signed-in manager runs, offered from the title itself.
+   *
+   * Switching used to mean going back to the index and coming in again, which
+   * is a strange amount of friction for the thing people do most: comparing the
+   * same view across their leagues. The list is already cached, so this costs
+   * nothing, and picking one keeps you on the tab you were reading.
+   */
+  const session = await readSession();
+  const leagues =
+    session === null ? [] : await listLeagues(session.username, session.season).catch(() => []);
+
+  const options = leagues.map((league) => ({
+    id: league.platformLeagueId,
+    name: league.name,
+    meta: [league.format, league.teamCount === undefined ? null : `${league.teamCount} teams`]
+      .filter((part): part is string => part != null)
+      .join(' · '),
+  }));
+
+  const activeTab = TABS.find((tab) => tab.key === active);
+
+  return (
   <header
     className="sticky top-0 z-20 mb-6 border-b backdrop-blur"
     style={{ borderColor: 'var(--rule)', background: 'color-mix(in srgb, var(--ground) 88%, transparent)' }}
@@ -54,7 +87,19 @@ export const LeagueNav = ({ leagueId, leagueName, meta, active, lineupShape, sta
             ← All leagues
           </Link>
 
-          <h1 className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">{leagueName}</h1>
+          <div className="mt-1">
+            {options.length > 1 ? (
+              <LeagueSwitcher
+                leagues={options}
+                currentId={leagueId}
+                section={activeTab?.href ?? ''}
+              />
+            ) : (
+              <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">
+                {leagueName}
+              </h1>
+            )}
+          </div>
 
           <p className="tabular mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
             {meta}
@@ -102,4 +147,5 @@ export const LeagueNav = ({ leagueId, leagueName, meta, active, lineupShape, sta
       </nav>
     </div>
   </header>
-);
+  );
+};

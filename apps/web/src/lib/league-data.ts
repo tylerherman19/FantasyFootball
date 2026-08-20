@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { SleeperAdapter } from '@ffe/adapters';
 import {
   asPlayerId,
@@ -201,15 +202,52 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
   const mine =
     me ?? snapshot.managers.find((m) => m.displayName.toLowerCase() === username.toLowerCase());
 
-  const result = simulateSeason({
-    snapshot,
-    projections: projectSeason(teams, pool, weeks),
-    iterations: PAGE_ITERATIONS,
-    seed: context.seed ?? 0,
-    // Free: pricing this week's games rides along on the season we already
-    // simulate, instead of costing two more simulations per game.
-    ...(mine === undefined ? {} : { leverage: { teamId: mine.id, week: snapshot.asOfWeek } }),
-  });
+  /*
+   * The simulation is cached beyond this process, not just inside it.
+   *
+   * In-memory memoization only helps a server that stays alive. On a serverless
+   * platform every recycled instance starts empty and re-simulates, which is why
+   * the first request to a cold instance took seconds while every one after it
+   * took milliseconds — the same page, the same numbers, timed an order of
+   * magnitude apart depending on luck.
+   *
+   * Next's data cache persists across instances and deployments, so a cold
+   * function reads a prepared result instead of simulating two thousand seasons
+   * to reproduce it. This works because the run is deterministic: the seed comes
+   * from the league, so a cached result is the identical result.
+   *
+   * The key carries everything that changes the answer — the rosters, the week,
+   * the model artifact and the iteration count — so a trade or a waiver claim
+   * produces a different key rather than a stale hit.
+   */
+  const rosterSignature = snapshot.rosters
+    .map((roster) => `${roster.teamId}:${[...roster.playerIds].sort().join('.')}`)
+    .join('|');
+
+  const simulate = unstable_cache(
+    async () =>
+      simulateSeason({
+        snapshot,
+        projections: projectSeason(teams, pool, weeks),
+        iterations: PAGE_ITERATIONS,
+        seed: context.seed ?? 0,
+        // Free: pricing this week's games rides along on the season we already
+        // simulate, instead of costing two more simulations per game.
+        ...(mine === undefined ? {} : { leverage: { teamId: mine.id, week: snapshot.asOfWeek } }),
+      }),
+    [
+      'season-sim',
+      snapshot.league.id,
+      String(snapshot.asOfWeek),
+      String(PAGE_ITERATIONS),
+      artifact?.generatedAt ?? 'no-artifact',
+      mine?.id ?? 'no-team',
+      rosterSignature,
+    ],
+    { revalidate: 900 },
+  );
+
+  const result = await simulate();
 
   return {
     snapshot,

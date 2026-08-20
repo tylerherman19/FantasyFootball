@@ -13,6 +13,7 @@ import {
   type TradeAsset,
   type TradeEvaluation,
 } from '@ffe/core';
+import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
 import { loadMarketData } from './values';
@@ -103,7 +104,17 @@ const inferNeeds = (
   return { needs, surplus };
 };
 
-export const loadTrades = async (view: LeagueView, teamId: string): Promise<TradeView | null> => {
+export interface TradeQuery {
+  readonly objective?: 'winNow' | 'balanced' | 'rebuild';
+  readonly targetPlayerId?: string | null;
+  readonly targetPosition?: string | null;
+}
+
+export const loadTrades = async (
+  view: LeagueView,
+  teamId: string,
+  query: TradeQuery = {},
+): Promise<TradeView | null> => {
   const { snapshot, context } = view;
 
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
@@ -243,6 +254,31 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
 
   // Screen cheaply, then re-simulate the survivors precisely — the same
   // two-stage shape the waiver page uses.
+  /*
+   * Ages, so a rebuild can tell a 22-year-old from a 30-year-old. Derived from
+   * the crosswalk's birthdates; a player without one is treated as prime rather
+   * than guessed at, so a missing date cannot pass for youth.
+   */
+  const identities = await loadIdentities();
+  const ages = new Map<string, number>();
+  for (const [id, identity] of Object.entries(identities)) {
+    if (identity.birthdate === null) continue;
+    const born = Date.parse(identity.birthdate);
+    if (Number.isNaN(born)) continue;
+    ages.set(id, (Date.now() - born) / (365.25 * 24 * 60 * 60 * 1000));
+  }
+
+  const targeting = {
+    ...(query.objective !== undefined ? { objective: query.objective } : {}),
+    ...(query.targetPlayerId != null
+      ? { targetPlayerIds: [asPlayerId(query.targetPlayerId)] }
+      : {}),
+    ...(query.targetPosition != null
+      ? { targetPositions: [query.targetPosition as Position] }
+      : {}),
+    ages,
+  };
+
   const screened = findTrades({
     context: { ...context, iterations: SCREEN_ITERATIONS },
     myTeamId: teamId,
@@ -250,6 +286,7 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     needs,
     surplus,
     finalists: 6,
+    ...targeting,
   });
 
   const evaluations = screened
@@ -265,6 +302,7 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
         needs,
         surplus,
         finalists: 1,
+        ...targeting,
       }),
     )
     .flat();

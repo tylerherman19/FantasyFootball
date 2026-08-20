@@ -1,4 +1,5 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { TradeObjectiveBar } from '@/components/TradeObjectiveBar';
 import { Section } from '@/components/Section';
 import { TradeBuilder } from '@/components/TradeBuilder';
 import {
@@ -25,8 +26,25 @@ const VERDICT_COLOR: Record<string, string> = {
   surplus: 'var(--good)',
 };
 
-export default async function TradesPage({ params }: { params: Promise<{ leagueId: string }> }) {
+export default async function TradesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ leagueId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { leagueId } = await params;
+  const search = await searchParams;
+
+  const one = (value: string | string[] | undefined): string | null =>
+    typeof value === 'string' && value !== '' ? value : null;
+
+  const objective = one(search.objective);
+  const tradeQuery = {
+    objective: objective === 'winNow' || objective === 'rebuild' ? objective : 'balanced',
+    targetPlayerId: one(search.target),
+    targetPosition: one(search.pos),
+  } as const;
   const session = await requireSession();
   const view = await loadLeague(leagueId, session.username);
 
@@ -38,13 +56,38 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
   const { snapshot } = view;
 
   const [trades, values, players, picks] = await Promise.all([
-    loadTrades(view, myTeamId),
+    loadTrades(view, myTeamId, tradeQuery),
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadPicks(view),
   ]);
 
   const wire = serializeLeague(view, values, players, picks);
+
+  /*
+   * Everyone else's players, as things to go and get.
+   *
+   * Own players are excluded — "trade for a player you already have" is not a
+   * request — and the list is ordered by market value so the names a manager is
+   * most likely to want are reachable without scrolling.
+   */
+  const targetable = snapshot.rosters
+    .filter((roster) => roster.teamId !== myTeamId)
+    .flatMap((roster) =>
+      roster.playerIds.map((id) => {
+        const player = players[String(id)];
+        return {
+          id: String(id),
+          name: player?.name ?? String(id),
+          position: player?.position ?? '?',
+          teamName: view.teamNames.get(roster.teamId) ?? roster.teamId,
+          value: values.get(String(id))?.value ?? 0,
+        };
+      }),
+    )
+    .filter((player) => player.name !== player.id)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 300);
 
   return (
     <>
@@ -58,6 +101,8 @@ export default async function TradesPage({ params }: { params: Promise<{ leagueI
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
+        <TradeObjectiveBar players={targetable} />
+
         <Section
           title="Trade calculator"
           note={

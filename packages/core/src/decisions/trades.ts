@@ -114,7 +114,27 @@ export interface TradeFinderInput {
   readonly fairnessBand?: number;
   /** How many candidates survive to full simulation. */
   readonly finalists?: number;
+  /**
+   * What the manager is trying to do, which changes what "a good trade" means.
+   *
+   * A contender and a rebuilding team can look at the same package and both be
+   * right to disagree: one is buying this season's points, the other is buying
+   * assets that are still assets in two years. Ranking both on one number tells
+   * one of them the wrong thing.
+   */
+  readonly objective?: TradeObjective;
+  /** Only propose packages that acquire one of these players. */
+  readonly targetPlayerIds?: readonly PlayerId[];
+  /** Only propose packages that acquire one of these positions. */
+  readonly targetPositions?: readonly Position[];
+  /** Player ages, for objectives that care. Unknown ages count as prime. */
+  readonly ages?: ReadonlyMap<string, number>;
 }
+
+export type TradeObjective = 'winNow' | 'balanced' | 'rebuild';
+
+/** Blunt on purpose: enough to prefer youth, not an age curve. */
+const PRIME_AGE = 26;
 
 interface Candidate {
   readonly partnerId: string;
@@ -146,13 +166,33 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   const finalists = input.finalists ?? 10;
 
   const mine = assetsByTeam.get(myTeamId) ?? [];
-  const myTradeable = mine.filter((a) => input.surplus.includes(a.position));
+  /*
+   * Surplus narrows the outgoing side; it does not gate it. A roster with
+   * nothing flagged spare is the normal case, and it still has trades.
+   */
+  const myTradeable =
+    input.surplus.length > 0 ? mine.filter((a) => input.surplus.includes(a.position)) : mine;
 
   const candidates: Candidate[] = [];
 
   for (const [partnerId, theirAssets] of assetsByTeam) {
     if (partnerId === myTeamId) continue;
-    const theirTargets = theirAssets.filter((a) => input.needs.includes(a.position));
+    /*
+     * A named player or position is a far stronger statement of intent than the
+     * depth heuristic, so it replaces it rather than stacking with it — "get me
+     * Stafford" should not be filtered to nothing because quarterback happened
+     * not to be flagged thin.
+     */
+    const theirTargets =
+      input.targetPlayerIds !== undefined && input.targetPlayerIds.length > 0
+        ? theirAssets.filter((a) =>
+            input.targetPlayerIds!.some((id) => String(id) === String(a.playerId)),
+          )
+        : input.targetPositions !== undefined && input.targetPositions.length > 0
+          ? theirAssets.filter((a) => input.targetPositions!.includes(a.position))
+          : input.needs.length > 0
+            ? theirAssets.filter((a) => input.needs.includes(a.position))
+            : theirAssets;
 
     for (const target of theirTargets) {
       for (const offer of myTradeable) {
@@ -205,6 +245,39 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
    * nothing clears the bar is a real answer; an empty page reads as broken.
    */
   const floor = 2 / Math.sqrt(context.iterations ?? 4_000);
+  const objective = input.objective ?? 'balanced';
+
+  /** Net years of youth acquired. Unknown ages count as prime, never young. */
+  const youthGain = (evaluation: TradeEvaluation): number => {
+    const ages = input.ages;
+    if (ages === undefined) return 0;
+
+    const meanAge = (assets: readonly TradeAsset[]): number => {
+      const known = assets
+        .map((asset) => ages.get(String(asset.playerId)))
+        .filter((age): age is number => age !== undefined);
+      return known.length === 0 ? PRIME_AGE : known.reduce((a, b) => a + b, 0) / known.length;
+    };
+
+    return meanAge(evaluation.sideA.sends) - meanAge(evaluation.sideB.sends);
+  };
+
+  /*
+   * A rebuilding team should happily accept a package that lowers its odds this
+   * season — that is the trade, present production for future assets — so it
+   * ranks on market value and youth instead. Ranking it on title odds would
+   * reject every rebuild trade there is.
+   */
+  if (objective === 'rebuild') {
+    const byValue = [...ranked].sort(
+      (a, b) =>
+        (b.valueDelta.get(myTeamId) ?? 0) - (a.valueDelta.get(myTeamId) ?? 0) ||
+        youthGain(b) - youthGain(a),
+    );
+    const gains = byValue.filter((evaluation) => (evaluation.valueDelta.get(myTeamId) ?? 0) > 0);
+    return gains.length > 0 ? gains : byValue.slice(0, 3);
+  }
+
   const helpful = ranked.filter(
     (evaluation) => (evaluation.odds.get(myTeamId)?.titleDelta ?? 0) > floor,
   );

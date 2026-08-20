@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type { ValueSnapshot } from './values.js';
 
 /**
  * Where snapshots go.
@@ -43,6 +44,7 @@ export interface OddsSnapshot {
 export interface SnapshotStore {
   writeProjections(rows: readonly ProjectionSnapshot[]): Promise<number>;
   writeOdds(rows: readonly OddsSnapshot[]): Promise<number>;
+  writeValues(rows: readonly ValueSnapshot[]): Promise<number>;
 }
 
 /**
@@ -63,6 +65,17 @@ export class JsonlSnapshotStore implements SnapshotStore {
     if (rows.length === 0) return 0;
     const first = rows[0]!;
     return this.#append(join(this.root, 'odds', `${first.season}-${String(first.week).padStart(2, '0')}.jsonl`), rows);
+  }
+
+  /**
+   * Market prices are evidence, not merely the latest value. Keep a local
+   * append-only record even when Supabase is unavailable so value movement can
+   * be audited and later backfilled.
+   */
+  async writeValues(rows: readonly ValueSnapshot[]): Promise<number> {
+    if (rows.length === 0) return 0;
+    const capturedDate = rows[0]!.capturedAt.slice(0, 10);
+    return this.#append(join(this.root, 'values', `${capturedDate}.jsonl`), rows);
   }
 
   async #append(path: string, rows: readonly unknown[]): Promise<number> {

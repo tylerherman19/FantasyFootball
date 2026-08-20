@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import gzip
 import io
+import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -49,11 +51,15 @@ DATASETS: tuple[Dataset, ...] = (
     Dataset("ngs_passing", "nextgen_stats", "ngs_{season}_passing.csv.gz"),
     Dataset("ngs_receiving", "nextgen_stats", "ngs_{season}_receiving.csv.gz"),
     Dataset("ngs_rushing", "nextgen_stats", "ngs_{season}_rushing.csv.gz"),
+    # FTN charting updates during the season. It is valid serve-time context
+    # once the relevant game has completed; FeatureStore.as_of() keeps the
+    # target week out of every read. Do not confuse this with participation:
+    # from 2023 onward that dataset arrives after the season ends.
     Dataset(
         "ftn_charting",
         "ftn_charting",
         "ftn_charting_{season}.csv.gz",
-        note="TRAIN-TIME ONLY: published after the season ends. Never an in-season input.",
+        note="CC BY-SA 4.0 via FTN Data/nflverse; updated during the season.",
     ),
     Dataset(
         "pbp_participation",
@@ -68,8 +74,39 @@ DATASETS: tuple[Dataset, ...] = (
 )
 
 #: Datasets that must never be read at inference time. Enforced by the feature
-#: store; listed here so the reason travels with the data.
+#: store; listed here so the reason travels with the data. FTN charting is
+#: deliberately absent: its update schedule supports in-season use.
 TRAIN_TIME_ONLY = frozenset(d.name for d in DATASETS if d.note.startswith("TRAIN-TIME ONLY"))
+
+
+def _write_manifest(
+    out_root: Path, datasets: tuple[Dataset, ...], assets: list[dict[str, object]]
+) -> None:
+    """Record exactly what the lake contains and its inference eligibility.
+
+    Parquet holds rows, not the provenance required to decide whether a feature
+    can be served. This compact sidecar is written after a sync so a model run
+    can be reproduced and source/licensing review does not depend on memory.
+    """
+    payload = {
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "source": "nflverse-data GitHub releases",
+        "datasets": [
+            {
+                "name": dataset.name,
+                "release": dataset.release,
+                "asset": dataset.asset,
+                "serveTimeEligible": dataset.name not in TRAIN_TIME_ONLY,
+                "note": dataset.note or None,
+            }
+            for dataset in datasets
+        ],
+        # One entry per actual Parquet file, including pre-existing files found
+        # during a resumed sync. This answers "which history trained this
+        # artifact?" without trusting a mutable directory listing later.
+        "assets": assets,
+    }
+    (out_root / "manifest.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _url(dataset: Dataset, season: int | None) -> str:
@@ -85,11 +122,25 @@ def fetch(dataset: Dataset, season: int | None, client: httpx.Client) -> pl.Data
     recording zero rows.
     """
     url = _url(dataset, season)
-    response = client.get(url, follow_redirects=True, timeout=180.0)
+    try:
+        response = client.get(url, follow_redirects=True, timeout=180.0)
+    except httpx.RequestError as error:
+        label = f"{dataset.name}/{season}" if season is not None else dataset.name
+        raise RuntimeError(
+            f"nflverse download failed for {label}: {error}. "
+            "Check terminal network/DNS access, then rerun; existing Parquet files are reused."
+        ) from error
 
     if response.status_code == 404 and url.endswith(".gz"):
         url = url[: -len(".gz")]
-        response = client.get(url, follow_redirects=True, timeout=180.0)
+        try:
+            response = client.get(url, follow_redirects=True, timeout=180.0)
+        except httpx.RequestError as error:
+            label = f"{dataset.name}/{season}" if season is not None else dataset.name
+            raise RuntimeError(
+                f"nflverse fallback download failed for {label}: {error}. "
+                "Check terminal network/DNS access, then rerun; existing Parquet files are reused."
+            ) from error
 
     if response.status_code == 404:
         return None
@@ -110,6 +161,7 @@ def sync(
 ) -> dict[str, int]:
     """Mirror datasets to Parquet. Returns rows written per dataset."""
     written: dict[str, int] = {}
+    assets: list[dict[str, object]] = []
 
     with httpx.Client(headers={"user-agent": "ffe-model/0.0"}) as client:
         for dataset in datasets:
@@ -124,7 +176,17 @@ def sync(
                 path = target_dir / f"{label}.parquet"
 
                 if path.exists() and not overwrite:
-                    total += pl.scan_parquet(path).select(pl.len()).collect().item()
+                    rows = pl.scan_parquet(path).select(pl.len()).collect().item()
+                    total += rows
+                    assets.append(
+                        {
+                            "dataset": dataset.name,
+                            "season": season,
+                            "path": str(path.relative_to(out_root)),
+                            "rows": rows,
+                            "bytes": path.stat().st_size,
+                        }
+                    )
                     continue
 
                 frame = fetch(dataset, season, client)
@@ -139,10 +201,20 @@ def sync(
 
                 frame.write_parquet(path, compression="zstd")
                 total += frame.height
+                assets.append(
+                    {
+                        "dataset": dataset.name,
+                        "season": season,
+                        "path": str(path.relative_to(out_root)),
+                        "rows": frame.height,
+                        "bytes": path.stat().st_size,
+                    }
+                )
                 print(f"  {dataset.name}/{label}: {frame.height:,} rows, {frame.width} cols")
 
             written[dataset.name] = total
 
+    _write_manifest(out_root, datasets, assets)
     return written
 
 

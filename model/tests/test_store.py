@@ -6,21 +6,40 @@ bad, we learn something. If they fail, every backtest number is a lie.
 
 from __future__ import annotations
 
-from pathlib import Path
-
+import polars as pl
 import pytest
 
 from model.features.store import AsOf, FeatureStore, LeakageError
 from model.ingest.nflverse import TRAIN_TIME_ONLY
 
-LAKE = Path(__file__).resolve().parents[2] / "data" / "lake"
-
-pytestmark = pytest.mark.skipif(not LAKE.exists(), reason="lake not synced")
-
 
 @pytest.fixture
-def store() -> FeatureStore:
-    with FeatureStore(LAKE) as s:
+def store(tmp_path) -> FeatureStore:
+    """A deliberately tiny lake makes leakage guarantees testable everywhere.
+
+    These tests previously depended on a developer's downloaded lake. An empty
+    directory left behind by an interrupted sync made them fail for the wrong
+    reason, and a missing directory skipped the most important tests entirely.
+    """
+    lake = tmp_path / "lake"
+
+    def write(name: str, rows: dict[str, list[object]]) -> None:
+        path = lake / name
+        path.mkdir(parents=True)
+        pl.DataFrame(rows).write_parquet(path / "fixture.parquet")
+
+    write(
+        "player_stats",
+        {
+            "season": [2021, 2022, 2023, 2024, 2024, 2024, 2025],
+            "week": [1, 1, 1, 7, 8, 10, 1],
+            "player_id": ["a", "b", "c", "d", "e", "f", "g"],
+        },
+    )
+    write("pbp_participation", {"season": [2022, 2023, 2024], "week": [1, 1, 1]})
+    write("combine", {"player_id": ["a"], "forty": [4.5]})
+
+    with FeatureStore(lake) as s:
         yield s
 
 
@@ -75,12 +94,13 @@ def test_unfiltered_reads_of_train_only_data_are_refused(store: FeatureStore) ->
     hand back the in-flight season. Only `as_of()`, which truncates to completed
     seasons, is safe."""
     with pytest.raises(LeakageError, match="after the season ends"):
-        store.raw("ftn_charting")
+        store.raw("pbp_participation")
 
 
 def test_train_time_only_is_available_when_explicitly_requested(store: FeatureStore) -> None:
     """Research code may use it — for stabilization constants, not inference."""
-    relation = store.raw("ftn_charting", allow_train_only=True)
+    dataset = next(iter(TRAIN_TIME_ONLY))
+    relation = store.raw(dataset, allow_train_only=True)
     assert relation.limit(1).fetchone() is not None
 
 

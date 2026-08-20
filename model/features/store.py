@@ -12,16 +12,17 @@ So every read goes through `as_of`, and every dataset is classified:
   stabilization constants, deciding which signals matter) and illegal at
   inference. Requesting one without `allow_train_only=True` raises.
 
-FTN charting is the concrete trap: route participation and targets-per-route-run
-are the best usage signals available, and they don't exist until the season is
-over. Using them at inference would build training/serving skew straight into
-the model.
+Participation is the concrete trap: newer participation data is published after
+the season ends. FTN charting, by contrast, is refreshed during the season and
+is legal after its game completes. Using the former at inference would build
+training/serving skew straight into the model.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 import duckdb
 
@@ -96,9 +97,8 @@ class FeatureStore:
         """
         # Train-time-only data is published once a season ends — so *prior*
         # seasons are legitimately knowable today, and only the current season is
-        # off limits. Blocking the dataset outright would throw away the single
-        # best source of defensive scheme tendencies, which persist year to year.
-        # So: allow completed seasons, hard-stop the in-flight one.
+        # off limits. FTN charting is intentionally not in this category: it is
+        # updated in season and becomes legal when its game completes.
         is_train_only = dataset in TRAIN_TIME_ONLY
         relation = self.raw(dataset, allow_train_only=is_train_only or allow_train_only)
         columns = set(relation.columns)
@@ -126,7 +126,7 @@ class FeatureStore:
     def close(self) -> None:
         self.con.close()
 
-    def __enter__(self) -> FeatureStore:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:

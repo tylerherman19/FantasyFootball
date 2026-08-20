@@ -70,7 +70,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
         }
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {analysis === null ? (
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>No roster to analyse.</strong> Either the league

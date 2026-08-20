@@ -62,7 +62,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
     return (
       <>
         {nav}
-        <main className="mx-auto max-w-6xl px-5 pb-20">
+        <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>No team to advise.</strong> Either the league
             hasn&apos;t drafted, or {session.username} isn&apos;t one of its managers.
@@ -82,7 +82,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
     <>
       {nav}
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {/* ---- the verdict ------------------------------------------------ */}
         <section className="mb-9">
           <div className="panel overflow-hidden">

@@ -79,7 +79,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {/*
          * What this board is, before the board.
          *

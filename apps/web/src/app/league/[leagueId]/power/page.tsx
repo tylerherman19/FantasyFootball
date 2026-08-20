@@ -79,7 +79,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {!drafted ? (
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>Nothing to rank yet.</strong> Every roster is

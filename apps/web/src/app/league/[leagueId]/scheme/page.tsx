@@ -66,7 +66,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
     return (
       <>
         {nav}
-        <main className="mx-auto max-w-6xl px-5 pb-20">
+        <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             No defensive profile artifact. Build one with{' '}
             <code>python model/export_defense.py 2024 2025</code>.
@@ -106,7 +106,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
     <>
       {nav}
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         <Section
           title="The trade every defense has to make"
           note={

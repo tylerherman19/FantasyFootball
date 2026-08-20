@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { AppRail, ICONS } from './AppRail';
 import { LeagueSwitcher } from './LeagueSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { listLeagues } from '@/lib/league-data';
@@ -41,6 +42,20 @@ const TABS = [
   { key: 'scheme', label: 'Scheme', href: '/scheme' },
 ] as const;
 
+/** One icon per section, by key. */
+const RAIL_ICONS: Record<string, React.ReactNode> = {
+  outlook: ICONS.outlook,
+  dynasty: ICONS.verdict,
+  power: ICONS.power,
+  lineup: ICONS.lineup,
+  waivers: ICONS.waivers,
+  trades: ICONS.trades,
+  roster: ICONS.roster,
+  schedule: ICONS.schedule,
+  usage: ICONS.usage,
+  scheme: ICONS.scheme,
+};
+
 export const LeagueNav = async ({
   leagueId,
   leagueName,
@@ -71,9 +86,28 @@ export const LeagueNav = async ({
 
   const activeTab = TABS.find((tab) => tab.key === active);
 
+  /*
+   * The rail carries navigation at the edge of the screen, where it belongs on
+   * a page whose content is wide tables and charts — a horizontal strip spends
+   * vertical space on every view and pushes the first number below the fold.
+   * The strip stays for narrow screens, where a fixed rail would eat width the
+   * tables need more.
+   */
+  const railItems = TABS.map((tab) => ({
+    key: tab.key,
+    label: tab.label,
+    href: `/league/${leagueId}${tab.href}`,
+    icon: RAIL_ICONS[tab.key] ?? ICONS.outlook,
+  }));
+
   return (
-  <header
-    className="sticky top-0 z-20 mb-6 border-b backdrop-blur"
+  <>
+    <div className="hidden lg:block">
+      <AppRail items={railItems} active={active} />
+    </div>
+
+    <header
+    className="sticky top-0 z-20 mb-6 border-b backdrop-blur lg:ml-14"
     style={{ borderColor: 'var(--rule)', background: 'color-mix(in srgb, var(--ground) 88%, transparent)' }}
   >
     <div className="mx-auto max-w-6xl px-5 pt-4">
@@ -147,5 +181,6 @@ export const LeagueNav = async ({
       </nav>
     </div>
   </header>
+  </>
   );
 };

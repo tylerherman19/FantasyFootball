@@ -107,7 +107,7 @@ export default async function SchedulePage({ params }: { params: Promise<{ leagu
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {isGuillotine && (
           <div className="panel mb-7 p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>No schedule in a guillotine league.</strong>{' '}

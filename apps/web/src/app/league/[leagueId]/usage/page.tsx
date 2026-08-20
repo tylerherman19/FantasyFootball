@@ -52,7 +52,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
           active="usage"
           format={snapshot.league.format}
         />
-        <main className="mx-auto max-w-6xl px-5 pb-20">
+        <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             No projection artifact for {snapshot.league.season} week {snapshot.asOfWeek}, so there is
             no usage to show. The model writes one per week; this page reads whatever is there.
@@ -112,7 +112,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         <Section
           title="What this page is"
           note={

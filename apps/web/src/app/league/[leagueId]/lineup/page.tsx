@@ -170,7 +170,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {/*
          * The week stated, including what is wrong with it.
          *

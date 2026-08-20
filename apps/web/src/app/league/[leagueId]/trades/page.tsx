@@ -100,7 +100,7 @@ export default async function TradesPage({
         format={snapshot.league.format}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
         {/*
          * The finding, before the machinery.
          *

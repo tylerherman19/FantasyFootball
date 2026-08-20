@@ -16,13 +16,24 @@
 
 export const THEME_STORAGE_KEY = 'ffe-theme';
 
+/*
+ * Light unless the reader has asked for dark, rather than whatever the OS says.
+ *
+ * Following `prefers-color-scheme` sounds respectful and has a real cost here:
+ * anyone whose desktop is dark never saw the light design at all, which is not
+ * a preference they expressed about this site. The charts are built and checked
+ * against the light surface first — the palette was validated for contrast on
+ * white — so light is the intended reading of this product, and dark is the
+ * deliberate alternative a reader can choose and keep.
+ *
+ * An explicit choice always wins and is remembered; only the absence of one
+ * defaults.
+ */
 export const themeScript = `
 (function () {
   try {
     var stored = localStorage.getItem('${THEME_STORAGE_KEY}');
-    var dark = stored ? stored === 'dark'
-      : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.dataset.theme = stored === 'dark' ? 'dark' : 'light';
   } catch (e) {
     document.documentElement.dataset.theme = 'light';
   }

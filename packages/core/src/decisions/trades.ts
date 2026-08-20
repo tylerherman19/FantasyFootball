@@ -176,9 +176,9 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
     }
   }
 
-  const ranked = candidates.sort((a, b) => b.proxyScore - a.proxyScore).slice(0, finalists);
-
-  return ranked
+  const ranked = candidates
+    .sort((a, b) => b.proxyScore - a.proxyScore)
+    .slice(0, finalists)
     .map((candidate) =>
       evaluateTrade(
         context,
@@ -186,11 +186,30 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
         { teamId: candidate.partnerId, sends: candidate.iGet },
       ),
     )
-    .filter((evaluation) => (evaluation.odds.get(myTeamId)?.titleDelta ?? 0) > 0)
     .sort(
       (a, b) =>
         (b.odds.get(myTeamId)?.titleDelta ?? 0) - (a.odds.get(myTeamId)?.titleDelta ?? 0),
     );
+
+  /*
+   * Ranked, not filtered.
+   *
+   * Requiring a positive title delta looks like quality control and behaves like
+   * a coin flip. A season simulated `n` times resolves probability no finer than
+   * about `2/sqrt(n)`, and most single-player moves are smaller than that — so
+   * the sign of the delta is sampling noise, roughly half of every genuine
+   * upgrade was thrown away, and the page reported that no good trades existed.
+   * That was a statement about the filter, not about the trade market.
+   *
+   * The ranking still puts the best first. Returning the closest few when
+   * nothing clears the bar is a real answer; an empty page reads as broken.
+   */
+  const floor = 2 / Math.sqrt(context.iterations ?? 4_000);
+  const helpful = ranked.filter(
+    (evaluation) => (evaluation.odds.get(myTeamId)?.titleDelta ?? 0) > floor,
+  );
+
+  return helpful.length > 0 ? helpful : ranked.slice(0, 3);
 };
 
 const pushIfFair = (

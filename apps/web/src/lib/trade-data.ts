@@ -220,7 +220,16 @@ export const loadTrades = async (view: LeagueView, teamId: string): Promise<Trad
     })
     .sort((a, b) => a.marginal - b.marginal);
 
-  if (needs.length === 0 || surplus.length === 0 || values.size === 0) {
+  /*
+   * Market values are the only hard requirement.
+   *
+   * Fairness decides whether a proposal is plausible, and without values there
+   * is nothing to judge. Needs and surplus are different: a heuristic for
+   * narrowing the search. Treating them as preconditions meant a balanced
+   * roster — the normal case — got an empty page that read as "there are no
+   * good trades" when in fact nothing had been searched.
+   */
+  if (values.size === 0) {
     return {
       evaluations: [],
       needs,

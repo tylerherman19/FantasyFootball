@@ -42,7 +42,17 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
     setResults(null);
   };
 
-  const helpful = (results ?? []).filter((r) => r.titleDelta > 0);
+  /*
+   * Ranked, not filtered.
+   *
+   * The same coin-flip problem as the trade finder: a fourth receiver moves a
+   * season's title probability by less than a browser-side simulation can
+   * resolve, so filtering on the sign discarded roughly half of every genuine
+   * upgrade and the wire reported that nothing helps, most weeks.
+   */
+  const ranked = [...(results ?? [])].sort((a, b) => b.titleDelta - a.titleDelta);
+  const RESOLUTION = 2 / Math.sqrt(2_000);
+  const anyDecisive = ranked.some((r) => r.titleDelta > RESOLUTION);
   const isFaab = league.waiverType === 'faab';
 
   return (
@@ -95,15 +105,17 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
         </button>
       </div>
 
-      {results !== null && helpful.length === 0 && (
-        <div className="rounded border p-4 text-sm" style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
-          <strong>Nothing on the wire helps.</strong> Of the {league.freeAgents.length} best available
-          players, none improves your title odds given what you are willing to drop.
-          {isFaab && ' Save the FAAB.'}
+      {results !== null && ranked.length > 0 && !anyDecisive && (
+        <div className="mb-3 rounded border p-4 text-sm"
+          style={{ borderColor: 'var(--rule)', background: 'var(--surface)' }}>
+          <strong>No decisive add.</strong> Every option below moves your title odds by less than
+          the ±{(RESOLUTION * 100).toFixed(1)}pp this simulation can resolve — they are ranked, but
+          the ordering among them is close to a tie.
+          {isFaab && ' This is a week to save the FAAB.'}
         </div>
       )}
 
-      {helpful.length > 0 && (
+      {ranked.length > 0 && (
         <div className="scroll-x">
           <table className="w-full min-w-[36rem] text-left text-sm">
             <thead>
@@ -118,7 +130,7 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
               </tr>
             </thead>
             <tbody>
-              {helpful.map((result) => (
+              {ranked.map((result) => (
                 <tr key={result.playerId} className="border-b" style={{ borderColor: 'var(--rule)' }}>
                   <td className="py-2">
                     <span className="font-medium">{result.name}</span>
@@ -133,7 +145,15 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
                   <td className="tabular py-2 text-right" style={{ color: 'var(--ink-muted)' }}>
                     {pct(result.playoffDelta)}
                   </td>
-                  <td className="tabular py-2 text-right font-medium" style={{ color: 'var(--good)' }}>
+                  <td className="tabular py-2 text-right font-medium"
+                    style={{
+                      color:
+                        result.titleDelta > RESOLUTION
+                          ? 'var(--good)'
+                          : result.titleDelta < -RESOLUTION
+                            ? 'var(--bad)'
+                            : 'var(--ink-faint)',
+                    }}>
                     {pct(result.titleDelta)}
                   </td>
                   {isFaab && (

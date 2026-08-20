@@ -2,6 +2,8 @@ import { optimalLineup, asPlayerId, type LineupCandidate, type Position } from '
 import { LeagueNav } from '@/components/LeagueNav';
 import { requireSession } from '@/lib/session';
 import { LineupBoard, type LineupSlotView } from '@/components/LineupBoard';
+import { StarterMatchups, type StarterMatchup } from '@/components/StarterMatchups';
+import { loadDefenses, matchupFor, opponentFrom } from '@/lib/defense';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -83,6 +85,43 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
     playerId: String(player.playerId),
     ...describe(String(player.playerId), player.projectedPoints),
   }));
+
+  /*
+   * Scheme context for the players actually being started.
+   *
+   * The numbers live on their own page, which is the wrong place to read them:
+   * a matchup only matters where the start/sit call is made. Only starters, and
+   * only the positions a scheme read says anything useful about — a kicker's
+   * week is not decided by coverage shell.
+   */
+  const defenses = await loadDefenses();
+  const SCHEME_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+
+  const matchups: StarterMatchup[] = slots.flatMap((slot) => {
+    if (slot.playerId === null || !SCHEME_POSITIONS.has(slot.position)) return [];
+    if (defenses === null) return [];
+
+    const projection = artifact?.players[slot.playerId];
+    const opponent =
+      projection === undefined ? null : opponentFrom(projection.gameId, slot.team);
+    const profile = opponent === null ? undefined : defenses.teams[opponent];
+
+    return [
+      {
+        playerId: slot.playerId,
+        name: slot.name,
+        position: slot.position,
+        team: slot.team,
+        opponent,
+        projected: slot.projected,
+        sd: slot.sd,
+        effect:
+          profile === undefined
+            ? null
+            : matchupFor(slot.position, profile, Object.values(defenses.teams)),
+      },
+    ];
+  });
 
   const total = slots.reduce((sum, slot) => sum + slot.projected, 0);
   const hurtStarters = slots.filter((slot) => slot.injuryStatus !== null);
@@ -290,6 +329,15 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
             note="Pick a starter to see who could legally take the slot and what each swap does to your title odds — including, often, that it does nothing worth thinking about."
           >
             <LineupBoard league={wire} myTeamId={myTeamId} slots={slots} bench={bench} />
+          </Section>
+        )}
+
+        {matchups.length > 0 && (
+          <Section
+            title="What each starter is walking into"
+            note="The opposing defense's measured tendencies, next to the projection they bear on — so the matchup is read where the decision is made rather than on a separate page. Every claim is a rank you can argue with, not a grade."
+          >
+            <StarterMatchups rows={matchups} />
           </Section>
         )}
       </main>

@@ -80,6 +80,32 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
+        {/*
+         * What this board is, before the board.
+         *
+         * The ranking is the unusual thing here and it is invisible until
+         * explained: free agents are ordered by what they add to *this* lineup,
+         * not by projected points. Without saying so, a reader sees a receiver
+         * above a higher-projected quarterback and concludes the page is wrong,
+         * when it is being right in the way that matters.
+         */}
+        <div
+          className="mb-5 border-l-2 px-4 py-3 text-sm leading-relaxed"
+          style={{ borderColor: 'var(--accent)', background: 'var(--surface-sunk)' }}
+        >
+          <strong>
+            {freeAgents.length} free {freeAgents.length === 1 ? 'agent' : 'agents'} worth screening,
+            ranked by what they add to your lineup.
+          </strong>{' '}
+          <span style={{ color: 'var(--ink-muted)' }}>
+            Not by projected points — a third quarterback out-projects most receivers and cannot
+            crack a lineup already starting two, so he is worth approximately nothing to you.
+            {budget.seasonBudget > 0
+              ? ` You have $${budget.remainingBudget} of $${budget.seasonBudget} FAAB left.`
+              : ' This league runs waiver priority, so there is no bid to size.'}{' '}
+            Choose what you are willing to drop below, then rank the wire against that.
+          </span>
+        </div>
         {byOpportunity.length > 0 && (
           <Section
             title="Volume on the wire"

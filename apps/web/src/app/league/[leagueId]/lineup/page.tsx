@@ -171,6 +171,44 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
+        {/*
+         * The week stated, including what is wrong with it.
+         *
+         * A projection alone reads as a promise. Pairing it with the spread and
+         * naming the two things a manager can actually act on — a flagged
+         * starter and an unfilled slot — turns a number into a to-do list.
+         */}
+        <div
+          className="mb-5 border-l-2 px-4 py-3 text-sm leading-relaxed"
+          style={{ borderColor: 'var(--accent)', background: 'var(--surface-sunk)' }}
+        >
+          <strong>
+            Your best legal lineup projects {total.toFixed(1)} points, give or take{' '}
+            {lineupSd.toFixed(1)}.
+          </strong>{' '}
+          <span style={{ color: 'var(--ink-muted)' }}>
+            {emptySlots.length > 0 && (
+              <>
+                {emptySlots.length} slot{emptySlots.length === 1 ? '' : 's'} sit empty (
+                {emptySlots.map((slot) => slot.slot).join(', ')}) and will score zero until filled —
+                that is the first thing to fix.{' '}
+              </>
+            )}
+            {hurtStarters.length > 0 && (
+              <>
+                {hurtStarters.map((slot) => slot.name).join(' and ')}{' '}
+                {hurtStarters.length === 1 ? 'carries' : 'carry'} an injury designation and{' '}
+                {hurtStarters.length === 1 ? 'is' : 'are'} already discounted by the chance of
+                playing.{' '}
+              </>
+            )}
+            {emptySlots.length === 0 && hurtStarters.length === 0 && (
+              <>Nothing is flagged and every slot is filled. </>
+            )}
+            The lineup is solved rather than sorted, so in superflex it will start two quarterbacks
+            when the arithmetic says so.
+          </span>
+        </div>
         <Section
           title={`Week ${snapshot.asOfWeek}`}
           note={

@@ -20,6 +20,14 @@ import { Takeaway } from '@/components/Takeaway';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { positionalStrength } from '@/lib/positional-strength';
 import { requireSession } from '@/lib/session';
+import { InsightList } from '@/components/design/primitives';
+import { buildInsights } from '@/lib/insights';
+import { analysePortfolio, type PortfolioPlayer } from '@/lib/portfolio';
+import { loadAvailability } from '@/lib/availability';
+import { loadArtifact, loadLatestArtifact, scoreFor } from '@/lib/projections';
+import { loadMarketValues } from '@/lib/values';
+import { readFreshness } from '@/lib/refresh-runner';
+import { analyzeRoster } from '@/lib/roster-analysis';
 
 /**
  * Where the season stands, and what moves it.
@@ -62,6 +70,85 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
   const standardError = (probability: number): number =>
     Math.sqrt(Math.max(probability * (1 - probability), 0) / Math.max(result.iterations, 1));
 
+  /*
+   * "What matters right now" (§44).
+   *
+   * Assembled from outputs the model already produced rather than computed
+   * afresh, so an insight cannot disagree with the page it sits above. Every
+   * lookup is defensive: a missing artifact should cost one insight, never the
+   * whole page.
+   */
+  const [homeArtifact, homeValues, homeAvailability, homeFreshness, rosterAnalysis] =
+    await Promise.all([
+      loadArtifact(snapshot.league.season, snapshot.asOfWeek).catch(() => null),
+      loadMarketValues(snapshot.league.format, snapshot.league.superFlex).catch(() => new Map()),
+      loadAvailability().catch(() => ({}) as Record<string, { injuryStatus: string | null }>),
+      readFreshness(null).catch(() => []),
+      myTeamId === null || notDrafted
+        ? Promise.resolve(null)
+        : analyzeRoster(view, myTeamId).catch(() => null),
+    ]);
+
+  const myRosterPlayers =
+    myTeamId === null
+      ? []
+      : (snapshot.rosters.find((r) => r.teamId === myTeamId)?.playerIds ?? []).map(String);
+
+  const homePortfolio =
+    homeArtifact === null || myRosterPlayers.length === 0
+      ? null
+      : analysePortfolio(
+          myRosterPlayers.flatMap((id): PortfolioPlayer[] => {
+            const entry = homeArtifact.players[id];
+            if (entry === undefined) return [];
+            return [
+              {
+                playerId: id,
+                name: entry.name,
+                position: entry.position,
+                team: entry.team,
+                mean: scoreFor(entry, snapshot.league.scoring.raw, null, snapshot.asOfWeek),
+                sd: entry.sd,
+                gameId: entry.gameId,
+                gameLoading: entry.gameLoading,
+                marketValue: homeValues.get(id)?.value ?? 0,
+              },
+            ];
+          }),
+        );
+
+  const insights = buildInsights({
+    leagueId,
+    titleOdds: me?.titlePct ?? null,
+    playoffOdds: me?.playoffPct ?? null,
+    rosterCount: myRosterPlayers.length,
+    // A starter the solver would bench in favour of somebody on the bench.
+    benchedBetter: (rosterAnalysis?.players ?? [])
+      .filter((p) => !p.starting && p.marginal > 0.5)
+      .slice(0, 2)
+      .map((bench) => ({
+        startName:
+          (rosterAnalysis?.players ?? [])
+            .filter((p) => p.starting && p.position === bench.position)
+            .sort((a, b) => a.projected - b.projected)[0]?.name ?? 'a starter',
+        benchName: bench.name,
+        gain: bench.marginal,
+      })),
+    rookiesUnvalued: myRosterPlayers
+      .map((id) => homeArtifact?.players[id])
+      .filter((p) => p !== undefined && p.basis === 'rookie-prior')
+      .map((p) => p!.name),
+    portfolio: homePortfolio,
+    freshness: homeFreshness,
+    modelAgeMinutes:
+      homeArtifact === null
+        ? null
+        : Math.round((Date.now() - Date.parse(homeArtifact.generatedAt)) / 60_000),
+    injuredStarters: (rosterAnalysis?.players ?? [])
+      .filter((p) => p.starting && p.injuryStatus !== null && p.injuryStatus !== '')
+      .map((p) => ({ name: p.name, status: p.injuryStatus as string })),
+  });
+
   const myProfile = profiles.find((profile) => profile.isMine) ?? null;
   const leagueAverageStarters =
     profiles.length > 0 ? profiles.reduce((sum, p) => sum + p.starterPoints, 0) / profiles.length : 0;
@@ -83,6 +170,15 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+        {insights.length > 0 && (
+          <Section
+            title="What matters right now"
+            note="Ranked by consequence. Every line is a threshold applied to a number the model already computed, and the number is quoted so you can disagree with the threshold rather than trust the sentence."
+          >
+            <InsightList insights={insights} />
+          </Section>
+        )}
+
         {/*
          * The conclusion before the evidence.
          *

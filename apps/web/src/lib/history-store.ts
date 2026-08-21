@@ -93,14 +93,28 @@ const driverOf = (
   return best;
 };
 
+/**
+ * "Empty" and "unreachable" are not the same answer.
+ *
+ * The first version of this returned `[]` for both, and the page said "the store
+ * began recording this week" — while the real situation in production was that
+ * Supabase is not configured there and the store could not be reached at all. A
+ * confident wrong explanation is worse than an admission, and this product has
+ * spent the whole session removing exactly that pattern.
+ */
+export type HistoryResult =
+  | { readonly status: 'ok'; readonly changes: readonly ProjectionChange[] }
+  | { readonly status: 'unconfigured' }
+  | { readonly status: 'unreachable' };
+
 export const loadProjectionHistory = async (
   playerUid: string,
   rules: Readonly<Record<string, number>>,
   limit = 8,
-): Promise<readonly ProjectionChange[]> => {
+): Promise<HistoryResult> => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
-  if (!url || !key) return [];
+  if (!url || !key) return { status: 'unconfigured' };
 
   try {
     const query = new URLSearchParams({
@@ -115,11 +129,11 @@ export const loadProjectionHistory = async (
       headers: { apikey: key, authorization: `Bearer ${key}` },
       cache: 'no-store',
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { status: 'unreachable' };
 
     const rows = (await res.json()) as Row[];
 
-    return rows.map((row) => {
+    const changes = rows.map((row) => {
       const points = Math.max(0, scoreStatLine(row.stats ?? {}, rules));
       const previousPoints =
         row.previous_stats === null ? null : Math.max(0, scoreStatLine(row.previous_stats, rules));
@@ -136,8 +150,10 @@ export const loadProjectionHistory = async (
         driver: driverOf(row.stats ?? {}, row.previous_stats),
       };
     });
+
+    return { status: 'ok', changes };
   } catch {
-    return [];
+    return { status: 'unreachable' };
   }
 };
 

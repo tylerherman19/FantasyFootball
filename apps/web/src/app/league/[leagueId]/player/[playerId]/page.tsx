@@ -135,8 +135,13 @@ export default async function PlayerPage({
    */
   const playerUid =
     identity?.gsisId != null ? `gsis:${identity.gsisId}` : `sleeper:${playerId}`;
-  const changes = await loadProjectionHistory(playerUid, rules).catch(() => []);
-  const explained = changes.map((c) => ({ change: c, sentence: explainChange(c) }));
+  const revisions = await loadProjectionHistory(playerUid, rules).catch(
+    () => ({ status: 'unreachable' }) as const,
+  );
+  const explained =
+    revisions.status === 'ok'
+      ? revisions.changes.map((c) => ({ change: c, sentence: explainChange(c) }))
+      : [];
   const share = shareOfPeak(ageCurves, position, years);
   const remaining = remainingPeakSeasons(ageCurves, position, years, 4);
   const phase = careerPhase(ageCurves, position, years);
@@ -547,12 +552,23 @@ export default async function PlayerPage({
           title="What the model used to think"
           note="Every publication is kept, so a number that moves can be explained rather than just observed. The model version is stored beside each one, because a projection changing when the model changed is a different fact from one changing when the player did."
         >
-          {explained.length === 0 ? (
+          {revisions.status === 'unconfigured' ? (
             <p className="max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-              No history yet. The canonical store began recording this week, so there is one
-              publication and nothing to compare it against. This fills in from the next weekly
-              build — the point of keeping it is that the answer exists later, not that it exists
-              now.
+              The canonical store is not reachable from this deployment —{' '}
+              <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>SUPABASE_SECRET_KEY</code> are not
+              set. History is being recorded by the weekly job; this page just cannot read it.
+              That is a different thing from there being no history, and worth saying rather than
+              guessing.
+            </p>
+          ) : revisions.status === 'unreachable' ? (
+            <p className="max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--warn)' }}>
+              The canonical store did not answer. History exists but could not be read just now.
+            </p>
+          ) : explained.length === 0 ? (
+            <p className="max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+              Nothing recorded for this player yet. The store keeps every publication from the
+              weekly build onward, so this fills in from the next one — the point of keeping
+              history is that the answer exists later, not that it exists now.
             </p>
           ) : (
             <table className="w-full max-w-3xl">

@@ -876,6 +876,61 @@ any real decline, so the curve cannot answer and the asserted 34 stands, marked
 with an asterisk in the UI. A number nobody measured should not look like one
 somebody did.
 
+### H — Offensive model, served (§13, §53)
+
+`team_context.py` had computed pace and PROE since Phase 4b and nothing had ever
+read them except the declined v2 — correct features, invisible. Now exported,
+with **red-zone tendency** added, which was the genuinely missing piece: pace
+decides how many plays a team runs and PROE how it splits them, but neither says
+who gets the ball inside the twenty, where touchdown equity is assigned.
+
+```
+ARI  62.9 plays/g  31.8 s/play  PROE +6.6%  neutral .672  RZ pass .692
+BAL  56.1 plays/g  32.9 s/play  PROE −7.0%  neutral .526  RZ pass .401
+```
+
+Nothing here is opponent-adjusted, deliberately: these are tendencies, and
+tendencies are choices. A coach who throws on early downs does so against every
+defense, so adjusting for opponent would subtract signal. Surfaced on a new
+**team page** and in a section on the player page.
+
+### I — The matchup adjustment, retried and declined again (§14, §15)
+
+v2 adjusted *points* and lost. The obvious objection was that it adjusted the
+wrong quantity — v1's own finding is that volume is sticky and efficiency is
+noise, so adjusting points means adjusting mostly noise. v3 takes that objection
+seriously: same defensive strength estimate, applied to **opportunity** only,
+rates untouched.
+
+```
+v1-usage    MAE 4.568   CRPS 3.312
+v3 w0.25    MAE 4.567   CRPS 3.312   (+0.02%)
+v3 w0.50    MAE 4.569   CRPS 3.313   (worse)
+v3 w1.00    MAE 4.581   CRPS 3.323   (worse)
+```
+
+Same monotone decay. Kept and left unwired alongside v2.
+
+**This is the more informative negative.** Opponent strength does not predict a
+fantasy week through points, and it does not predict one through opportunity
+either — not at the resolution a season of team-level data can measure. Two
+independent attempts, one shape of failure. Anything finer needs charting data
+rather than box-score opportunity, and gets the same gate.
+
+This directly answers §14–15 of the brief, which asks for a large matchup
+apparatus feeding the projection. The evidence in this repository now says twice
+that the version everyone builds does not work. Scheme stays displayed beside a
+projection and out of the mean.
+
+### J — Multi-year dynasty value (§20)
+
+Each future season expressed as a share of the player's *current* level rather
+than of his position's peak — the distinction that makes two players at
+different points on the same curve comparable. Summed over four years it gives
+one number in the currency a trade actually turns on: seasons still to come,
+priced at what each man is worth today. Undiscounted on purpose, because the
+contend-or-rebuild read already makes that judgement explicitly.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -891,9 +946,10 @@ somebody did.
 - The aging curves are a **floor on decline**: the delta method still conditions
   on surviving into the second season, so real cohorts fall off faster.
 - The QB curve cannot reach the ages that matter for quarterbacks.
-- Still unbuilt from §12–15: the canonical database, the offensive model (pace,
-  PROE, red-zone tendency), the multidimensional defensive fingerprint, the
-  matchup retry on usage allocation, the injury hazard model, multi-year
-  probabilistic dynasty value, portfolio/correlation analysis, the what-if
-  scenario engine, the shared design system, and the full decision-first UI
-  reorganisation.
+- Multi-year value is a point estimate scaled by the aging curve, not a
+  probabilistic distribution as §20 asks.
+- Still unbuilt: the canonical database, the multidimensional defensive
+  fingerprint (coverage shell, blitz rate, man/zone — the data is on disk in
+  `ftn_charting` and `pbp_participation`), the injury hazard model,
+  portfolio/correlation analysis, the what-if scenario engine, the shared design
+  system, and the full decision-first UI reorganisation.

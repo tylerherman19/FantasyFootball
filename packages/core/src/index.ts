@@ -29,6 +29,7 @@ export {
   applyAvailability,
   isRuledOut,
   playProbability,
+  productionWhenPlaying,
   type AvailabilityAdjustment,
   type InjuryStatus,
 } from './projections/availability.js';

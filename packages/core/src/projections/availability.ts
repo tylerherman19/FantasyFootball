@@ -31,9 +31,47 @@ const PLAY_PROBABILITY: Readonly<Record<string, number>> = {
   Sus: 0,
   DNR: 0,
   COV: 0.35,
-  Doubtful: 0.25,
-  Questionable: 0.72,
+  // Measured, not assumed. `model/export_availability.py` joins every injury
+  // report since 2016 to who actually recorded a stat line:
+  //
+  //   Questionable   n=4,488   play rate 0.593
+  //   Doubtful       n=  529   play rate 0.008
+  //   Out            n=3,232   play rate 0.000
+  //
+  // Both game-time labels were badly mispriced. Questionable was set at 0.72
+  // against a measured 0.59, and Doubtful at 0.25 against 0.008 — a Doubtful
+  // player essentially never plays, and pricing him at one-in-four put a man
+  // who was not going to appear into the lineup solver every week.
+  Doubtful: 0.008,
+  Questionable: 0.593,
   NA: 0.9,
+};
+
+/**
+ * How much a player who *does* play produces, against his own healthy baseline.
+ *
+ * The half almost nobody prices. A Questionable receiver who suits up is playing
+ * hurt: measured over 2,359 such appearances he produced 0.774 of his own mean
+ * in the weeks he carried no designation. Treating "he played" as "he was fine"
+ * overstates every hurt starter, and it does so in the direction that loses
+ * leagues, because the manager starts him.
+ *
+ * Compared to himself rather than to healthy players, because comparing across
+ * players would mostly measure that better players get listed less often.
+ *
+ * Only Questionable carries a number: of 3,232 players listed Out exactly one
+ * recorded a stat line, and Doubtful had four, so any ratio from those is a
+ * single afternoon masquerading as a finding. Regenerate with
+ * `model/export_availability.py`.
+ */
+const PRODUCTION_WHEN_PLAYING: Readonly<Record<string, number>> = {
+  Questionable: 0.774,
+};
+
+/** Production multiplier for a player who appears carrying this designation. */
+export const productionWhenPlaying = (status: InjuryStatus): number => {
+  if (status === null || status === undefined || status === '') return 1;
+  return PRODUCTION_WHEN_PLAYING[status] ?? 1;
 };
 
 export const playProbability = (status: InjuryStatus): number => {
@@ -79,16 +117,32 @@ export const applyAvailability = (
     return { mean, sd, playProbability: 1, note: null };
   }
 
-  // Variance of a mixture: play (mean, sd) with probability p, else zero.
-  // Var = p*(sd^2 + mean^2) - (p*mean)^2, which exceeds p*sd^2 — the extra is
-  // the uncertainty about whether he plays at all.
-  const adjustedMean = mean * probability;
-  const variance = probability * (sd * sd + mean * mean) - adjustedMean * adjustedMean;
+  /*
+   * Two separate haircuts, because they are two separate facts.
+   *
+   * `probability` is whether he plays at all. `discount` is how well he plays
+   * given that he does — measured, and materially below one for Questionable.
+   * Applying only the first treats a hurt starter as his healthy self whenever
+   * he suits up, which is precisely the case a manager needs warned about.
+   */
+  const discount = productionWhenPlaying(status);
+  const playingMean = mean * discount;
+  const playingSd = sd * discount;
+
+  // Variance of a mixture: play (playingMean, playingSd) with probability p,
+  // else zero. Var = p*(sd^2 + mean^2) - (p*mean)^2, which exceeds p*sd^2 —
+  // the extra is the uncertainty about whether he plays at all.
+  const adjustedMean = playingMean * probability;
+  const variance =
+    probability * (playingSd * playingSd + playingMean * playingMean) - adjustedMean * adjustedMean;
 
   return {
     mean: adjustedMean,
     sd: Math.sqrt(Math.max(variance, 0)),
     playProbability: probability,
-    note: `${status} · ${Math.round(probability * 100)}% to play`,
+    note:
+      discount === 1
+        ? `${status} · ${Math.round(probability * 100)}% to play`
+        : `${status} · ${Math.round(probability * 100)}% to play, ${Math.round(discount * 100)}% of himself if he does`,
   };
 };

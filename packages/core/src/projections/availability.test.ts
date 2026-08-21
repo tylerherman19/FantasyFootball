@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyAvailability, isRuledOut, playProbability } from './availability.js';
+import {
+  applyAvailability,
+  isRuledOut,
+  playProbability,
+  productionWhenPlaying,
+} from './availability.js';
 
 describe('playProbability', () => {
   it('treats a healthy player as certain', () => {
@@ -15,11 +20,24 @@ describe('playProbability', () => {
     }
   });
 
-  it('treats questionable as likely and doubtful as unlikely', () => {
-    // The labels mean what they say, and managers routinely get this backwards.
-    expect(playProbability('Questionable')).toBeGreaterThan(0.6);
-    expect(playProbability('Doubtful')).toBeLessThan(0.4);
+  it('prices the game-time labels at their measured rates', () => {
+    /*
+     * These were hand-set until `model/export_availability.py` joined every
+     * injury report since 2016 to who actually recorded a stat line. Both were
+     * wrong, and Doubtful badly so: it was priced at one-in-four against a
+     * measured 0.8%, which put players who were never going to appear into the
+     * lineup solver every week.
+     */
+    expect(playProbability('Questionable')).toBeCloseTo(0.593, 3);
+    expect(playProbability('Doubtful')).toBeCloseTo(0.008, 3);
     expect(playProbability('Questionable')).toBeGreaterThan(playProbability('Doubtful'));
+  });
+
+  it('treats a coin-flip label as roughly a coin flip', () => {
+    // Managers routinely read "questionable" as "probably out". It is closer to
+    // even than that, and much closer to even than "doubtful".
+    expect(playProbability('Questionable')).toBeGreaterThan(0.5);
+    expect(playProbability('Doubtful')).toBeLessThan(0.05);
   });
 
   it('passes through an unknown status rather than guessing', () => {
@@ -48,9 +66,31 @@ describe('applyAvailability', () => {
     expect(result.note).toBeNull();
   });
 
-  it('scales the mean by the chance of playing', () => {
+  it('scales the mean by the chance of playing and by how well he plays', () => {
+    /*
+     * Two haircuts, because they are two facts. Whether he suits up, and how
+     * much of himself he is when he does — measured at 0.774 of his own healthy
+     * baseline over 2,359 Questionable appearances. Applying only the first
+     * treats a hurt starter as his healthy self, which is exactly the case a
+     * manager needs warned about.
+     */
     const result = applyAvailability(20, 6, 'Questionable', false);
-    expect(result.mean).toBeCloseTo(20 * playProbability('Questionable'), 6);
+    const expected = 20 * productionWhenPlaying('Questionable') * playProbability('Questionable');
+
+    expect(result.mean).toBeCloseTo(expected, 6);
+    expect(result.mean).toBeLessThan(20 * playProbability('Questionable'));
+  });
+
+  it('says both numbers in the note', () => {
+    const result = applyAvailability(20, 6, 'Questionable', false);
+
+    expect(result.note).toMatch(/% to play/);
+    expect(result.note).toMatch(/% of himself/);
+  });
+
+  it('applies no production discount to a healthy player', () => {
+    expect(productionWhenPlaying(null)).toBe(1);
+    expect(productionWhenPlaying('Some New Label')).toBe(1);
   });
 
   /**

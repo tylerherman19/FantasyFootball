@@ -16,7 +16,7 @@ import {
 import { unstable_cache } from 'next/cache';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
-import { loadArtifact, scoreFor } from './projections';
+import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadMarketData } from './values';
 
 /**
@@ -231,14 +231,14 @@ const buildTrades = async (
   const myRoster = snapshot.rosters.find((r) => r.teamId === teamId);
   const candidates: LineupCandidate[] = (myRoster?.playerIds ?? []).flatMap((id) => {
     const projection = artifact.players[String(id)];
-    if (projection === undefined || !projection.active) return [];
+    if (projection === undefined || !isPlayingIn(projection, snapshot.asOfWeek)) return [];
     const position = projection.position as Position;
     return [
       {
         playerId: asPlayerId(String(id)),
         position,
         eligiblePositions: [position],
-        projectedPoints: scoreFor(projection, snapshot.league.scoring.raw),
+        projectedPoints: scoreFor(projection, snapshot.league.scoring.raw, null, snapshot.asOfWeek),
         stddev: projection.sd,
       },
     ];
@@ -264,14 +264,14 @@ const buildTrades = async (
   const toCandidates = (playerIds: readonly unknown[]): LineupCandidate[] =>
     playerIds.flatMap((id) => {
       const projection = artifact.players[String(id)];
-      if (projection === undefined || !projection.active) return [];
+      if (projection === undefined || !isPlayingIn(projection, snapshot.asOfWeek)) return [];
       const position = projection.position as Position;
       return [
         {
           playerId: asPlayerId(String(id)),
           position,
           eligiblePositions: [position],
-          projectedPoints: scoreFor(projection, snapshot.league.scoring.raw),
+          projectedPoints: scoreFor(projection, snapshot.league.scoring.raw, null, snapshot.asOfWeek),
           stddev: projection.sd,
         },
       ];

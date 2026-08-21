@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { AppRail, ICONS } from './AppRail';
+import { Freshness } from './Freshness';
 import { LeagueSwitcher } from './LeagueSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { listLeagues } from '@/lib/league-data';
-import { readSession } from '@/lib/session';
+import { loadLatestArtifact } from '@/lib/projections';
+import { readFreshness } from '@/lib/refresh-runner';
+import { defaultSeason, readSession } from '@/lib/session';
 
 /**
  * League-scoped navigation.
@@ -76,6 +79,18 @@ export const LeagueNav = async ({
   const leagues =
     session === null ? [] : await listLeagues(session.username, session.season).catch(() => []);
 
+  /*
+   * Freshness rides in the header rather than living on a page of its own.
+   *
+   * The application had no way to say how old its numbers were, while the job
+   * that was supposed to refresh them had never once succeeded. A status page
+   * would not have caught that, because nobody visits a status page. This is in
+   * the corner of every screen instead, and it is allowed to fail quietly — a
+   * freshness widget must never be the reason a league page does not render.
+   */
+  const artifact = await loadLatestArtifact(session?.season ?? defaultSeason()).catch(() => null);
+  const sources = await readFreshness(artifact?.generatedAt ?? null).catch(() => []);
+
   const options = leagues.map((league) => ({
     id: league.platformLeagueId,
     name: league.name,
@@ -146,7 +161,10 @@ export const LeagueNav = async ({
           </p>
         </div>
 
-        <ThemeToggle />
+        <div className="flex shrink-0 items-center gap-3">
+          <Freshness sources={sources} modelGeneratedAt={artifact?.generatedAt ?? null} />
+          <ThemeToggle />
+        </div>
       </div>
 
       {stamps !== undefined && stamps.length > 0 && (

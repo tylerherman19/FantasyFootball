@@ -18,6 +18,16 @@ export interface PlayerInfo {
   readonly sd: number;
   /** False when we carry a name but no projection — rookies, IDP, defenses. */
   readonly projected: boolean;
+  /**
+   * The week this player's team does not play, or null if none is known.
+   *
+   * Lives here because this is the one place that reads the artifact purely for
+   * display metadata, and a bye is exactly that — a fact about the calendar
+   * rather than about a particular week's projection. The per-week
+   * `PlayerProjection` cannot carry it, since by construction it describes one
+   * week only.
+   */
+  readonly byeWeek: number | null;
 }
 
 /**
@@ -52,6 +62,7 @@ export const loadPlayerInfo = async (
       mean: 0,
       sd: 0,
       projected: false,
+      byeWeek: null,
     };
   }
 
@@ -60,9 +71,10 @@ export const loadPlayerInfo = async (
       name: player.name || out[id]?.name || id,
       position: player.position,
       team: player.team,
-      mean: scoreFor(player, rules),
+      mean: scoreFor(player, rules, null, week),
       sd: player.sd,
       projected: true,
+      byeWeek: player.byeWeek,
     };
   }
 

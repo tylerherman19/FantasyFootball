@@ -1,10 +1,10 @@
 {
- "generatedAt": "2026-08-19T01:31:52.753010+00:00",
+ "generatedAt": "2026-08-21T17:38:20.289120+00:00",
  "leagueAverage": {
   "adotAllowed": 7.6956,
   "completionRateAllowed": 0.646,
   "deepRateAllowed": 0.1143,
-  "explosivePassRateAllowed": 0.138,
+  "explosivePassRateAllowed": 0.1379,
   "explosiveRushRateAllowed": 0.1141,
   "intRate": 0.0217,
   "qbHitRate": 0.1523,

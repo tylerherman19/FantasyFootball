@@ -17,7 +17,7 @@ import { buildUsage } from '@/lib/usage';
 import { loadAvailability } from '@/lib/availability';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
-import { loadArtifact, scoreFor } from '@/lib/projections';
+import { isPlayingIn, loadArtifact, scoreFor } from '@/lib/projections';
 import { serializeLeague } from '@/lib/serialize';
 import { loadMarketValues } from '@/lib/values';
 
@@ -51,7 +51,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
 
   const candidates: LineupCandidate[] = (roster?.playerIds ?? []).flatMap((id) => {
     const projection = artifact?.players[String(id)];
-    if (projection === undefined || !projection.active) return [];
+    if (projection === undefined || !isPlayingIn(projection, snapshot.asOfWeek)) return [];
 
     const position = projection.position as Position;
     const status = availability[String(id)]?.injuryStatus ?? null;
@@ -61,7 +61,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         playerId: asPlayerId(String(id)),
         position,
         eligiblePositions: [position],
-        projectedPoints: scoreFor(projection, rules, status),
+        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek),
         stddev: projection.sd,
       },
     ];

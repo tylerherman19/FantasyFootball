@@ -23,6 +23,14 @@ export interface WirePlayer {
   readonly gameId: string;
   readonly gameLoading: number;
   readonly active: boolean;
+  /**
+   * The week this player's team does not play, or null if none is known.
+   *
+   * Carried onto the wire because the browser what-if simulation builds its own
+   * weekly pool and would otherwise have no bye information at all — playing
+   * everyone every week, including their own bye.
+   */
+  readonly byeWeek: number | null;
   readonly value: number;
   /** False when the model has no projection for this player at all. */
   readonly projected: boolean;
@@ -94,7 +102,7 @@ export interface WireLeague {
 export const serializeLeague = (
   view: LeagueView,
   values: ReadonlyMap<string, MarketValue>,
-  playerNames: Record<string, { name: string; position: string; team: string }>,
+  playerNames: Record<string, { name: string; position: string; team: string; byeWeek?: number | null }>,
   picks: readonly WirePick[] = [],
   freeAgents: readonly WirePlayer[] = [],
   waivers: { remainingBudget: number; seasonBudget: number } = { remainingBudget: 0, seasonBudget: 0 },
@@ -132,6 +140,7 @@ export const serializeLeague = (
       gameId: projection?.gameId ?? `none-${id}`,
       gameLoading: projection?.gameLoading ?? 0.3,
       active: projection?.active ?? false,
+      byeWeek: info?.byeWeek ?? null,
       value: values.get(id)?.value ?? 0,
     };
   }

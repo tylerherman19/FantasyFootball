@@ -2,7 +2,7 @@ import { asPlayerId, optimalLineup, type LineupCandidate, type Position } from '
 import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
-import { loadArtifact, scoreFor } from './projections';
+import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadMarketValues } from './values';
 
 /**
@@ -135,7 +135,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
       const points =
         projection === undefined
           ? 0
-          : scoreFor(projection, rules, availability[id]?.injuryStatus ?? null);
+          : scoreFor(projection, rules, availability[id]?.injuryStatus ?? null, snapshot.asOfWeek);
 
       const position = projection?.position ?? identity?.position ?? '?';
 
@@ -147,7 +147,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
         age: ageFrom(identity?.birthdate ?? null),
       });
 
-      if (projection !== undefined && projection.active) {
+      if (projection !== undefined && isPlayingIn(projection, snapshot.asOfWeek)) {
         candidates.push({
           playerId: asPlayerId(id),
           position: projection.position as Position,

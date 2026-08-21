@@ -8,7 +8,7 @@ import {
 import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
-import { loadArtifact, scoreFor } from './projections';
+import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadMarketValues } from './values';
 
 /**
@@ -81,7 +81,7 @@ export const analyzeRoster = async (
 
   const candidates: LineupCandidate[] = roster.playerIds.flatMap((id) => {
     const projection = artifact.players[String(id)];
-    if (projection === undefined || !projection.active) return [];
+    if (projection === undefined || !isPlayingIn(projection, snapshot.asOfWeek)) return [];
 
     const position = projection.position as Position;
     const status = availability[String(id)]?.injuryStatus ?? null;
@@ -91,7 +91,7 @@ export const analyzeRoster = async (
         playerId: asPlayerId(String(id)),
         position,
         eligiblePositions: [position],
-        projectedPoints: scoreFor(projection, rules, status),
+        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek),
         stddev: projection.sd,
       },
     ];

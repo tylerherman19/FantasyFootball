@@ -22,8 +22,9 @@ from pathlib import Path
 import polars as pl
 
 from model.backtest.harness import default_lake
+from model.export_byes import bye_weeks
 from model.features.store import AsOf, FeatureStore
-from model.models import v1_positional, v1_usage
+from model.models import rookie_prior, v1_positional, v1_usage
 
 MODEL_VERSION = "v1-usage+positional"
 
@@ -41,6 +42,44 @@ FANTASY_POSITION: dict[str, str] = {
     "OLB": "LB", "ILB": "LB", "MLB": "LB", "LB": "LB",
     "CB": "DB", "S": "DB", "SAF": "DB", "FS": "DB", "SS": "DB", "DB": "DB",
 }
+
+
+#: Team abbreviations, reconciled to the schedule's spelling.
+#:
+#: Three sources disagree, and the disagreement is silent. nflverse schedules say
+#: `ARI`; nflverse *rosters* say `AZ`; DynastyProcess says `GBP`, `KAN`, `NOR`,
+#: `LVR`. Nothing errors when they fail to match — a lookup just returns nothing,
+#: so a player quietly ends up with no game, no bye and no opponent. That is how
+#: 367 players came to have a null bye week while every individual source looked
+#: fine on its own.
+#:
+#: The schedule wins, because it is what game ids and byes are keyed by.
+#: Relocations map to the current franchise so historical rows resolve too.
+TEAM_ALIASES: dict[str, str] = {
+    "AZ": "ARI", "ARZ": "ARI",
+    "BLT": "BAL",
+    "CLV": "CLE",
+    "GBP": "GB", "GNB": "GB",
+    "HST": "HOU",
+    "JAC": "JAX",
+    "KAN": "KC",
+    "LAR": "LA", "STL": "LA", "RAM": "LA",
+    "SD": "LAC", "SDG": "LAC",
+    "OAK": "LV", "LVR": "LV", "RAI": "LV",
+    "NOR": "NO",
+    "NWE": "NE",
+    "SFO": "SF",
+    "TAM": "TB",
+    "WSH": "WAS", "WFT": "WAS",
+}
+
+
+def canonical_team(team: str | None) -> str:
+    """One spelling for one franchise, in the schedule's code space."""
+    if not team:
+        return ""
+    code = str(team).strip().upper()
+    return TEAM_ALIASES.get(code, code)
 
 
 #: Only used to derive a spread, never to score. Points come from each league.
@@ -68,8 +107,8 @@ def game_index(store: FeatureStore, season: int, week: int) -> dict[str, str]:
     index: dict[str, str] = {}
     for row in subset.iter_rows(named=True):
         game_id = str(row.get("game_id") or f"{season}_{week:02d}_{row['away_team']}_{row['home_team']}")
-        index[str(row["home_team"])] = game_id
-        index[str(row["away_team"])] = game_id
+        index[canonical_team(row["home_team"])] = game_id
+        index[canonical_team(row["away_team"])] = game_id
     return index
 
 
@@ -82,14 +121,30 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         idp_lines = v1_positional.idp_stat_lines(store, as_of)
         defense_lines = v1_positional.team_defense_stat_lines(store, as_of)
 
+        # Rookies, who v1 cannot see at all: it rebuilds a line from a player's
+        # own history, and a player with no history forms no group, so no row is
+        # emitted. Anyone v1 did cover is excluded — real observations beat a
+        # draft-slot prior the moment they exist.
+        rookie_lines, rookie_spreads, rookies = rookie_prior.project_rookie_stat_lines(
+            store, as_of, exclude=set(skill_lines)
+        )
+
         # Spread comes from a reference scoring system: the shape of a player's
         # week is a property of the player, and rescaling it per league would
         # imply we know how each ruleset changes variance, which we don't.
         spreads = {p.player_id: p.sd for p in v1_usage.build(store, as_of, SPREAD_RULES)}
+        # Measured against rookie seasons specifically, and wider than the
+        # veteran spread because a rookie's role is the least settled thing on
+        # any roster.
+        spreads.update(rookie_spreads)
 
         games = game_index(store, season, week)
 
-        rosters = store.as_of("weekly_rosters", as_of, seasons_back=1).pl()
+        # Read forward-looking, not as-of. A roster is published before the week
+        # it describes, so the completed-weeks filter would discard the entire
+        # current season in week 1 and hand every player his *last* season's
+        # team — silently, and wrongly for everyone who moved in the offseason.
+        rosters = rookie_prior.current_rosters(store, as_of)
         team_by_gsis: dict[str, str] = {}
         if rosters.height > 0 and "gsis_id" in rosters.columns:
             latest = (
@@ -100,15 +155,33 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             )
             team_by_gsis = dict(zip(latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True))
 
+    # Byes come from the full season schedule, not from the exported week.
+    #
+    # `active` used to mean "this team has a game in week N", which the app then
+    # reused as an availability flag for every remaining week. Both directions of
+    # that are wrong: a player whose bye fell in the exported week was written
+    # off for the rest of the season, and everyone else was simulated as playing
+    # all fourteen — so for one week in fourteen the lineup page recommended
+    # starting a man who was not playing. The schedule is fully known in August,
+    # so this needs no model: a team plays every week but one.
+    byes = {canonical_team(team): week for team, week in bye_weeks(lake, season).items()}
+
     crosswalk = load_crosswalk(crosswalk_path)
     players: dict[str, dict] = {}
     unmapped = 0
 
-    def add(source_id: str, stats: dict[str, float], *, is_team_defense: bool = False) -> None:
+    def add(
+        source_id: str,
+        stats: dict[str, float],
+        *,
+        is_team_defense: bool = False,
+        is_rookie: bool = False,
+    ) -> None:
         nonlocal unmapped
 
         if is_team_defense:
-            sleeper_id, name, position, team = source_id, f"{source_id} defense", "DEF", source_id
+            team = canonical_team(source_id)
+            sleeper_id, name, position = source_id, f"{source_id} defense", "DEF"
         else:
             identity = crosswalk.get(source_id)
             if identity is None:
@@ -118,7 +191,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             name = identity.get("name", "")
             raw_position = (identity.get("position") or "").upper()
             position = FANTASY_POSITION.get(raw_position, raw_position)
-            team = team_by_gsis.get(source_id) or identity.get("team") or ""
+            team = canonical_team(team_by_gsis.get(source_id) or identity.get("team"))
 
         players[sleeper_id] = {
             "playerId": sleeper_id,
@@ -130,11 +203,25 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             "sd": round(spreads.get(source_id, 6.0), 3),
             "gameId": games.get(team, ""),
             "gameLoading": GAME_LOADING.get(position, 0.3),
-            "active": bool(games.get(team)),
+            # The week this player's team does not play, for the whole season.
+            # `null` when the team is unknown or the schedule is incomplete —
+            # which the app must read as "no bye known", never as "bye in week 0".
+            "byeWeek": byes.get(team),
+            # Now means what it says: on an NFL roster. Whether he plays in any
+            # given week is `byeWeek` plus the injury designation applied at
+            # serve time, both of which vary by week and neither of which
+            # belongs in a flag baked once per artifact.
+            "active": bool(team),
+            # Carried so the UI can say where the number came from. A rookie's
+            # line is a draft-capital prior, not an observed history, and a
+            # product that shows the two identically is lying by omission.
+            "basis": "rookie-prior" if is_rookie else "history",
         }
 
     for source_id, stats in skill_lines.items():
         add(source_id, stats)
+    for source_id, stats in rookie_lines.items():
+        add(source_id, stats, is_rookie=True)
     for source_id, stats in kicker_lines.items():
         add(source_id, stats)
     for source_id, stats in idp_lines.items():
@@ -149,6 +236,8 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         "generatedAt": datetime.now(UTC).isoformat(),
         "playerCount": len(players),
         "unmappedCount": unmapped,
+        "rookieCount": sum(1 for p in players.values() if p.get("basis") == "rookie-prior"),
+        "byeTeams": len(byes),
         "players": players,
     }
 
@@ -182,6 +271,11 @@ if __name__ == "__main__":
     for player in artifact["players"].values():
         by_position[player["position"]] = by_position.get(player["position"], 0) + 1
 
-    print(f"{out}: {artifact['playerCount']} players, {artifact['unmappedCount']} unmapped")
+    print(
+        f"{out}: {artifact['playerCount']} players "
+        f"({artifact['rookieCount']} rookie priors), "
+        f"{artifact['unmappedCount']} unmapped, "
+        f"{artifact['byeTeams']} byes"
+    )
     for position, count in sorted(by_position.items(), key=lambda kv: -kv[1]):
         print(f"  {position or '?':4s} {count:5d}")

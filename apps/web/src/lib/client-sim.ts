@@ -11,7 +11,7 @@ import {
   type SimContext,
   type TeamContext,
 } from '@ffe/core';
-import type { WireLeague } from './serialize';
+import type { WirePlayer, WireLeague } from './serialize';
 
 /**
  * Rehydrate the league in the browser and evaluate trades against it.
@@ -20,23 +20,77 @@ import type { WireLeague } from './serialize';
  * graded here cannot disagree with one graded there.
  */
 
+const toWireProjection = (player: WirePlayer): PlayerProjection => ({
+  playerId: asPlayerId(player.id),
+  position: player.position as Position,
+  eligiblePositions: [player.position as Position],
+  mean: player.mean,
+  sd: player.sd,
+  gameId: player.gameId,
+  gameLoading: player.gameLoading,
+  active: player.active,
+});
+
+/**
+ * One entry per week, with each player sat down in his own bye week.
+ *
+ * The browser sim used to reuse a single weekly map for every remaining week,
+ * which meant it played everyone all season including their byes — the same
+ * class of error the server-side pool had, arriving from the other direction.
+ * `active` on the wire means "on an NFL roster", so it cannot answer this;
+ * `byeWeek` can.
+ *
+ * Built as an overlay on the shared baseline rather than a copy per week: a
+ * league is a few hundred players and this runs on the user's machine, in the
+ * interactive path, on every what-if.
+ */
+const poolAcrossWeeks = (
+  baseline: ReadonlyMap<ReturnType<typeof asPlayerId>, PlayerProjection>,
+  players: readonly WirePlayer[],
+  weeks: readonly number[],
+): Map<number, Map<ReturnType<typeof asPlayerId>, PlayerProjection>> => {
+  const sittingIn = new Map<number, WirePlayer[]>();
+  for (const player of players) {
+    if (player.byeWeek === null || !weeks.includes(player.byeWeek)) continue;
+    const existing = sittingIn.get(player.byeWeek);
+    if (existing === undefined) sittingIn.set(player.byeWeek, [player]);
+    else existing.push(player);
+  }
+
+  const pool = new Map<number, Map<ReturnType<typeof asPlayerId>, PlayerProjection>>();
+
+  for (const week of weeks) {
+    const sitting = sittingIn.get(week);
+    if (sitting === undefined) {
+      pool.set(week, baseline as Map<ReturnType<typeof asPlayerId>, PlayerProjection>);
+      continue;
+    }
+
+    const forWeek = new Map(baseline);
+    for (const player of sitting) {
+      forWeek.set(asPlayerId(player.id), {
+        ...toWireProjection(player),
+        mean: 0,
+        sd: 0,
+        active: false,
+        // Not part of his team's game, so not drawn from its outcome.
+        gameId: `bye-${player.id}`,
+      });
+    }
+    pool.set(week, forWeek);
+  }
+
+  return pool;
+};
+
 const rebuildContext = (wire: WireLeague, iterations: number): SimContext => {
   const weekly = new Map<ReturnType<typeof asPlayerId>, PlayerProjection>();
 
   for (const player of Object.values(wire.players)) {
-    weekly.set(asPlayerId(player.id), {
-      playerId: asPlayerId(player.id),
-      position: player.position as Position,
-      eligiblePositions: [player.position as Position],
-      mean: player.mean,
-      sd: player.sd,
-      gameId: player.gameId,
-      gameLoading: player.gameLoading,
-      active: player.active,
-    });
+    weekly.set(asPlayerId(player.id), toWireProjection(player));
   }
 
-  const pool = new Map(wire.weeks.map((week) => [week, weekly]));
+  const pool = poolAcrossWeeks(weekly, Object.values(wire.players), wire.weeks);
 
   const teams: TeamContext[] = wire.teams.map((team) => ({
     teamId: team.teamId,
@@ -293,19 +347,19 @@ const rebuildContextWithFreeAgents = (wire: WireLeague, iterations: number): Sim
 
   const extended = new Map(weekly);
   for (const player of wire.freeAgents) {
-    extended.set(asPlayerId(player.id), {
-      playerId: asPlayerId(player.id),
-      position: player.position as Position,
-      eligiblePositions: [player.position as Position],
-      mean: player.mean,
-      sd: player.sd,
-      gameId: player.gameId,
-      gameLoading: player.gameLoading,
-      active: player.active,
-    });
+    extended.set(asPlayerId(player.id), toWireProjection(player));
   }
 
-  return { ...context, pool: new Map(wire.weeks.map((week) => [week, extended])) };
+  // Byes apply to free agents too — adding a player whose bye lands in a week
+  // you need him is exactly the mistake a waiver tool should not help you make.
+  return {
+    ...context,
+    pool: poolAcrossWeeks(
+      extended,
+      [...Object.values(wire.players), ...wire.freeAgents],
+      wire.weeks,
+    ),
+  };
 };
 
 

@@ -7,7 +7,7 @@ import {
   type PlayerId,
   type WaiverRecommendation,
 } from '@ffe/core';
-import { loadArtifact, scoreFor, type ArtifactPlayer } from './projections';
+import { isPlayingIn, loadArtifact, scoreFor, type ArtifactPlayer } from './projections';
 import type { LeagueView } from './league-data';
 
 /**
@@ -54,8 +54,8 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
   }
 
   const freeAgents = Object.values(artifact.players)
-    .filter((player: ArtifactPlayer) => !rostered.has(player.playerId) && player.active)
-    .sort((a, b) => scoreFor(b, rules) - scoreFor(a, rules));
+    .filter((player: ArtifactPlayer) => isPlayingIn(player, snapshot.asOfWeek) && !rostered.has(player.playerId))
+    .sort((a, b) => scoreFor(b, rules, null, snapshot.asOfWeek) - scoreFor(a, rules, null, snapshot.asOfWeek));
 
   // Cheap filter: only players projected well enough to plausibly start.
   const candidates = freeAgents.slice(0, SCREEN_TOP);
@@ -70,7 +70,7 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
   const droppable = [...myPlayers]
     .map((id) => {
       const player = projections[String(id)];
-      return { id: String(id), mean: player === undefined ? 0 : scoreFor(player, rules) };
+      return { id: String(id), mean: player === undefined ? 0 : scoreFor(player, rules, null, snapshot.asOfWeek) };
     })
     .sort((a, b) => a.mean - b.mean)
     .slice(0, 3)
@@ -169,17 +169,18 @@ export const loadFreeAgents = async (view: LeagueView, teamId: string | null = n
   }
 
   const available = Object.values(artifact.players)
-    .filter((player) => !rostered.has(player.playerId) && player.active)
+    .filter((player) => isPlayingIn(player, snapshot.asOfWeek) && !rostered.has(player.playerId))
     .map((player) => ({
       id: player.playerId,
       name: player.name,
       position: player.position,
       team: player.team,
-      mean: scoreFor(player, rules),
+      mean: scoreFor(player, rules, null, snapshot.asOfWeek),
       sd: player.sd,
       gameId: player.gameId,
       gameLoading: player.gameLoading,
-      active: player.active,
+      active: isPlayingIn(player, snapshot.asOfWeek),
+      byeWeek: player.byeWeek,
       value: 0,
       // Everyone here came out of the projection artifact by definition.
       projected: true,

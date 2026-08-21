@@ -16,7 +16,8 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "@ffe/core": "*",
-    "@ffe/adapters": "*"
+    "@ffe/adapters": "*",
+    "@ffe/ingest": "*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

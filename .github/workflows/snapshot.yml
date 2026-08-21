@@ -15,6 +15,29 @@ on:
         description: 'NFL week to snapshot (blank = current)'
         required: false
 
+# The commit-back step this workflow used to end with has been removed.
+#
+# It wrote refreshed artifacts to `model/artifacts` and pushed them to `main`,
+# and it had never once succeeded — `git log --grep='Weekly projections refresh'`
+# returned nothing across every branch, while the artifacts in the repository
+# carried timestamps from local runs. Nothing recorded the failure, so the
+# application served hand-committed artifacts while appearing to be automated.
+#
+# Two things were wrong with the design, independent of the failure. Committing
+# data to git makes refresh a deploy, so it can never be on demand — the product
+# needs a "refresh now" button and a push cannot be one. And a job that force-
+# advances `main` from CI is a poor fit for a repository whose history is meant
+# to be readable.
+#
+# What replaced it: `/api/refresh` for the serve-time sources, on a Vercel cron
+# (see `vercel.json`) and pressable by hand, with every attempt recorded in
+# `data_sources` / `refresh_runs` so a failure is visible rather than silent.
+#
+# What this workflow still does, and should: capture projections and odds before
+# kickoff. That capture is the accuracy record, it only works if it happens at a
+# fixed time each week, and it is the one thing here that genuinely belongs on a
+# schedule rather than behind a button.
+
 jobs:
   snapshot:
     runs-on: ubuntu-latest
@@ -31,9 +54,19 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
-      # Projections must be regenerated weekly or the app serves week 1 all
-      # season. The lake is re-synced first because usage, injuries and depth
-      # charts all move between weeks.
+  # Rebuilding projections needs the Python pipeline, which does not run on
+  # Vercel and is not meant to. Kept here, kept explicit, and kept honest about
+  # the fact that its output has to be committed by a person: the alternative is
+  # a bot that rewrites `main` weekly, which is what was just removed.
+  #
+  # Run `model/export_projections.py` locally after an nflverse sync and commit
+  # the artifact. `/api/data-status` reports its age, so a stale one is visible
+  # in the product rather than only in a log nobody opens.
+  rebuild-projections:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - name: Sync nflverse and rebuild projections
         run: |
@@ -42,11 +75,9 @@ jobs:
           uv run --project model python model/export_projections.py
         env:
           PYTHONPATH: .
-
-      - name: Commit refreshed artifacts
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add model/artifacts
-          git diff --staged --quiet || git commit -m "Weekly projections refresh [skip ci]"
-          git push
+      - name: Publish the rebuilt artifacts for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: projection-artifacts
+          path: model/artifacts
+          retention-days: 14

@@ -50,6 +50,25 @@ const storesFor = <T>(name: string) => {
   return store as { entries: Map<string, Entry<T>>; inFlight: Map<string, Promise<T>> };
 };
 
+/**
+ * Drop every memo in this process.
+ *
+ * What a "refresh Sleeper" button actually does. League data is read live on
+ * each render behind a TTL memo, so there is nothing to re-fetch here — the
+ * next request repopulates from the API on its own. Reaching through the
+ * registry rather than tracking caches individually means a new `ttlCache` is
+ * covered the moment it is created, instead of the day someone remembers to add
+ * it to a list.
+ */
+export const invalidateAll = (): void => {
+  for (const store of registry().values()) {
+    store.entries.clear();
+    // In-flight work is deliberately left alone: it was started before the
+    // refresh and its result is about to be discarded by the next read anyway.
+    // Clearing it would only orphan callers already awaiting a promise.
+  }
+};
+
 export interface TtlCache<Args extends readonly unknown[], T> {
   (...args: Args): Promise<T>;
   /** Drop one key, or everything when no key is given. */

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
+import { WhatIf } from '@/components/WhatIf';
 import { Confidence, Why } from '@/components/Why';
 import { PositionChip, RangeBar } from '@/components/charts/primitives';
 import {
@@ -278,6 +279,20 @@ export default async function PlayerPage({
                 })}
               </tbody>
             </table>
+          </Section>
+        )}
+
+        {player !== undefined && explanation !== null && !explanation.isPrior && (
+          <Section
+            title="What if his role changed?"
+            note="Every other number here answers what the model thinks. This answers what would have to be true for you to be right — which is the argument you actually have with yourself on Wednesday."
+          >
+            <WhatIf
+              stats={player.stats ?? {}}
+              position={position}
+              rules={rules}
+              baseline={explanation.total}
+            />
           </Section>
         )}
 

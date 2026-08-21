@@ -1025,6 +1025,29 @@ figure from +6.1% to +5.6% — a real result getting slightly smaller and stayin
 which is what a real result does. A single pooled number can hide an edge that
 came entirely from one favourable year; this one does not.
 
+### N — Probabilistic dynasty value, and a self-inflicted regression fixed
+
+**§20, properly.** Multi-year value was a point estimate: walk the median age
+curve and sum it, which asserts every 24-year-old back ages like the average
+one. The measured year-over-year spread for backs is 0.4–0.5 around a median
+near 0.9 — aging is a population tendency, not a schedule.
+
+Now simulated, sampling two distinct uncertainties: `ratio_sd` (how much players
+differ from the average — the big one, and it does not shrink with more data)
+once per year, and `ratio_se` (how well the average is known) once per career,
+because a wrong fitted median is wrong for every year of that player's future
+rather than independently each season.
+
+Live, Bijan Robinson's four-year value reads **1.8 – 6.6** current seasons at
+the 10th and 90th. That width is the point: a single number there was a forecast
+pretending to be a fact.
+
+**Performance.** Explainability had shipped *inside* the projection artifact,
+growing it 1.0 → 1.69 MB, paid by all eleven routes for the benefit of one. Split
+into `explanations-{season}-{week}.json`, loaded on demand. Main artifact back to
+1.10 MB. Stated precisely: parse cost was 4 ms, so this is deployment size and
+cold-start memory, not a speed-up.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -1054,6 +1077,8 @@ came entirely from one favourable year; this one does not.
   if my QB goes down") yet.
 - The design system exists but only the home, player and team pages are built on
   it; the older pages still carry their own shapes.
-- Still unbuilt: the canonical database, the remaining page migrations onto the
-  design system, and a formal performance pass. A league page currently builds in
-  roughly 2s with 2,000 simulations.
+- The design system exists; the home, player and team pages are built on it and
+  eight older pages still carry their own shapes.
+- Still unbuilt: the canonical database (Phase 2's core, and the largest single
+  remaining item). A league page builds in roughly 2s with 2,000 simulations;
+  that has not been profiled properly.

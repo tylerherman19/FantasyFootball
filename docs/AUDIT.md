@@ -951,6 +951,51 @@ Coverage shell and man/zone rates — also asked for in §14 — are **not** ava
 FTN does not carry them and `pbp_participation` was retired. That is a data
 limit, not an oversight.
 
+### L — What-if, portfolio, availability, and one measured open question
+
+**What-if engine (§30, §60).** Sliders that move opportunity through the model's
+own identity with rates held fixed. Scaling the finished number instead would
+silently scale touchdown rate — the most-regressed quantity in the model, and
+precisely the one that does not follow usage.
+
+**Portfolio analysis (§23).** The roster as correlated assets. Tyler's own comes
+out stacked: shared games widen its weekly range ~9% beyond what the individual
+projections imply. Correlation is structural (game loadings), not a measured
+covariance matrix, and the page says so beneath the numbers.
+
+**Injury designations, measured (§18).** `availability.ts` priced them from a
+hand-set table. Joining every report since 2016 to who actually appeared:
+
+```
+Questionable   n=4,488   play rate 0.593   (was priced 0.72)
+Doubtful       n=  529   play rate 0.008   (was priced 0.25)
+Out            n=3,232   play rate 0.000   (correct)
+```
+
+Doubtful was wrong by a factor of thirty. And the half nobody prices: a
+Questionable player who suits up produced **0.774** of his own healthy baseline
+over 2,359 appearances. Availability now applies both haircuts.
+
+*Caught before shipping:* the first run reported a production ratio of 1.069 for
+Out — implying injured-out players are better. It rested on one row of 3,232.
+Play rate and production ratio have completely different effective samples off
+the same join; only Questionable clears a reportable threshold.
+
+**`GAME_LOADING` — §9.5 measured, and deliberately not replaced.** Three
+estimators, all far below the asserted values. Least self-confounded
+(leave-one-out against team-mates): **QB 0.103, RB 0.007, TE 0.001, WR 0.001**
+against asserted 0.45/0.30/0.35/0.40.
+
+The constants are wrong, probably by a large factor, and the simulator has been
+generating more team correlation than the data supports — which inflates the
+variance of a stacked roster and distorts every title probability quoted for
+one. But every estimator here correlates one fantasy score against another, so
+all of them net the game effect against target competition and cannot separate
+them. Swapping in 0.001 would assert a quarterback and his WR1 are independent,
+which is certainly false. A correct estimate needs an exogenous game measure —
+the Vegas total, or drive-level simulation per `PLAN.md` v3. Recorded with
+numbers so the next attempt starts from evidence.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -962,13 +1007,17 @@ limit, not an oversight.
   lake are built by the Python pipeline, which by design never runs in the
   serving path; the button reports their age and says plainly that it cannot
   rebuild them.
-- `GAME_LOADING` (§9.5) is still guessed.
+- `GAME_LOADING` (§9.5) is measured but **not replaced** — see §L. The measured
+  values are too confounded to wire in, and the asserted ones are too high.
+  This is the most consequential open item in the model.
 - The aging curves are a **floor on decline**: the delta method still conditions
   on surviving into the second season, so real cohorts fall off faster.
 - The QB curve cannot reach the ages that matter for quarterbacks.
 - Multi-year value is a point estimate scaled by the aging curve, not a
   probabilistic distribution as §20 asks.
 - Coverage shell and man/zone rates are unavailable from any ingested source.
-- Still unbuilt: the canonical database, the injury hazard model,
-  portfolio/correlation analysis, the what-if scenario engine, the shared design
-  system, and the full decision-first UI reorganisation.
+- The what-if engine is player-level; there is no roster-level scenario ("what
+  if my QB goes down") yet.
+- Still unbuilt: the canonical database, the shared design system, the full
+  decision-first UI reorganisation, backtest expansion beyond two seasons, and a
+  formal performance pass.

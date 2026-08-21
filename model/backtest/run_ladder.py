@@ -10,7 +10,7 @@ from functools import partial
 
 from model.backtest.harness import compare, default_lake, walk_forward
 from model.features.store import FeatureStore
-from model.models import marcel, v1_usage, v2_matchup
+from model.models import marcel, v1_usage, v2_matchup, v3_allocation
 
 #: Full-PPR stat weights, keyed by nflverse player_stats columns.
 SCORING: dict[str, float] = {
@@ -51,6 +51,12 @@ if __name__ == "__main__":
         ("v2-w0.35", partial(v2_matchup.build, rules=SLEEPER_RULES, weight=0.35)),
         ("v2-w0.70", partial(v2_matchup.build, rules=SLEEPER_RULES, weight=0.70)),
         ("v2-w1.00", partial(v2_matchup.build, rules=SLEEPER_RULES, weight=1.00)),
+        # v3 adjusts opportunity rather than points. Swept the same way, because
+        # the shape of the sweep is the finding: a real signal applied more
+        # strongly should help more.
+        ("v3-w0.25", partial(v3_allocation.build, rules=SLEEPER_RULES, weight=0.25)),
+        ("v3-w0.50", partial(v3_allocation.build, rules=SLEEPER_RULES, weight=0.50)),
+        ("v3-w1.00", partial(v3_allocation.build, rules=SLEEPER_RULES, weight=1.00)),
     ]
 
     with FeatureStore(default_lake()) as store:

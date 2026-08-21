@@ -1141,6 +1141,9 @@ weekly), and the page runs 115–135 ms warm, in line with the rest.
   has nothing to show yet.
 - Production cannot read the store at all: the Supabase environment variables
   are not set in Vercel. The page says so explicitly rather than guessing.
-- Cold page load is ~1.2–1.4 s, dominated by the Sleeper fetch and the 2,000
-  iteration season simulation, shared across a league and paid once per process.
-  Not yet attacked.
+- Cold build is now **554 ms** (from 697 ms) after starting the injury feed and
+  identity crosswalk in parallel with Sleeper rather than behind it. What remains
+  is real work — Sleeper's round trips and the simulation. DYNASTATION's 325 ms
+  is 55-man rosters through 2,000 seasons; cutting it needs fewer iterations or a
+  different algorithm, not better plumbing. The per-stage breakdown prints on
+  every cold build.

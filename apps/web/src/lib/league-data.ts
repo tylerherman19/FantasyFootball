@@ -70,6 +70,8 @@ export interface LeagueView {
   readonly modelVersion: string | null;
   readonly generatedAt: string | null;
   readonly efficiencies: ReadonlyMap<string, import('@ffe/core').EfficiencyResult>;
+  /** Milliseconds per stage of the cold build. Empty on a cache hit. */
+  readonly stages?: Readonly<Record<string, number>>;
   /** Wall-clock cost of building this view, for the footer's honesty line. */
   readonly loadMs: number;
 }
@@ -144,7 +146,34 @@ export const leagueMeta = (snapshot: LeagueSnapshot): string => {
 
 const buildLeague = async (platformLeagueId: string, username: string): Promise<LeagueView> => {
   const startedAt = Date.now();
-  const snapshot = await adapter.loadSnapshot(platformLeagueId);
+  // Stage timings, so "the page is slow" can be answered with a breakdown
+  // rather than a guess. Surfaced on the view and printed once per cold build.
+  const stages: Record<string, number> = {};
+  const stage = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    const at = Date.now();
+    try {
+      return await work();
+    } finally {
+      stages[name] = Date.now() - at;
+    }
+  };
+  /*
+   * Start the file reads immediately, in parallel with Sleeper.
+   *
+   * Measured cold, the build split almost evenly three ways — sleeper 204ms,
+   * artifact+availability 213ms, simulation 213ms — and the first two were
+   * running in series for no reason. Neither the injury feed nor the identity
+   * crosswalk depends on anything the league snapshot returns; only the
+   * projection artifact does, because its filename carries the season and week.
+   *
+   * So the two independent reads are kicked off before awaiting Sleeper and
+   * collected after. No new caching, no staleness, just work that was already
+   * independent no longer queueing behind a network call.
+   */
+  const availabilityPromise = stage('availability', () => loadAvailability());
+  const identitiesPromise = stage('crosswalk', () => loadIdentities());
+
+  const snapshot = await stage('sleeper', () => adapter.loadSnapshot(platformLeagueId));
 
   const weeks: number[] = [];
   for (let week = snapshot.asOfWeek; week <= snapshot.league.regularSeasonWeeks; week += 1) {
@@ -152,8 +181,8 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
   }
 
   const [artifact, availability] = await Promise.all([
-    loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadAvailability(),
+    stage('artifact', () => loadArtifact(snapshot.league.season, snapshot.asOfWeek)),
+    availabilityPromise,
   ]);
 
   // Every league scores its own way — 42, 64 and 132 keys across Tyler's three.
@@ -162,7 +191,7 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
 
   // Measured from what each manager actually did, not assumed. Falls back to
   // this league's own average until a manager has enough played weeks.
-  const identities = await loadIdentities();
+  const identities = await identitiesPromise;
   const efficiencies = lineupEfficiencies(snapshot, (playerId) => {
     const position = identities[String(playerId)]?.position;
     return (position ?? null) as Position | null;
@@ -247,7 +276,21 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
     { revalidate: 900 },
   );
 
-  const result = await simulate();
+  const result = await stage('simulation', () => simulate());
+
+  /*
+   * One line per cold build, so a slow page is a breakdown rather than a guess.
+   *
+   * Only on a cold build: a cache hit never reaches here, so this cannot become
+   * per-request noise in the log.
+   */
+  console.log(
+    `[league ${snapshot.league.name}] ${Date.now() - startedAt}ms — ` +
+      Object.entries(stages)
+        .sort(([, a], [, b]) => b - a)
+        .map(([name, ms]) => `${name} ${ms}ms`)
+        .join(', '),
+  );
 
   return {
     snapshot,
@@ -259,6 +302,7 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
     generatedAt: artifact?.generatedAt ?? null,
     efficiencies,
     loadMs: Date.now() - startedAt,
+    stages,
   };
 };
 

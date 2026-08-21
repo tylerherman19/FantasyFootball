@@ -947,9 +947,9 @@ not-charted sentinel. Averaged in, the league mean read 4.89 defenders; treated
 as missing it reads 6.18. The wrong number looked entirely plausible, which is
 the only kind that survives review.
 
-Coverage shell and man/zone rates — also asked for in §14 — are **not** available:
-FTN does not carry them and `pbp_participation` was retired. That is a data
-limit, not an oversight.
+Coverage shell and man/zone rates were recorded here as unavailable. **That was
+wrong** — see §Q. FTN does not carry them, but ten seasons of
+`pbp_participation` are in the lake, labelled through 2025.
 
 ### L — What-if, portfolio, availability, and one measured open question
 
@@ -1105,6 +1105,43 @@ A page that does not benefit from caching is doing something uncached per render
 the history read carried `no-store`. Now cached for five minutes (it changes
 weekly), and the page runs 115–135 ms warm, in line with the rest.
 
+### Q — Two things I recorded as impossible, and both were wrong
+
+**Coverage shell and man/zone (§14).** The audit called these unobtainable
+because FTN lacks them and `pbp_participation` was retired upstream. Retired is
+not the same as absent: ten seasons are in the lake, labelled through 2025, with
+`defense_coverage_type` and `defense_man_zone_type` per play.
+
+Built, and it validates against reality — Denver 53.5% man (Joseph's scheme),
+Minnesota 53.6% two-high and 27.5% man (Flores). Requested as train-time-only and
+only for completed seasons, because that is what it is: how a unit *has* played,
+not a read on Sunday. Displayed beside a projection, never an input to the model.
+
+**`GAME_LOADING`.** I said replacing it needed an exogenous game measure the
+repository did not have. It has one: `schedules` carries the actual score of
+every game, and points on the scoreboard are not a rival for anyone's targets —
+the exact confound that made three earlier attempts uninterpretable.
+
+```
+QB 0.178 (r .42)   RB 0.052 (r .23)   WR 0.031 (r .18)   TE 0.019 (r .14)
+   was 0.45           was 0.30           was 0.40           was 0.35
+```
+
+Now shipping. K/DEF/IDP keep asserted values, labelled as such.
+
+**And it exposed an error in the portfolio code.** `gameLoading` is a share of
+*variance*; in a one-factor model the correlation between two players is the
+product of their factor *loadings* — the square roots — not of the shares. I had
+multiplied the shares, which understated every pairing (0.006 against a correct
+0.074 on measured values; 0.18 against 0.42 on the old constants) and so
+under-penalised exactly the stacked rosters the feature exists to catch. Fixed,
+with a test pinning the algebra.
+
+One limit named: a single factor is the shared environment only. A quarterback
+and his own receiver also have a direct dependency that a shootout variable
+cannot capture, so real QB-to-his-own-WR1 correlation sits above this. That needs
+a joint distribution, not a bigger constant.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -1116,15 +1153,16 @@ weekly), and the page runs 115–135 ms warm, in line with the rest.
   lake are built by the Python pipeline, which by design never runs in the
   serving path; the button reports their age and says plainly that it cannot
   rebuild them.
-- `GAME_LOADING` (§9.5) is measured but **not replaced** — see §L. The measured
-  values are too confounded to wire in, and the asserted ones are too high.
-  This is the most consequential open item in the model.
+- `GAME_LOADING` is now measured against the scoreboard and shipped (§Q). The
+  remaining gap is that one factor cannot represent a quarterback's direct
+  dependency with his own receiver.
 - The aging curves are a **floor on decline**: the delta method still conditions
   on surviving into the second season, so real cohorts fall off faster.
 - The QB curve cannot reach the ages that matter for quarterbacks.
 - Multi-year value is a point estimate scaled by the aging curve, not a
   probabilistic distribution as §20 asks.
-- Coverage shell and man/zone rates are unavailable from any ingested source.
+- Coverage data is retired upstream: it describes completed seasons and will not
+  refresh during this one.
 - The availability haircut is a *mid-week* number. Before inactives drop it is
   right; by Sunday morning, when you often know a Questionable player is active,
   it is too harsh — 9.2 against 15.5 on a 20-point player. The app has no

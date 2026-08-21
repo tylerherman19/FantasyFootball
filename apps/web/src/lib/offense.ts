@@ -171,3 +171,84 @@ export const pressureRead = (pressure: TeamPressure): string => {
   }
   return `${pressure.team} ${parts.join(' ')}.`;
 };
+
+/**
+ * Coverage shell and man/zone rates.
+ *
+ * From nflverse participation charting, which is published after a season ends
+ * and has been retired upstream. That makes this a description of how a unit
+ * *has* played rather than a read on this Sunday, and the distinction is carried
+ * through to the UI rather than dropped once the number is on screen.
+ *
+ * Still worth having: coverage identity is one of the more persistent things
+ * about a defense, and it is the dimension §14 asks for that nothing else in the
+ * lake supplies.
+ */
+export interface TeamCoverage {
+  readonly team: string;
+  readonly chartedDropbacks: number;
+  readonly manRate: number;
+  readonly manRatePct: number | null;
+  readonly twoHighRate: number;
+  readonly twoHighRatePct: number | null;
+  readonly singleHighRate: number;
+  readonly cover0Rate: number;
+  readonly cover1Rate: number;
+  readonly cover3Rate: number;
+}
+
+export interface CoverageArtifact {
+  readonly generatedAt: string;
+  readonly seasonsObserved: readonly number[];
+  readonly note: string;
+  readonly teams: Readonly<Record<string, TeamCoverage>>;
+}
+
+let coverageCache: CoverageArtifact | null | undefined;
+
+export const loadCoverage = async (): Promise<CoverageArtifact | null> => {
+  if (coverageCache !== undefined) return coverageCache;
+  try {
+    const raw = await readArtifactFile('defense-coverage.json');
+    coverageCache = raw === null ? null : (JSON.parse(raw) as CoverageArtifact);
+  } catch {
+    coverageCache = null;
+  }
+  return coverageCache;
+};
+
+/**
+ * What a coverage profile implies, stated as a tendency.
+ *
+ * Not as advice. This repository has measured twice that opponent strength does
+ * not move a projection, so the honest form is "here is what they play and the
+ * shape of week it tends to produce" — never "start your slot receiver".
+ */
+export const coverageRead = (coverage: TeamCoverage): string => {
+  const parts: string[] = [];
+
+  if (coverage.manRate > 0.45) {
+    parts.push(
+      'plays man more than almost anyone, which concentrates targets on whoever wins his matchup and thins them everywhere else',
+    );
+  } else if (coverage.manRate < 0.3) {
+    parts.push(
+      'plays mostly zone, which spreads targets across the formation rather than funnelling them to one winner',
+    );
+  }
+
+  if (coverage.twoHighRate > 0.45) {
+    parts.push(
+      'and sits in two-high, taking the deep shot away and conceding the underneath — which compresses a receiver’s ceiling and lifts the floor of backs and tight ends',
+    );
+  } else if (coverage.singleHighRate > 0.55) {
+    parts.push(
+      'and plays single-high, so the deep ball is live and the box is heavier',
+    );
+  }
+
+  if (parts.length === 0) {
+    return `${coverage.team} is near league average on coverage shell and man rate — no strong tendency to plan around.`;
+  }
+  return `${coverage.team} ${parts.join(' ')}.`;
+};

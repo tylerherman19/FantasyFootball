@@ -5,11 +5,14 @@ import { Section } from '@/components/Section';
 import { CellBar, PositionChip } from '@/components/charts/primitives';
 import { loadLeague } from '@/lib/league-data';
 import {
+  coverageRead,
+  loadCoverage,
   loadOffense,
   loadPressure,
   offenseRead,
   pressureRead,
   rankOf,
+  type TeamCoverage,
   type TeamOffense,
   type TeamPressure,
 } from '@/lib/offense';
@@ -71,14 +74,16 @@ export default async function TeamPage({
   const { snapshot } = view;
   const rules = snapshot.league.scoring.raw;
 
-  const [artifact, offenseArtifact, pressureArtifact] = await Promise.all([
+  const [artifact, offenseArtifact, pressureArtifact, coverageArtifact] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
     loadOffense(),
     loadPressure().catch(() => null),
+    loadCoverage().catch(() => null),
   ]);
 
   const offense: TeamOffense | undefined = offenseArtifact?.teams[team];
   const pressure: TeamPressure | undefined = pressureArtifact?.teams[team];
+  const coverage: TeamCoverage | undefined = coverageArtifact?.teams[team];
   if (offense === undefined && artifact === null) notFound();
 
   // Who this offence actually feeds, by projection. The ordering is the point:
@@ -241,6 +246,42 @@ export default async function TeamPage({
                   context="six or fewer — the two-high signature from the other side"
                 />
               )}
+            </div>
+          </Section>
+        )}
+
+        {coverage !== undefined && (
+          <Section
+            title="What coverage they play"
+            note={`Shell and man/zone rates from participation charting, over ${(coverageArtifact?.seasonsObserved ?? []).join(' and ')}. This describes how the unit has played in completed seasons — the charting is published after a season ends and has been retired upstream, so it will not move during this one.`}
+          >
+            <p className="mb-4 max-w-2xl text-base leading-relaxed">{coverageRead(coverage)}</p>
+
+            <div className="flex flex-wrap gap-x-10 gap-y-5">
+              <Metric
+                label="Man coverage"
+                value={pct(coverage.manRate)}
+                context={
+                  rankOf(coverage.manRatePct) === null
+                    ? `${coverage.chartedDropbacks.toLocaleString()} charted dropbacks`
+                    : `${rankOf(coverage.manRatePct)} of 32 most man-heavy`
+                }
+              />
+              <Metric
+                label="Two-high shell"
+                value={pct(coverage.twoHighRate)}
+                context="Cover 2, 4 and 6 — deep ball away, underneath conceded"
+              />
+              <Metric
+                label="Single-high shell"
+                value={pct(coverage.singleHighRate)}
+                context="Cover 1 and 3 — deep shot live, heavier box"
+              />
+              <Metric
+                label="Cover 0"
+                value={pct(coverage.cover0Rate)}
+                context="no deep help at all — a blitz tell as much as a coverage"
+              />
             </div>
           </Section>
         )}

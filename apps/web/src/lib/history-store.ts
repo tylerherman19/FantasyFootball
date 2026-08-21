@@ -1,4 +1,5 @@
 import { scoreStatLine } from '@ffe/core';
+import { ttlCache } from './cache';
 
 /**
  * What the model used to think, and why it changed its mind (§35, §48).
@@ -107,7 +108,20 @@ export type HistoryResult =
   | { readonly status: 'unconfigured' }
   | { readonly status: 'unreachable' };
 
-export const loadProjectionHistory = async (
+/**
+ * Cached for five minutes.
+ *
+ * Profiling found the player page at 265 ms cold *and* warm while every other
+ * route dropped to ~120 ms once its cache filled — it was the only page that
+ * never got faster. The cause was this read: `no-store` on a PostgREST round
+ * trip, paid on every single render.
+ *
+ * `no-store` is right for freshness, which is about to change and must not be
+ * remembered. It is wrong here: projection history changes when the weekly job
+ * runs, so a five-minute window cannot show anything stale that matters, and it
+ * removes a network hop from the hot path of the page a manager opens most.
+ */
+const fetchHistory = async (
   playerUid: string,
   rules: Readonly<Record<string, number>>,
   limit = 8,
@@ -182,3 +196,11 @@ export const explainChange = (change: ProjectionChange): string | null => {
   const verb = change.driver.change > 0 ? 'rose' : 'fell';
   return `${size} ${direction}: his projected ${change.driver.stat} ${verb} by ${Math.abs(change.driver.change).toFixed(1)} a game.`;
 };
+
+export const loadProjectionHistory = ttlCache(
+  5 * 60 * 1000,
+  (playerUid: string, rules: Readonly<Record<string, number>>, limit = 8) =>
+    `${playerUid}:${limit}:${JSON.stringify(rules)}`,
+  fetchHistory,
+  { name: 'projection-history', maxEntries: 256 },
+);

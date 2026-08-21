@@ -1016,6 +1016,11 @@ numbers so the next attempt starts from evidence.
 - Multi-year value is a point estimate scaled by the aging curve, not a
   probabilistic distribution as §20 asks.
 - Coverage shell and man/zone rates are unavailable from any ingested source.
+- The availability haircut is a *mid-week* number. Before inactives drop it is
+  right; by Sunday morning, when you often know a Questionable player is active,
+  it is too harsh — 9.2 against 15.5 on a 20-point player. The app has no
+  kickoff-relative timestamp, so it assumes mid-week and errs toward benching a
+  hurt player. Safer direction, but a direction.
 - The what-if engine is player-level; there is no roster-level scenario ("what
   if my QB goes down") yet.
 - Still unbuilt: the canonical database, the shared design system, the full

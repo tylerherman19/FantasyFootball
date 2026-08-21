@@ -92,6 +92,19 @@ export interface AvailabilityAdjustment {
 /**
  * Apply availability to a projection.
  *
+ * **When you are deciding matters, and this does not know.** The play
+ * probability is a Wednesday number: it is the long-run rate at which players
+ * carrying this designation appeared, and it is correct for a decision made
+ * before the inactives list drops. By Sunday morning you often *know*, and at
+ * that point the haircut is too harsh — a Questionable receiver who has been
+ * declared active is worth his production discount and nothing more.
+ *
+ * The effect is not small. A 20-point Questionable player prices at 9.2 here
+ * (0.593 x 0.774), against 15.5 if you already know he is playing. Until the
+ * app takes a kickoff-relative timestamp, mid-week is the assumption, and it
+ * errs toward not starting a hurt player — which is the safer direction to be
+ * wrong in, but it is a direction.
+ *
  * The mean scales with the chance of playing. The spread *grows*, because a
  * player who might not play at all has a genuinely wider range of outcomes than
  * one who certainly will — a point most tools miss by scaling the mean alone

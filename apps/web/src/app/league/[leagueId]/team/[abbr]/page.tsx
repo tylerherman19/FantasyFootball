@@ -4,7 +4,15 @@ import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
 import { CellBar, PositionChip } from '@/components/charts/primitives';
 import { loadLeague } from '@/lib/league-data';
-import { loadOffense, offenseRead, rankOf, type TeamOffense } from '@/lib/offense';
+import {
+  loadOffense,
+  loadPressure,
+  offenseRead,
+  pressureRead,
+  rankOf,
+  type TeamOffense,
+  type TeamPressure,
+} from '@/lib/offense';
 import { loadArtifact, scoreFor } from '@/lib/projections';
 import { requireSession } from '@/lib/session';
 
@@ -63,12 +71,14 @@ export default async function TeamPage({
   const { snapshot } = view;
   const rules = snapshot.league.scoring.raw;
 
-  const [artifact, offenseArtifact] = await Promise.all([
+  const [artifact, offenseArtifact, pressureArtifact] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
     loadOffense(),
+    loadPressure().catch(() => null),
   ]);
 
   const offense: TeamOffense | undefined = offenseArtifact?.teams[team];
+  const pressure: TeamPressure | undefined = pressureArtifact?.teams[team];
   if (offense === undefined && artifact === null) notFound();
 
   // Who this offence actually feeds, by projection. The ordering is the point:
@@ -189,6 +199,50 @@ export default async function TeamPage({
               </Section>
             )}
           </>
+        )}
+
+        {pressure !== undefined && (
+          <Section
+            title="What their defense chooses to do"
+            note="Whether a defense sends five is not recoverable from a box score — a sack is charged the same way whether it came from a four-man rush or a corner blitz nobody blocked, and those predict opposite things. This is charting, and like the offensive numbers above it is deliberately not opponent-adjusted: these are choices, made against good offences and bad ones alike."
+          >
+            <p className="mb-4 max-w-2xl text-base leading-relaxed">{pressureRead(pressure)}</p>
+
+            <div className="flex flex-wrap gap-x-10 gap-y-5">
+              <Metric
+                label="Blitz rate"
+                value={pct(pressure.blitzRate)}
+                context={
+                  rankOf(pressure.blitzRatePct) === null
+                    ? `over ${pressure.dropbacksFaced.toLocaleString()} dropbacks faced`
+                    : `${rankOf(pressure.blitzRatePct)} of 32 most aggressive`
+                }
+              />
+              <Metric
+                label="Five or more rushers"
+                value={pct(pressure.extraRusherRate)}
+                context="where protection maths actually breaks"
+              />
+              {pressure.boxCount !== null && (
+                <Metric
+                  label="Defenders in the box"
+                  value={pressure.boxCount.toFixed(2)}
+                  context={
+                    rankOf(pressure.boxCountPct) === null
+                      ? 'average across charted snaps'
+                      : `${rankOf(pressure.boxCountPct)} of 32 heaviest`
+                  }
+                />
+              )}
+              {pressure.lightBoxRate !== null && (
+                <Metric
+                  label="Light box"
+                  value={pct(pressure.lightBoxRate)}
+                  context="six or fewer — the two-high signature from the other side"
+                />
+              )}
+            </div>
+          </Section>
         )}
 
         {players.length > 0 && (

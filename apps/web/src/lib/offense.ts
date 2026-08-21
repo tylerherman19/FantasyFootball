@@ -97,3 +97,77 @@ export const offenseRead = (offense: TeamOffense): string => {
 
   return `${offense.team} ${parts.join(', ')}.`;
 };
+
+/**
+ * The pressure and box half of a defensive profile.
+ *
+ * Kept beside the offensive tendencies because a team page needs both sides of
+ * the same franchise, and because these are the same *kind* of quantity — a
+ * coordinator's choices, not his outcomes. What a defense allows is measured
+ * elsewhere and opponent-adjusted; what it chooses to do is measured here and
+ * deliberately is not.
+ */
+export interface TeamPressure {
+  readonly team: string;
+  readonly dropbacksFaced: number;
+  readonly blitzRate: number;
+  readonly blitzRatePct: number | null;
+  readonly extraRusherRate: number;
+  readonly passRushers: number;
+  readonly boxCount: number | null;
+  readonly boxCountPct: number | null;
+  readonly lightBoxRate: number | null;
+  readonly heavyBoxRate: number | null;
+}
+
+export interface PressureArtifact {
+  readonly generatedAt: string;
+  readonly note: string;
+  readonly teams: Readonly<Record<string, TeamPressure>>;
+}
+
+let pressureCache: PressureArtifact | null | undefined;
+
+export const loadPressure = async (): Promise<PressureArtifact | null> => {
+  if (pressureCache !== undefined) return pressureCache;
+  try {
+    const raw = await readArtifactFile('defense-pressure.json');
+    pressureCache = raw === null ? null : (JSON.parse(raw) as PressureArtifact);
+  } catch {
+    pressureCache = null;
+  }
+  return pressureCache;
+};
+
+/**
+ * What this defense's choices mean for the players facing it.
+ *
+ * Stated as a tension rather than a verdict, because that is what the evidence
+ * supports: this repository has measured twice that opponent strength does not
+ * move a projection, so the honest framing is "here is what they do, and here is
+ * the shape of week it tends to produce" — not "start your back".
+ */
+export const pressureRead = (pressure: TeamPressure): string => {
+  const parts: string[] = [];
+
+  if (pressure.blitzRate > 0.35) {
+    parts.push(
+      'blitzes as much as anyone, which widens the range of quarterback outcomes in both directions — more sacks and more explosives, rarely a quiet afternoon',
+    );
+  } else if (pressure.blitzRate < 0.25) {
+    parts.push(
+      'rushes four and drops seven, which tends to compress a quarterback toward his median: fewer disasters, fewer explosives',
+    );
+  }
+
+  if (pressure.lightBoxRate !== null && pressure.lightBoxRate > 0.72) {
+    parts.push('and plays a light box, inviting the run');
+  } else if (pressure.heavyBoxRate !== null && pressure.heavyBoxRate > 0.12) {
+    parts.push('and loads the box, daring the pass');
+  }
+
+  if (parts.length === 0) {
+    return `${pressure.team} is near league average on pressure and box count — a defense with no strong tendency to plan around.`;
+  }
+  return `${pressure.team} ${parts.join(' ')}.`;
+};

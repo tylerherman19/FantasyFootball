@@ -3,6 +3,28 @@
 For every (season, week) in the evaluation range: fit on everything knowable
 before kickoff, predict that week, compare to what happened. Never peek.
 
+**Standing results, four seasons, 21,679 player-weeks (2022-2025).** Re-run with
+`model/backtest/run_ladder.py 2022 2025`.
+
+    v0-marcel   MAE 4.880   RMSE 6.332   CRPS 3.498
+    v1-usage    MAE 4.608   RMSE 6.151   CRPS 3.329   skill +5.6%
+
+    per season      v0      v1
+       2022       4.922   4.677
+       2023       4.871   4.621
+       2024       4.914   4.613
+       2025       4.814   4.523
+
+The per-season split is the part worth having. A single pooled number can hide an
+edge that came entirely from one favourable year; v1 beats v0 in all four,
+separately, by a similar margin each time. The window was two seasons until this
+was run, and doubling it moved the pooled figure from +6.1% to +5.6% — a real
+result getting slightly smaller and staying, which is what a real result does.
+
+Also standing, and negative: v2 (matchup on points) and v3 (matchup on
+opportunity) both fail to beat v1, degrading monotonically as their weight rises.
+See the module docstrings in `model/models/`.
+
 An important limitation, stated plainly: **we cannot backtest against Sleeper's
 historical projections.** Nobody publishes what they projected in week 6 of
 2022 after the fact — that data only exists if someone stored it at the time,

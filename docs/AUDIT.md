@@ -996,6 +996,35 @@ which is certainly false. A correct estimate needs an exogenous game measure —
 the Vegas total, or drive-level simulation per `PLAN.md` v3. Recorded with
 numbers so the next attempt starts from evidence.
 
+### M — Design system, insights, and a wider backtest
+
+**Shared vocabulary (§73).** `components/design/primitives.tsx`: `Metric` (which
+will not compile without context, per §67), `MetricRow`, `PercentileBar`,
+`Insight`/`InsightList` (§45). No rounded rectangle in the file, per §74.
+
+**League home now answers its question (§44).** Opens with "What matters right
+now", ranked by consequence. Every insight is a threshold applied to a number the
+model already computed, with the number quoted so a reader can disagree with the
+threshold. Nothing is generated for a quantity the product lacks, and
+`recommendation` is optional — inventing an action to fill a slot is how a tool
+starts advising things it has no basis for. Data health outranks everything,
+because a stale model quietly makes every other line wrong.
+
+**Backtest widened to four seasons (§33).** 10,979 → 21,679 player-weeks:
+
+```
+v0-marcel   MAE 4.880        per season    v0      v1
+v1-usage    MAE 4.608          2022      4.922   4.677
+skill       +5.6%              2023      4.871   4.621
+                               2024      4.914   4.613
+                               2025      4.814   4.523
+```
+
+v1 wins in all four seasons separately. Doubling the window moved the pooled
+figure from +6.1% to +5.6% — a real result getting slightly smaller and staying,
+which is what a real result does. A single pooled number can hide an edge that
+came entirely from one favourable year; this one does not.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -1023,6 +1052,8 @@ numbers so the next attempt starts from evidence.
   hurt player. Safer direction, but a direction.
 - The what-if engine is player-level; there is no roster-level scenario ("what
   if my QB goes down") yet.
-- Still unbuilt: the canonical database, the shared design system, the full
-  decision-first UI reorganisation, backtest expansion beyond two seasons, and a
-  formal performance pass.
+- The design system exists but only the home, player and team pages are built on
+  it; the older pages still carry their own shapes.
+- Still unbuilt: the canonical database, the remaining page migrations onto the
+  design system, and a formal performance pass. A league page currently builds in
+  roughly 2s with 2,000 simulations.

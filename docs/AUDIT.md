@@ -931,6 +931,26 @@ one number in the currency a trade actually turns on: seasons still to come,
 priced at what each man is worth today. Undiscounted on purpose, because the
 contend-or-rebuild read already makes that judgement explicitly.
 
+### K — Defensive pressure and box tendencies (§14)
+
+`export_defense.py` measures defenses by consequence and argues that is the
+better road for coverage. It is — but not for pressure, where a sack is charged
+identically whether it came from a four-man rush or an unblocked corner blitz,
+and the two predict opposite things. Read from FTN charting (2022–2025, legal at
+inference), giving blitz rate, extra-rusher rate, box count and light-box rate.
+
+Blitz rate identifies the league correctly from charting rather than reputation:
+MIN .476, TB .407, KC .372 at the top; SF .219 at the bottom.
+
+**Caught before shipping:** ~25% of charted rows carry `n_defense_box = 0`, FTN's
+not-charted sentinel. Averaged in, the league mean read 4.89 defenders; treated
+as missing it reads 6.18. The wrong number looked entirely plausible, which is
+the only kind that survives review.
+
+Coverage shell and man/zone rates — also asked for in §14 — are **not** available:
+FTN does not carry them and `pbp_participation` was retired. That is a data
+limit, not an oversight.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -948,8 +968,7 @@ contend-or-rebuild read already makes that judgement explicitly.
 - The QB curve cannot reach the ages that matter for quarterbacks.
 - Multi-year value is a point estimate scaled by the aging curve, not a
   probabilistic distribution as §20 asks.
-- Still unbuilt: the canonical database, the multidimensional defensive
-  fingerprint (coverage shell, blitz rate, man/zone — the data is on disk in
-  `ftn_charting` and `pbp_participation`), the injury hazard model,
+- Coverage shell and man/zone rates are unavailable from any ingested source.
+- Still unbuilt: the canonical database, the injury hazard model,
   portfolio/correlation analysis, the what-if scenario engine, the shared design
   system, and the full decision-first UI reorganisation.

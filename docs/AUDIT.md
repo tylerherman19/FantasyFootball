@@ -821,6 +821,61 @@ The `active` readers that were **not** changed — `scheme/page.tsx`, `usage.ts`
 were reviewed and intentionally left as roster-membership filters, which is what
 they meant all along and is now what `active` says.
 
+### E — Model explainability (§31, §50, §76)
+
+The decomposition was already being computed and discarded. Fantasy scoring is
+an identity — `Σ(opportunity × rate × weight)` — and v1 evaluates each half
+separately before multiplying, then keeps only the product. The export now keeps
+three stat lines: every stat at its positional average, the player's volume at
+positional rates, and the real projection. Scored per league at serve time, the
+two gaps are what his usage and his efficiency are each worth.
+
+```
+Ja'Marr Chase    7.1 avg WR   +12.3 opportunity   +0.9 efficiency  = 20.2
+Saquon Barkley   7.4 avg RB    +7.8 opportunity   +0.0 efficiency  = 15.1
+Drake Maye      13.8 avg QB    +2.1 opportunity   +3.8 efficiency  = 19.6
+```
+
+The steps sum to the projection exactly, and `explain.test.ts` fails if they
+stop. That property is the whole point: a `Why?` panel that reverse-engineers a
+plausible story is worse than none, because it is confident, legible and
+unfalsifiable.
+
+Rookies get one bar, not a waterfall — with no history there is no prior line,
+so decomposing would drop the whole projection into the last bucket and call it
+"efficiency", which is precisely backwards. Confidence is capped to match.
+
+### F — Player page (§47)
+
+The audit called this the largest single UI gap. League-scoped, because none of
+the answers are league-independent. Ordered conclusion → why → evidence →
+caveats. Roster names link into it.
+
+### G — Aging curves (§21)
+
+Replaces the hand-set table (`QB 34, RB 27, WR 29, TE 30`) with curves fitted by
+the **delta method** over 2016–2025: only players appearing in consecutive
+seasons contribute, and each is compared to himself, so his level cancels and
+the age effect survives. Regressing production on age across a population
+measures survivorship instead — the 32-year-olds still playing are the ones good
+enough to still be playing.
+
+```
+RB  22:0.95  23:1.00  24:0.94  25:0.82  26:0.75  27:0.70  28:0.54  30:0.38
+WR  21:0.73  23:1.00  25:0.92  27:0.78  29:0.59  30:0.44  32:0.24
+TE  22:0.82  25:1.00  26:0.96  27:0.71  29:0.65  31:0.45
+QB  23:0.96  24:1.00  25:0.96  26:0.93  27:0.92
+```
+
+Measured decline ages (below 75% of peak) come out **RB 26, WR 28, TE 27**
+against the asserted 27, 29 and 30 — tight ends were being valued about three
+years too generously.
+
+Quarterbacks are the honest failure: paired seasons run out around 27, before
+any real decline, so the curve cannot answer and the asserted 34 stands, marked
+with an asterisk in the UI. A number nobody measured should not look like one
+somebody did.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -832,6 +887,13 @@ they meant all along and is now what `active` says.
   lake are built by the Python pipeline, which by design never runs in the
   serving path; the button reports their age and says plainly that it cannot
   rebuild them.
-- `GAME_LOADING` (§9.5) is still guessed, and the recommended architecture in
-  §12–15 — canonical database, feature layer, explainability, design system,
-  decision-first UI — is unbuilt.
+- `GAME_LOADING` (§9.5) is still guessed.
+- The aging curves are a **floor on decline**: the delta method still conditions
+  on surviving into the second season, so real cohorts fall off faster.
+- The QB curve cannot reach the ages that matter for quarterbacks.
+- Still unbuilt from §12–15: the canonical database, the offensive model (pace,
+  PROE, red-zone tendency), the multidimensional defensive fingerprint, the
+  matchup retry on usage allocation, the injury hazard model, multi-year
+  probabilistic dynasty value, portfolio/correlation analysis, the what-if
+  scenario engine, the shared design system, and the full decision-first UI
+  reorganisation.

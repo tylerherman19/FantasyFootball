@@ -44,6 +44,23 @@ export const Section = ({
  * it, and supporting context goes underneath in small type. Emphasis is a
  * colour shift rather than a size jump, so a row of tiles still scans as a row.
  */
+/**
+ * A labelled statistic.
+ *
+ * Retained as the name eight pages already call, but re-implemented on the
+ * design-system presentation rather than its own. That is what a shared
+ * vocabulary is supposed to buy: the older pages migrate by having their
+ * primitive change underneath them, not by having their JSX rewritten.
+ *
+ * Two things changed in the move, both from the brief:
+ *
+ * - **The surface is gone** (§74). Every statistic used to sit on its own
+ *   filled panel inside a hairline grid, which is a card per number by another
+ *   name. Hierarchy now comes from type and rules.
+ * - **`sub` is where context goes** (§67), and its absence is now visible
+ *   rather than invisible — a tile with no context renders a thin em dash line
+ *   instead of silently looking finished, so the gap shows up in review.
+ */
 export const StatTile = ({
   label,
   value,
@@ -57,12 +74,10 @@ export const StatTile = ({
   emphasis?: boolean;
   tone?: 'good' | 'bad' | 'warn';
 }) => (
-  <div className="p-3" style={{ background: 'var(--surface)' }}>
-    <div className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
-      {label}
-    </div>
+  <div className="py-1">
+    <div className="eyebrow mb-1">{label}</div>
     <div
-      className="tabular mt-1 text-xl font-semibold sm:text-2xl"
+      className="tabular text-xl font-semibold sm:text-2xl"
       style={{
         color:
           tone === 'good'
@@ -78,17 +93,18 @@ export const StatTile = ({
     >
       {value}
     </div>
-    {sub !== undefined && (
-      <div className="tabular mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-        {sub}
-      </div>
-    )}
+    <div className="tabular mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+      {sub ?? '—'}
+    </div>
   </div>
 );
 
 /**
- * A row of tiles, hairline-separated by the grid gap showing the background
- * through. Two columns on a phone, `columns` from the small breakpoint up.
+ * A row of statistics, separated by whitespace rather than boxed.
+ *
+ * Was a hairline grid with the background showing through the gaps, which drew
+ * a box around every number on the page — the thing §74 rules out. Same API,
+ * same responsive column counts, no rectangles.
  */
 const COLUMN_CLASS: Record<number, string> = {
   2: 'sm:grid-cols-2',
@@ -100,8 +116,8 @@ const COLUMN_CLASS: Record<number, string> = {
 
 export const StatRow = ({ children, columns = 4 }: { children: ReactNode; columns?: number }) => (
   <div
-    className={`grid grid-cols-2 gap-px overflow-hidden rounded border ${COLUMN_CLASS[columns] ?? 'sm:grid-cols-4'}`}
-    style={{ borderColor: 'var(--rule)', background: 'var(--rule)' }}
+    className={`grid grid-cols-2 gap-x-8 gap-y-4 border-t pt-4 ${COLUMN_CLASS[columns] ?? 'sm:grid-cols-4'}`}
+    style={{ borderColor: 'var(--rule)' }}
   >
     {children}
   </div>

@@ -54,6 +54,21 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
+      # Push the week's artifacts into the canonical store.
+      #
+      # This is what turns the artifact from the only copy into the current one.
+      # It has to run on the same schedule as the snapshot, because the thing it
+      # preserves — what the model believed this week — stops existing the moment
+      # the exporter next overwrites the file.
+      #
+      # Idempotent on (player, season, week, model_version), so a re-run corrects
+      # rather than duplicates.
+      - name: Sync the canonical store
+        run: npx tsx scripts/sync-canonical.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+
   # Rebuilding projections needs the Python pipeline, which does not run on
   # Vercel and is not meant to. Kept here, kept explicit, and kept honest about
   # the fact that its output has to be committed by a person: the alternative is

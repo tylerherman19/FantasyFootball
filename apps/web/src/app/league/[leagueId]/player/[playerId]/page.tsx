@@ -16,6 +16,7 @@ import {
 } from '@/lib/age-curves';
 import { explain, usageRows } from '@/lib/explain';
 import { loadHistory, reliabilityLabel, trendLabel } from '@/lib/history';
+import { explainChange, loadProjectionHistory } from '@/lib/history-store';
 import { loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
 import { loadAvailability } from '@/lib/availability';
@@ -124,6 +125,18 @@ export default async function PlayerPage({
   const efficiency = explanation?.steps[2]?.value ?? 0;
 
   const offense = offenseArtifact?.teams[team];
+
+  /*
+   * What the model used to think (§35, §48).
+   *
+   * The canonical store keys on `player_uid`, which is gsis where we have it —
+   * the whole point of §5 being that a Sleeper id is a platform detail rather
+   * than an identity.
+   */
+  const playerUid =
+    identity?.gsisId != null ? `gsis:${identity.gsisId}` : `sleeper:${playerId}`;
+  const changes = await loadProjectionHistory(playerUid, rules).catch(() => []);
+  const explained = changes.map((c) => ({ change: c, sentence: explainChange(c) }));
   const share = shareOfPeak(ageCurves, position, years);
   const remaining = remainingPeakSeasons(ageCurves, position, years, 4);
   const phase = careerPhase(ageCurves, position, years);
@@ -529,6 +542,73 @@ export default async function PlayerPage({
             )}
           </Section>
         )}
+
+        <Section
+          title="What the model used to think"
+          note="Every publication is kept, so a number that moves can be explained rather than just observed. The model version is stored beside each one, because a projection changing when the model changed is a different fact from one changing when the player did."
+        >
+          {explained.length === 0 ? (
+            <p className="max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+              No history yet. The canonical store began recording this week, so there is one
+              publication and nothing to compare it against. This fills in from the next weekly
+              build — the point of keeping it is that the answer exists later, not that it exists
+              now.
+            </p>
+          ) : (
+            <table className="w-full max-w-3xl">
+              <thead>
+                <tr className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  <th className="pb-1 text-left font-normal">Published</th>
+                  <th className="pb-1 text-right font-normal">Projection</th>
+                  <th className="pb-1 text-right font-normal">Change</th>
+                  <th className="pb-1 pl-4 text-left font-normal">Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {explained.map(({ change, sentence }) => (
+                  <tr
+                    key={change.generatedAt}
+                    className="border-t align-baseline"
+                    style={{ borderColor: 'var(--rule)' }}
+                  >
+                    <td className="py-1.5 pr-3 text-sm whitespace-nowrap">
+                      {new Date(change.generatedAt).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </td>
+                    <td className="tabular py-1.5 text-right text-sm font-medium">
+                      {change.points.toFixed(1)}
+                    </td>
+                    <td
+                      className="tabular py-1.5 text-right text-sm"
+                      style={{
+                        color:
+                          change.delta === null
+                            ? 'var(--ink-faint)'
+                            : change.delta > 0
+                              ? 'var(--pos)'
+                              : change.delta < 0
+                                ? 'var(--neg)'
+                                : 'var(--ink-faint)',
+                      }}
+                    >
+                      {change.delta === null
+                        ? 'first'
+                        : `${change.delta >= 0 ? '+' : '−'}${Math.abs(change.delta).toFixed(1)}`}
+                    </td>
+                    <td
+                      className="py-1.5 pl-4 text-sm leading-relaxed"
+                      style={{ color: 'var(--ink-muted)' }}
+                    >
+                      {sentence ?? (change.delta === null ? 'First publication.' : 'No material change.')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
 
         {past !== null && (
           <Section

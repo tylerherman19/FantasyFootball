@@ -35,6 +35,20 @@ export interface ArtifactPlayer {
    * rather than presenting it identically to a number built from real games.
    */
   readonly basis?: 'history' | 'rookie-prior';
+  /**
+   * The model's own decomposition, as stat lines rather than points.
+   *
+   * `prior` is every stat at its positional average; `opportunity` is his
+   * volume with the positional rates. Scored per league, the two gaps are what
+   * his usage and his efficiency are each worth. Absent for anyone the usage
+   * model did not build — rookies, kickers, IDP, team defenses.
+   */
+  readonly why?: {
+    readonly prior?: Readonly<Record<string, number>>;
+    readonly opportunity?: Readonly<Record<string, number>>;
+    readonly observed?: Readonly<Record<string, number>>;
+    readonly effectiveGames: number;
+  };
 }
 
 export interface ProjectionArtifact {

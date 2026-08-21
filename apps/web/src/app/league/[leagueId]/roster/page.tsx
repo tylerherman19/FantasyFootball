@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
@@ -166,7 +167,15 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                             className="max-w-[13rem] truncate"
                             style={{ fontWeight: player.starting ? 600 : 400 }}
                           >
-                            {player.name}
+                            {/* Every player name is a way into the evidence. A
+                                projection you cannot interrogate is a number to
+                                take on faith. */}
+                            <Link
+                              href={`/league/${leagueId}/player/${player.playerId}`}
+                              className="hover:underline"
+                            >
+                              {player.name}
+                            </Link>
                             <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
                               {player.team}
                             </span>

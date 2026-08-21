@@ -164,6 +164,44 @@ def _shrink(observed_total: float, observed_n: float, prior_mean: float, k: floa
     return (observed_total + prior_mean * k) / (observed_n + k)
 
 
+@dataclass(frozen=True)
+class Explanation:
+    """Why a projection is what it is, in the model's own terms.
+
+    Fantasy points here are an identity — `Σ(opportunity × rate × weight)` — and
+    the model already computes each half separately, then discards the parts and
+    keeps the product. That is the whole explanation, thrown away at the last
+    step.
+
+    So three stat lines are kept rather than one:
+
+    - `prior` — every stat at its positional average. What the model would say
+      about a player it knew nothing about beyond his position.
+    - `opportunity` — the player's own projected volume, but still the
+      positional average *rates*. The gap from `prior` is what his usage is
+      worth.
+    - `final` — his volume and his rates. The gap from `opportunity` is what his
+      efficiency is worth.
+
+    Scored per league at serve time, exactly like the projection itself, so the
+    decomposition is in the same currency as the number it explains. A waterfall
+    built from these three is arithmetic, not narration — which is the
+    difference between an explanation and a plausible story told afterwards.
+
+    `effective_games` is the recency-weighted sample behind it all: the honest
+    answer to "how much does the model actually know about this man?"
+    """
+
+    position: str
+    prior: dict[str, float]
+    opportunity: dict[str, float]
+    final: dict[str, float]
+    #: Recency-weighted games observed. Drives the confidence read.
+    effective_games: float
+    #: Raw per-game volume, unshrunk — what he has actually been doing lately.
+    observed: dict[str, float]
+
+
 def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, float]]:
     """Projected stat lines, deliberately unscored.
 
@@ -173,9 +211,21 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
     rules. Baking one scoring system into the artifact would silently hand two of
     the three leagues the wrong numbers.
     """
+    return project_with_explanations(store, as_of)[0]
+
+
+def project_with_explanations(
+    store: FeatureStore, as_of: AsOf
+) -> tuple[dict[str, dict[str, float]], dict[str, Explanation]]:
+    """The projection, plus the decomposition that produced it.
+
+    Kept as one pass rather than two so the explanation cannot drift from the
+    number it explains — a `Why?` panel computed by a second code path is a
+    second model, and the first time they disagree the product is lying.
+    """
     history = store.as_of("player_stats", as_of, seasons_back=3).pl()
     if history.height == 0:
-        return {}
+        return {}, {}
 
     columns = [
         c
@@ -195,7 +245,7 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
         .sort(["player_id", "season", "week"])
     )
     if frame.height == 0:
-        return {}
+        return {}, {}
 
     # Re-estimated at every as-of, from data available then. Freezing the
     # constants would leak the future into early-season weeks.
@@ -213,6 +263,7 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
     }
 
     out: dict[str, dict[str, float]] = {}
+    explained: dict[str, Explanation] = {}
 
     for (player_id,), group in frame.group_by(["player_id"], maintain_order=True):
         recent = group.tail(LOOKBACK_GAMES)
@@ -224,6 +275,12 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
         effective_games = float(weights.sum())
 
         line: dict[str, float] = {}
+        # Same arithmetic, with the player's contribution removed one half at a
+        # time. `prior` knows only his position; `opportunity` adds his volume
+        # and stops there.
+        prior: dict[str, float] = {}
+        opportunity: dict[str, float] = {}
+        observed: dict[str, float] = {}
 
         # Volume per game, lightly regressed — this is the sticky part.
         for stat in VOLUME_STATS:
@@ -231,10 +288,13 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
                 continue
             shrink = volume_shrinkage.get((position, stat))
             if shrink is None:
-                line[stat] = 0.0
+                line[stat] = prior[stat] = opportunity[stat] = 0.0
                 continue
             total = float((recent[stat].to_numpy() * weights).sum())
             line[stat] = _shrink(total, effective_games, shrink.prior_mean, shrink.k)
+            opportunity[stat] = line[stat]
+            prior[stat] = shrink.prior_mean
+            observed[stat] = total / effective_games if effective_games > 0 else 0.0
 
         # Rates per opportunity, regressed hard — this is where the model stops
         # believing a six-yards-per-carry hot streak.
@@ -243,7 +303,7 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
                 continue
             shrink = rate_shrinkage.get((position, f"{stat}/{denominator}"))
             if shrink is None:
-                line[stat] = 0.0
+                line[stat] = prior[stat] = opportunity[stat] = 0.0
                 continue
 
             stat_total = float((recent[stat].to_numpy() * weights).sum())
@@ -251,11 +311,26 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
             rate = _shrink(stat_total, opportunity_total, shrink.prior_mean, shrink.k)
 
             line[stat] = rate * line.get(denominator, 0.0)
+            # His volume, the position's rate.
+            opportunity[stat] = shrink.prior_mean * opportunity.get(denominator, 0.0)
+            # The position's volume and the position's rate.
+            prior[stat] = shrink.prior_mean * prior.get(denominator, 0.0)
+            if opportunity_total > 0:
+                observed[stat] = stat_total / opportunity_total
 
         line["_position"] = 0.0  # placeholder keeps the dict homogeneous
-        out[str(player_id)] = {k: v for k, v in line.items() if not k.startswith("_")}
+        clean = {k: v for k, v in line.items() if not k.startswith("_")}
+        out[str(player_id)] = clean
+        explained[str(player_id)] = Explanation(
+            position=position,
+            prior={k: round(v, 4) for k, v in prior.items()},
+            opportunity={k: round(v, 4) for k, v in opportunity.items()},
+            final=clean,
+            effective_games=round(effective_games, 2),
+            observed={k: round(v, 4) for k, v in observed.items()},
+        )
 
-    return out
+    return out, explained
 
 
 def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Prediction]:

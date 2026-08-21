@@ -116,7 +116,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
     with FeatureStore(lake) as store:
         as_of = AsOf(season, week)
 
-        skill_lines = v1_usage.project_stat_lines(store, as_of)
+        skill_lines, explanations = v1_usage.project_with_explanations(store, as_of)
         kicker_lines = v1_positional.kicker_stat_lines(store, as_of)
         idp_lines = v1_positional.idp_stat_lines(store, as_of)
         defense_lines = v1_positional.team_defense_stat_lines(store, as_of)
@@ -217,6 +217,22 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             # product that shows the two identically is lying by omission.
             "basis": "rookie-prior" if is_rookie else "history",
         }
+
+        # The decomposition, as stat lines rather than points, for the same
+        # reason the projection itself is a stat line: the league does the
+        # scoring. A waterfall in points would be wrong in two of three leagues.
+        explanation = explanations.get(source_id)
+        if explanation is not None:
+            players[sleeper_id]["why"] = {
+                "prior": explanation.prior,
+                "opportunity": explanation.opportunity,
+                "effectiveGames": explanation.effective_games,
+                "observed": explanation.observed,
+            }
+        elif is_rookie:
+            # A rookie has no history to decompose. Saying so is the honest
+            # explanation, and it is the one the manager most needs to hear.
+            players[sleeper_id]["why"] = {"effectiveGames": 0.0}
 
     for source_id, stats in skill_lines.items():
         add(source_id, stats)

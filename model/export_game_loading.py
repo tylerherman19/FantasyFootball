@@ -80,9 +80,17 @@ _RULES: dict[str, float] = {
 
 
 def measure(store: FeatureStore) -> dict[str, dict[str, float | None]]:
+    """Correlate a player's weekly surprise with the game's actual scoring.
+
+    The three earlier attempts all correlated one fantasy score against another,
+    which is why they could not separate the game effect from target
+    competition. Points scored in the game is not a rival for anyone's targets,
+    so it does not have that problem.
+    """
     stats = store.raw("player_stats").pl()
-    if stats.height == 0:
-        raise SystemExit("player_stats is empty")
+    schedules = store.raw("schedules").pl()
+    if stats.height == 0 or schedules.height == 0:
+        raise SystemExit("player_stats or schedules is empty")
 
     terms = [
         pl.col(stat).cast(pl.Float64).fill_null(0.0) * weight
@@ -91,6 +99,39 @@ def measure(store: FeatureStore) -> dict[str, dict[str, float | None]]:
     ]
     if not terms:
         raise SystemExit("player_stats is missing the scoring columns")
+
+    # The environment, from the scoreboard rather than from fantasy output.
+    games = (
+        schedules.filter(
+            (pl.col("season") >= FIRST_SEASON)
+            & pl.col("home_score").is_not_null()
+            & pl.col("away_score").is_not_null()
+        )
+        .select(
+            pl.col("season").cast(pl.Int32),
+            pl.col("week").cast(pl.Int32),
+            pl.col("home_team").cast(pl.Utf8),
+            pl.col("away_team").cast(pl.Utf8),
+            pl.col("home_score").cast(pl.Float64),
+            pl.col("away_score").cast(pl.Float64),
+        )
+    )
+
+    # One row per team per game: what his side scored, and what the game
+    # produced in total. Two different environment measures, both exogenous.
+    home = games.select(
+        pl.col("season"), pl.col("week"),
+        pl.col("home_team").alias("team"),
+        pl.col("home_score").alias("team_score"),
+        (pl.col("home_score") + pl.col("away_score")).alias("game_total"),
+    )
+    away = games.select(
+        pl.col("season"), pl.col("week"),
+        pl.col("away_team").alias("team"),
+        pl.col("away_score").alias("team_score"),
+        (pl.col("home_score") + pl.col("away_score")).alias("game_total"),
+    )
+    environment = pl.concat([home, away])
 
     frame = (
         stats.filter(
@@ -107,39 +148,31 @@ def measure(store: FeatureStore) -> dict[str, dict[str, float | None]]:
             pl.col("week").cast(pl.Int32),
             pl.col("points"),
         )
+        .join(environment, on=["team", "season", "week"], how="inner")
     )
+    if frame.height == 0:
+        raise SystemExit("player stats did not join to schedules — check team codes")
 
-    # The game environment: total skill-position output by this team that week.
-    team_games = frame.group_by(["team", "season", "week"]).agg(
-        pl.col("points").sum().alias("team_points")
-    )
-
-    # Centre each player on himself, so his quality is removed and only his
-    # weekly surprise remains.
+    # Centre both sides on their own baseline, so what is correlated is his
+    # surprise against the game's surprise rather than his quality against his
+    # team's quality.
     per_player = frame.group_by("player_id").agg(
         pl.col("points").mean().alias("player_mean"), pl.len().alias("weeks")
+    )
+    per_team = frame.group_by(["team", "season"]).agg(
+        pl.col("team_score").mean().alias("team_score_mean"),
+        pl.col("game_total").mean().alias("game_total_mean"),
     )
 
     centred = (
         frame.join(per_player, on="player_id", how="inner")
         .filter(pl.col("weeks") >= MIN_PLAYER_WEEKS)
-        .join(team_games, on=["team", "season", "week"], how="inner")
+        .join(per_team, on=["team", "season"], how="inner")
         .with_columns(
             (pl.col("points") - pl.col("player_mean")).alias("deviation"),
-            # Leave-one-out. The team total includes the player, and a
-            # quarterback *is* most of his team's skill output — correlating him
-            # against a total he dominates measures him against himself and
-            # inflates his loading. Removing his own points is the difference
-            # between a measurement and a tautology.
-            (pl.col("team_points") - pl.col("points")).alias("others_points"),
+            (pl.col("team_score") - pl.col("team_score_mean")).alias("team_deviation"),
+            (pl.col("game_total") - pl.col("game_total_mean")).alias("total_deviation"),
         )
-    )
-
-    others_baseline = centred.group_by("player_id").agg(
-        pl.col("others_points").mean().alias("others_mean")
-    )
-    centred = centred.join(others_baseline, on="player_id", how="inner").with_columns(
-        (pl.col("others_points") - pl.col("others_mean")).alias("team_deviation")
     )
 
     out: dict[str, dict[str, float | None]] = {}
@@ -149,20 +182,18 @@ def measure(store: FeatureStore) -> dict[str, dict[str, float | None]]:
         if subset.height < 500:
             continue
 
-        correlation = subset.select(
-            pl.corr("deviation", "team_deviation").alias("r")
-        )["r"][0]
-        if correlation is None:
+        team_r = subset.select(pl.corr("deviation", "team_deviation").alias("r"))["r"][0]
+        total_r = subset.select(pl.corr("deviation", "total_deviation").alias("r"))["r"][0]
+        if team_r is None:
             out[position] = {"loading": None, "observations": subset.height}
             continue
 
-        # Squared correlation is the share of variance explained, which is the
-        # quantity GAME_LOADING is defined as.
-        loading = float(correlation) ** 2
-
         out[position] = {
-            "loading": round(min(0.95, max(0.0, loading)), 4),
-            "correlation": round(float(correlation), 4),
+            # Share of his weekly variance explained by how much his side
+            # scored. This is what GAME_LOADING is defined as.
+            "loading": round(min(0.95, max(0.0, float(team_r) ** 2)), 4),
+            "teamScoreCorrelation": round(float(team_r), 4),
+            "gameTotalCorrelation": round(float(total_r), 4) if total_r is not None else None,
             "observations": int(subset.height),
         }
 

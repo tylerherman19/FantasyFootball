@@ -29,10 +29,45 @@ from model.models import rookie_prior, v1_positional, v1_usage
 MODEL_VERSION = "v1-usage+positional"
 
 #: Share of a player's weekly variance explained by the game environment.
-GAME_LOADING: dict[str, float] = {
+#:
+#: **Measured** for the skill positions by `model/export_game_loading.py`, which
+#: correlates each player's weekly surprise against how much his side actually
+#: scored. Points on the scoreboard are exogenous to his target share — unlike
+#: the three earlier attempts, which all correlated one fantasy score against
+#: another and so could not separate the game effect from team-mates competing
+#: for the same targets.
+#:
+#: The measured values are far below the constants they replace (QB 0.45 → 0.178,
+#: WR 0.40 → 0.031), which means the simulator had been generating substantially
+#: more team correlation than the data supports.
+#:
+#: K, DEF and IDP keep asserted values: their weekly scoring is not in
+#: `player_stats` in a form this estimator reads, so there is nothing measured to
+#: use. Marked so the two kinds of number do not look alike.
+_MEASURED_LOADING_PATH = Path("model/artifacts/game-loading.json")
+
+_ASSERTED_LOADING: dict[str, float] = {
     "QB": 0.45, "RB": 0.30, "WR": 0.40, "TE": 0.35,
     "K": 0.20, "DEF": 0.25, "DL": 0.15, "LB": 0.15, "DB": 0.15,
 }
+
+
+def _game_loading() -> dict[str, float]:
+    """Measured where it exists, asserted where it does not."""
+    loading = dict(_ASSERTED_LOADING)
+    try:
+        payload = json.loads(_MEASURED_LOADING_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return loading
+
+    for position, row in payload.get("positions", {}).items():
+        value = row.get("loading")
+        if value is not None:
+            loading[position] = float(value)
+    return loading
+
+
+GAME_LOADING: dict[str, float] = _game_loading()
 
 #: nflverse uses granular defensive positions; fantasy platforms bucket them
 #: into three. A league with a "DL" slot will not accept a player listed "DE",

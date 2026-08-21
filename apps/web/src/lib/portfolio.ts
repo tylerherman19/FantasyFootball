@@ -16,16 +16,20 @@ import type { ArtifactPlayer } from './projections';
  * **What is honest here, and what is not.** True player-pair covariance needs a
  * joint distribution estimated from play-by-play, which this repository does not
  * yet have. What it does have is `gameId` — who shares a game — and
- * `gameLoading`, the share of a player's weekly variance attributed to the game
- * environment rather than to himself. Those give a structural correlation:
- * players in the same game co-move by the product of their game loadings, and
- * players in different games are treated as independent.
+ * `gameLoading`, the share of a player's weekly variance explained by the game
+ * environment. A one-factor model turns those into a correlation.
  *
- * That is a real model with a stated assumption, not a measured covariance
- * matrix, and the difference is named wherever the number is shown. Note also
- * that `gameLoading` is currently a hand-set constant per position — the audit
- * flags it at §9.5 — so this inherits that weakness and will improve when it is
- * measured.
+ * `gameLoading` is now measured rather than asserted: `export_game_loading.py`
+ * correlates each player's weekly surprise against how much his side actually
+ * scored, which is exogenous to his target share in a way that earlier attempts
+ * — correlating one fantasy score against another — were not.
+ *
+ * The limit worth naming: one factor represents the *shared environment* and
+ * nothing else. A quarterback and his own receiver also have a direct
+ * dependency — he throws the passes the receiver catches — which a shootout
+ * variable does not capture, so real QB-to-his-own-WR1 correlation sits above
+ * what this produces. Fixing that needs a joint distribution, not a bigger
+ * constant.
  */
 
 export interface PortfolioPlayer {
@@ -70,21 +74,37 @@ export interface PortfolioAnalysis {
 /**
  * Correlation between two players, from shared game environment.
  *
- * Same game: the product of their game loadings — if a quarterback is 45%
- * game-driven and his receiver 40%, they co-move at 0.18. Different games:
- * zero, which is the right default in a league where nobody plays twice.
+ * Same game: the product of their factor loadings, which is the square root of
+ * the product of their variance shares. Different games: zero, the right default
+ * in a league where nobody plays twice.
  *
  * Same player is 1 by definition and is handled by the caller.
  */
 export const correlationOf = (a: PortfolioPlayer, b: PortfolioPlayer): number => {
   if (a.gameId === '' || b.gameId === '') return 0;
   if (a.gameId !== b.gameId) return 0;
-  // Two players on *opposing* teams in one game share the environment too, and
-  // the sign is genuinely ambiguous — a shootout lifts both, a defensive
-  // struggle sinks both — so the same positive term is used for each. The
-  // alternative, assuming opponents are negatively correlated, is a stronger
-  // claim than the evidence supports.
-  return Math.max(0, Math.min(1, a.gameLoading * b.gameLoading));
+
+  /*
+   * `sqrt`, not a product — and the first version of this had it wrong.
+   *
+   * `gameLoading` is the share of a player's *variance* explained by the game.
+   * In a one-factor model `X = sqrt(l)·F + sqrt(1−l)·E`, so the correlation
+   * between two players is the product of their factor *loadings* — the square
+   * roots — not the product of the variance shares.
+   *
+   * Multiplying the shares understated every pairing badly: with the measured
+   * QB 0.178 and WR 0.031 it gives 0.006, effectively declaring a quarterback
+   * and his receiver independent, when the correct figure is 0.074. On the old
+   * asserted constants it was 0.18 against a correct 0.42. Either way the
+   * portfolio was under-penalising stacked rosters, which is the exact error the
+   * feature exists to catch.
+   *
+   * Opposing players in one game get the same positive term. A shootout lifts
+   * both and a defensive struggle sinks both, so the sign is genuinely
+   * ambiguous, and assuming opponents are negatively correlated would be a
+   * stronger claim than the evidence supports.
+   */
+  return Math.max(0, Math.min(1, Math.sqrt(a.gameLoading * b.gameLoading)));
 };
 
 const concentrations = (

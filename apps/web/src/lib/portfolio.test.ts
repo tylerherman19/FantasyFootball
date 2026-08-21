@@ -21,11 +21,18 @@ const player = (over: Partial<PortfolioPlayer> & { playerId: string }): Portfoli
 });
 
 describe('correlationOf', () => {
-  it('is the product of game loadings within one game', () => {
+  it('is the product of factor loadings — the square roots — not of the variance shares', () => {
+    /*
+     * `gameLoading` is a share of variance. In a one-factor model the
+     * correlation is the product of the sqrt of those shares, and getting this
+     * wrong understates every pairing: 0.18 instead of 0.42 here, which
+     * under-penalises exactly the stacked rosters this feature exists to catch.
+     */
     const qb = player({ playerId: 'qb', position: 'QB', gameLoading: 0.45 });
     const wr = player({ playerId: 'wr', gameLoading: 0.4 });
 
-    expect(correlationOf(qb, wr)).toBeCloseTo(0.18, 6);
+    expect(correlationOf(qb, wr)).toBeCloseTo(Math.sqrt(0.45 * 0.4), 6);
+    expect(correlationOf(qb, wr)).toBeCloseTo(0.4243, 4);
   });
 
   it('is zero across different games', () => {
@@ -141,8 +148,8 @@ describe('portfolioRead', () => {
   it('falls back to plain language when nothing crosses a threshold', () => {
     // Mild shared exposure: past the "spread" threshold, short of "stacked".
     const analysis = analysePortfolio([
-      player({ playerId: 'a', team: 'CIN', gameId: 'g1', gameLoading: 0.45, marketValue: 2000 }),
-      player({ playerId: 'b', team: 'PHI', gameId: 'g1', gameLoading: 0.45, marketValue: 2000 }),
+      player({ playerId: 'a', team: 'CIN', gameId: 'g1', gameLoading: 0.2, marketValue: 2000 }),
+      player({ playerId: 'b', team: 'PHI', gameId: 'g1', gameLoading: 0.2, marketValue: 2000 }),
       player({ playerId: 'c', team: 'KC', gameId: 'g2', gameLoading: 0.3, marketValue: 2000 }),
       player({ playerId: 'd', team: 'BUF', gameId: 'g3', gameLoading: 0.3, marketValue: 2000 }),
       player({ playerId: 'e', team: 'LA', gameId: 'g4', gameLoading: 0.3, marketValue: 2000 }),

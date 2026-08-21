@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
@@ -11,6 +12,7 @@ import { requireSession } from '@/lib/session';
 import { loadAvailability } from '@/lib/availability';
 import { loadIdentities } from '@/lib/crosswalk';
 import { loadArtifact } from '@/lib/projections';
+import { loadOffense, offenseRead, rankOf } from '@/lib/offense';
 import { loadMarketValues } from '@/lib/values';
 
 /**
@@ -81,7 +83,10 @@ export default async function PlayerPage({
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadHistory().catch(() => null),
   ]);
-  const ageCurves = await loadAgeCurves().catch(() => null);
+  const [ageCurves, offenseArtifact] = await Promise.all([
+    loadAgeCurves().catch(() => null),
+    loadOffense().catch(() => null),
+  ]);
 
   const player = artifact?.players[playerId];
   const identity = identities[playerId];
@@ -101,6 +106,7 @@ export default async function PlayerPage({
   const opportunity = explanation?.steps[1]?.value ?? 0;
   const efficiency = explanation?.steps[2]?.value ?? 0;
 
+  const offense = offenseArtifact?.teams[team];
   const share = shareOfPeak(ageCurves, position, years);
   const remaining = remainingPeakSeasons(ageCurves, position, years, 4);
   const phase = careerPhase(ageCurves, position, years);
@@ -125,7 +131,13 @@ export default async function PlayerPage({
             <PositionChip position={position} />
             <h1 className="text-3xl font-semibold tracking-tight">{name}</h1>
             <span className="text-sm" style={{ color: 'var(--ink-muted)' }}>
-              {team}
+              {team === '' ? (
+                ''
+              ) : (
+                <Link href={`/league/${leagueId}/team/${team}`} className="hover:underline">
+                  {team}
+                </Link>
+              )}
               {years !== null && ` · ${years.toFixed(1)} yrs`}
               {player?.byeWeek != null && ` · bye ${player.byeWeek}`}
             </span>
@@ -257,6 +269,74 @@ export default async function PlayerPage({
                 })}
               </tbody>
             </table>
+          </Section>
+        )}
+
+        {offense !== undefined && (
+          <Section
+            title="The offence he plays in"
+            note="Usage is downstream of team behaviour. A back on a fast, run-first offence sees carries a back on a slow, pass-first one never will, and no amount of player-level modelling recovers that."
+          >
+            <p className="mb-4 max-w-2xl text-base leading-relaxed">{offenseRead(offense)}</p>
+
+            <div className="flex flex-wrap gap-x-10 gap-y-4">
+              <div>
+                <div className="eyebrow mb-1">Plays per game</div>
+                <div className="tabular text-xl font-semibold">
+                  {offense.playsPerGame.toFixed(1)}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  {rankOf(offense.playsPerGamePct) !== null &&
+                    `${rankOf(offense.playsPerGamePct)} of 32`}
+                </div>
+              </div>
+
+              <div>
+                <div className="eyebrow mb-1">Pass over expected</div>
+                <div
+                  className="tabular text-xl font-semibold"
+                  style={{ color: offense.proe >= 0 ? 'var(--pos)' : 'var(--neg)' }}
+                >
+                  {offense.proe >= 0 ? '+' : '−'}
+                  {(Math.abs(offense.proe) * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  vs the league in the same situations
+                </div>
+              </div>
+
+              <div>
+                <div className="eyebrow mb-1">Neutral pass rate</div>
+                <div className="tabular text-xl font-semibold">
+                  {(offense.neutralPassRate * 100).toFixed(0)}%
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  with the game in the balance
+                </div>
+              </div>
+
+              {offense.redZonePassRate !== undefined && (
+                <div>
+                  <div className="eyebrow mb-1">Red-zone pass rate</div>
+                  <div className="tabular text-xl font-semibold">
+                    {(offense.redZonePassRate * 100).toFixed(0)}%
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                    where touchdown equity is assigned
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="eyebrow mb-1">Seconds per play</div>
+                <div className="tabular text-xl font-semibold">
+                  {offense.secondsPerPlay.toFixed(1)}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  neutral situations only
+                </div>
+              </div>
+            </div>
           </Section>
         )}
 

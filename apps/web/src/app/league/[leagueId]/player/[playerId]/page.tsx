@@ -3,6 +3,7 @@ import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
 import { Confidence, Why } from '@/components/Why';
 import { PositionChip, RangeBar } from '@/components/charts/primitives';
+import { careerPhase, loadAgeCurves, remainingPeakSeasons, shareOfPeak } from '@/lib/age-curves';
 import { explain, usageRows } from '@/lib/explain';
 import { loadHistory, reliabilityLabel, trendLabel } from '@/lib/history';
 import { loadLeague } from '@/lib/league-data';
@@ -80,6 +81,7 @@ export default async function PlayerPage({
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadHistory().catch(() => null),
   ]);
+  const ageCurves = await loadAgeCurves().catch(() => null);
 
   const player = artifact?.players[playerId];
   const identity = identities[playerId];
@@ -98,6 +100,10 @@ export default async function PlayerPage({
 
   const opportunity = explanation?.steps[1]?.value ?? 0;
   const efficiency = explanation?.steps[2]?.value ?? 0;
+
+  const share = shareOfPeak(ageCurves, position, years);
+  const remaining = remainingPeakSeasons(ageCurves, position, years, 4);
+  const phase = careerPhase(ageCurves, position, years);
 
   const owner = snapshot.rosters.find((roster) =>
     roster.playerIds.some((id) => String(id) === playerId),
@@ -251,6 +257,61 @@ export default async function PlayerPage({
                 })}
               </tbody>
             </table>
+          </Section>
+        )}
+
+        {share !== null && (
+          <Section
+            title="Career phase"
+            note="Fitted on ten seasons by the delta method — each player compared to himself a year later, so his own level cancels and only the age effect survives. Comparing players by age instead would measure who survived, not how they aged."
+          >
+            <div className="flex flex-wrap gap-x-10 gap-y-4">
+              <div>
+                <div className="eyebrow mb-1">Against his peak</div>
+                <div className="tabular text-2xl font-semibold">{(share * 100).toFixed(0)}%</div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  of what an average {position} produces at {position === 'QB' ? '24' : 'his best age'}
+                </div>
+              </div>
+
+              {phase !== null && (
+                <div>
+                  <div className="eyebrow mb-1">Direction</div>
+                  <div
+                    className="text-2xl font-semibold capitalize"
+                    style={{
+                      color:
+                        phase === 'ascending'
+                          ? 'var(--pos)'
+                          : phase === 'declining'
+                            ? 'var(--neg)'
+                            : 'var(--ink)',
+                    }}
+                  >
+                    {phase}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                    next season vs this one
+                  </div>
+                </div>
+              )}
+
+              {remaining !== null && (
+                <div>
+                  <div className="eyebrow mb-1">Next four years</div>
+                  <div className="tabular text-2xl font-semibold">{remaining.toFixed(1)}</div>
+                  <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                    peak-equivalent seasons remaining
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <p className="mt-3 max-w-2xl text-xs leading-relaxed" style={{ color: 'var(--ink-faint)' }}>
+              Read as a floor on decline. The method only counts players who appeared in both
+              seasons, so it cannot see the ones whose careers ended — which means real cohorts fall
+              off faster than this.
+            </p>
           </Section>
         )}
 

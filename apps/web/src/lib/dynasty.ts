@@ -3,6 +3,7 @@ import { loadHistory, type PlayerHistory } from './history';
 import { buildTeamProfiles, type TeamProfile } from './league-analytics';
 import type { LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
+import { declineAge, loadAgeCurves } from './age-curves';
 import { loadMarketValues } from './values';
 
 /**
@@ -32,7 +33,15 @@ import { loadMarketValues } from './values';
  * games — this file only puts them on the same table and reads the answer off.
  */
 
-/** The age at which a position's production has historically started to fall. */
+/**
+ * Fallback decline ages, used only where the fitted curve cannot answer.
+ *
+ * These were the whole story until `model/models/age_curves.py` measured the
+ * real thing; they now cover the gap where the sample is too thin to fit — in
+ * practice quarterbacks, whose paired-season counts run out around 27. Keeping
+ * them labelled as assertions rather than deleting them is the point: a number
+ * nobody measured should look different from one somebody did.
+ */
 const DECLINE_AGE: Readonly<Record<string, number>> = {
   QB: 34,
   RB: 27,
@@ -82,6 +91,18 @@ export interface DynastyVerdict {
 }
 
 export interface DynastyView {
+  /**
+   * Decline age per position, and whether it was measured or asserted.
+   *
+   * Surfaced rather than kept private because the two are not the same claim,
+   * and a page that presents them identically is quietly overstating what the
+   * model knows.
+   */
+  readonly declineAges: readonly {
+    readonly position: string;
+    readonly age: number;
+    readonly measured: boolean;
+  }[];
   readonly profile: TeamProfile;
   readonly verdict: DynastyVerdict;
   readonly assets: readonly DynastyAsset[];
@@ -248,6 +269,28 @@ export const buildDynastyView = async (
 
   const rules = snapshot.league.scoring.raw;
 
+  /*
+   * Decline ages read off the fitted curve rather than the table below it.
+   * Positions the curve cannot reach keep the asserted value, and the dynasty
+   * page says which is which.
+   */
+  const ageCurves = await loadAgeCurves().catch(() => null);
+  const declineAges: Record<string, number> = {};
+  const declineSource: Record<string, boolean> = {};
+  for (const position of ['QB', 'RB', 'WR', 'TE']) {
+    const measured = declineAge(ageCurves, position);
+    if (measured !== null) {
+      declineAges[position] = measured;
+      declineSource[position] = true;
+    }
+  }
+  const declineAgeList = (['QB', 'RB', 'WR', 'TE'] as const).flatMap((position) => {
+    const age = declineAges[position] ?? DECLINE_AGE[position];
+    return age === undefined
+      ? []
+      : [{ position, age, measured: declineSource[position] === true }];
+  });
+
   const assets: DynastyAsset[] = roster.playerIds.map((rawId) => {
     const id = String(rawId);
     const projection = artifact?.players[id];
@@ -257,7 +300,8 @@ export const buildDynastyView = async (
     const projected = projection === undefined ? 0 : scoreFor(projection, rules);
     const marketValue = values.get(id)?.value ?? 0;
 
-    const decline = DECLINE_AGE[position];
+    // Measured first, asserted only as a fallback.
+    const decline = declineAges[position] ?? DECLINE_AGE[position];
     const windowYears = age === null || decline === undefined ? null : decline - age;
 
     return {
@@ -336,6 +380,7 @@ export const buildDynastyView = async (
     .slice(0, 6);
 
   return {
+    declineAges: declineAgeList,
     profile,
     verdict,
     assets: assets.sort((a, b) => b.marketValue - a.marketValue),

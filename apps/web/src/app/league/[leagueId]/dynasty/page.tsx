@@ -9,7 +9,7 @@ import {
   formatPct,
   positionColor,
 } from '@/components/charts/primitives';
-import { buildDynastyView, DECLINE_AGE, type DynastyAsset } from '@/lib/dynasty';
+import { buildDynastyView, type DynastyAsset } from '@/lib/dynasty';
 import { reliabilityLabel, trendLabel } from '@/lib/history';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
@@ -249,8 +249,16 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
             title="Your window, player by player"
             note={
               <>
-                Age against market value, with each position&apos;s typical decline age as the
-                dividing line — {Object.entries(DECLINE_AGE).map(([position, age]) => `${position} ${age}`).join(', ')}.
+                Age against market value, with each position&apos;s decline age as the dividing
+                line —{' '}
+                {dynasty.declineAges
+                  .map((d: { position: string; age: number; measured: boolean }) => `${d.position} ${d.age}${d.measured ? '' : '*'}`)
+                  .join(', ')}
+                . Those are the ages at which a position drops below 75% of its measured peak,
+                fitted by comparing each player to himself a year later
+                {dynasty.declineAges.some((d: { measured: boolean }) => !d.measured) &&
+                  '; starred values are assumptions, kept only where the sample was too thin to fit'}
+                .
                 Dots to the right of centre are players whose value is most likely to fall from
                 here. Dot size is what they project for this week.
               </>

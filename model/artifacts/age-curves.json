@@ -1,0 +1,248 @@
+{
+  "caveat": "The delta method removes survivorship in the level but not in the transition: only players who played both seasons contribute, so these curves understate decline. Treat as a floor.",
+  "curves": {
+    "QB": {
+      "23": 0.9609,
+      "24": 1.0,
+      "25": 0.9612,
+      "26": 0.9299,
+      "27": 0.9171
+    },
+    "RB": {
+      "22": 0.953,
+      "23": 1.0,
+      "24": 0.9402,
+      "25": 0.825,
+      "26": 0.7472,
+      "27": 0.7014,
+      "28": 0.5398,
+      "29": 0.4234,
+      "30": 0.3819
+    },
+    "TE": {
+      "22": 0.8164,
+      "23": 0.8675,
+      "24": 0.9768,
+      "25": 1.0,
+      "26": 0.9586,
+      "27": 0.71,
+      "28": 0.6775,
+      "29": 0.6494,
+      "30": 0.5071,
+      "31": 0.4513
+    },
+    "WR": {
+      "21": 0.7262,
+      "22": 0.8804,
+      "23": 1.0,
+      "24": 0.9388,
+      "25": 0.9154,
+      "26": 0.8345,
+      "27": 0.7818,
+      "28": 0.6872,
+      "29": 0.5868,
+      "30": 0.443,
+      "31": 0.3645,
+      "32": 0.2412
+    }
+  },
+  "firstSeason": 2016,
+  "generatedAt": "2026-08-21T17:57:18.503229+00:00",
+  "method": "delta (paired consecutive seasons), median ratio, peak-normalised",
+  "minGames": 6,
+  "minPairs": 20,
+  "transitions": [
+    {
+      "from_age": 23,
+      "pairs": 27,
+      "position": "QB",
+      "ratio": 1.0407
+    },
+    {
+      "from_age": 24,
+      "pairs": 31,
+      "position": "QB",
+      "ratio": 0.9612
+    },
+    {
+      "from_age": 25,
+      "pairs": 27,
+      "position": "QB",
+      "ratio": 0.9674
+    },
+    {
+      "from_age": 26,
+      "pairs": 20,
+      "position": "QB",
+      "ratio": 0.9863
+    },
+    {
+      "from_age": 22,
+      "pairs": 66,
+      "position": "RB",
+      "ratio": 1.0493
+    },
+    {
+      "from_age": 23,
+      "pairs": 100,
+      "position": "RB",
+      "ratio": 0.9402
+    },
+    {
+      "from_age": 24,
+      "pairs": 112,
+      "position": "RB",
+      "ratio": 0.8775
+    },
+    {
+      "from_age": 25,
+      "pairs": 94,
+      "position": "RB",
+      "ratio": 0.9057
+    },
+    {
+      "from_age": 26,
+      "pairs": 71,
+      "position": "RB",
+      "ratio": 0.9387
+    },
+    {
+      "from_age": 27,
+      "pairs": 57,
+      "position": "RB",
+      "ratio": 0.7696
+    },
+    {
+      "from_age": 28,
+      "pairs": 36,
+      "position": "RB",
+      "ratio": 0.7844
+    },
+    {
+      "from_age": 29,
+      "pairs": 24,
+      "position": "RB",
+      "ratio": 0.9019
+    },
+    {
+      "from_age": 22,
+      "pairs": 26,
+      "position": "TE",
+      "ratio": 1.0625
+    },
+    {
+      "from_age": 23,
+      "pairs": 56,
+      "position": "TE",
+      "ratio": 1.1261
+    },
+    {
+      "from_age": 24,
+      "pairs": 78,
+      "position": "TE",
+      "ratio": 1.0237
+    },
+    {
+      "from_age": 25,
+      "pairs": 73,
+      "position": "TE",
+      "ratio": 0.9586
+    },
+    {
+      "from_age": 26,
+      "pairs": 65,
+      "position": "TE",
+      "ratio": 0.7407
+    },
+    {
+      "from_age": 27,
+      "pairs": 51,
+      "position": "TE",
+      "ratio": 0.9542
+    },
+    {
+      "from_age": 28,
+      "pairs": 53,
+      "position": "TE",
+      "ratio": 0.9585
+    },
+    {
+      "from_age": 29,
+      "pairs": 42,
+      "position": "TE",
+      "ratio": 0.7809
+    },
+    {
+      "from_age": 30,
+      "pairs": 25,
+      "position": "TE",
+      "ratio": 0.8899
+    },
+    {
+      "from_age": 21,
+      "pairs": 31,
+      "position": "WR",
+      "ratio": 1.2124
+    },
+    {
+      "from_age": 22,
+      "pairs": 94,
+      "position": "WR",
+      "ratio": 1.1358
+    },
+    {
+      "from_age": 23,
+      "pairs": 126,
+      "position": "WR",
+      "ratio": 0.9388
+    },
+    {
+      "from_age": 24,
+      "pairs": 152,
+      "position": "WR",
+      "ratio": 0.9751
+    },
+    {
+      "from_age": 25,
+      "pairs": 133,
+      "position": "WR",
+      "ratio": 0.9116
+    },
+    {
+      "from_age": 26,
+      "pairs": 109,
+      "position": "WR",
+      "ratio": 0.9368
+    },
+    {
+      "from_age": 27,
+      "pairs": 112,
+      "position": "WR",
+      "ratio": 0.879
+    },
+    {
+      "from_age": 28,
+      "pairs": 88,
+      "position": "WR",
+      "ratio": 0.854
+    },
+    {
+      "from_age": 29,
+      "pairs": 56,
+      "position": "WR",
+      "ratio": 0.7549
+    },
+    {
+      "from_age": 30,
+      "pairs": 35,
+      "position": "WR",
+      "ratio": 0.8227
+    },
+    {
+      "from_age": 31,
+      "pairs": 30,
+      "position": "WR",
+      "ratio": 0.6617
+    }
+  ]
+}

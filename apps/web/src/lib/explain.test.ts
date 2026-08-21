@@ -129,3 +129,61 @@ describe('usageRows', () => {
     expect(rows[0]?.observed).toBeCloseTo(9.2, 6);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+import { careerPhase, remainingPeakSeasons, shareOfPeak, type AgeCurves } from './age-curves';
+
+/**
+ * The aging curve replaces a table of hand-set decline ages. These pin the
+ * behaviour that made it worth replacing: a continuous read rather than a step
+ * on a birthday, and an honest refusal outside the fitted range.
+ */
+const CURVES: AgeCurves = {
+  generatedAt: '2026-08-21T00:00:00Z',
+  caveat: 'floor on decline',
+  curves: {
+    RB: { '22': 0.95, '23': 1.0, '24': 0.94, '25': 0.82, '26': 0.75 },
+    QB: { '23': 0.96, '24': 1.0, '25': 0.96 },
+  },
+};
+
+describe('age curves', () => {
+  it('interpolates between birthdays rather than stepping', () => {
+    const at24 = shareOfPeak(CURVES, 'RB', 24)!;
+    const at25 = shareOfPeak(CURVES, 'RB', 25)!;
+    const half = shareOfPeak(CURVES, 'RB', 24.5)!;
+
+    expect(half).toBeLessThan(at24);
+    expect(half).toBeGreaterThan(at25);
+    expect(half).toBeCloseTo((at24 + at25) / 2, 6);
+  });
+
+  it('clamps outside the fitted range instead of extrapolating', () => {
+    // The QB curve stops at 25 because the sample thins. A 34-year-old should
+    // get the last thing we measured, not an invented number off the end.
+    expect(shareOfPeak(CURVES, 'QB', 34)).toBe(0.96);
+    expect(shareOfPeak(CURVES, 'RB', 19)).toBe(0.95);
+  });
+
+  it('returns null rather than guessing for an unknown position', () => {
+    expect(shareOfPeak(CURVES, 'K', 27)).toBeNull();
+    expect(shareOfPeak(null, 'RB', 24)).toBeNull();
+    expect(shareOfPeak(CURVES, 'RB', null)).toBeNull();
+  });
+
+  it('reads direction off the curve, not off a threshold', () => {
+    expect(careerPhase(CURVES, 'RB', 22)).toBe('ascending');
+    expect(careerPhase(CURVES, 'RB', 24)).toBe('declining');
+  });
+
+  it('totals remaining peak-equivalent seasons', () => {
+    const young = remainingPeakSeasons(CURVES, 'RB', 22, 3)!;
+    const older = remainingPeakSeasons(CURVES, 'RB', 24, 3)!;
+
+    // 0.95 + 1.00 + 0.94 against 0.94 + 0.82 + 0.75.
+    expect(young).toBeCloseTo(2.89, 6);
+    expect(older).toBeCloseTo(2.51, 6);
+    expect(young).toBeGreaterThan(older);
+  });
+});

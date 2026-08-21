@@ -1137,10 +1137,26 @@ multiplied the shares, which understated every pairing (0.006 against a correct
 under-penalised exactly the stacked rosters the feature exists to catch. Fixed,
 with a test pinning the algebra.
 
-One limit named: a single factor is the shared environment only. A quarterback
-and his own receiver also have a direct dependency that a shootout variable
-cannot capture, so real QB-to-his-own-WR1 correlation sits above this. That needs
-a joint distribution, not a bigger constant.
+**And then the joint distribution too (§R).** I wrote that the QB-to-receiver
+dependency "needs a joint distribution, not a bigger constant" and left it. It
+was one self-join away.
+
+```
+QB-WR  +0.262   QB-TE  +0.211   QB-RB  +0.055
+WR-WR   0.000   RB-WR  -0.018   RB-RB  -0.022
+```
+
+QB-WR at 0.262 against the 0.074 the factor model implied. Same-position
+team-mates at zero or negative — two backs split the same carries.
+
+**That also explains the three failed `GAME_LOADING` attempts.** They kept
+returning ~0 because a positive game effect and a negative competition effect
+were cancelling. Not noise, arithmetic.
+
+Team-mates now use the measured pair; opponents keep the factor model, which is
+what one factor is for. And it corrects something live: Tyler's roster had read
+"stacked, +9%" on the asserted constants and reads as essentially uncorrelated on
+measured ones.
 
 ### Honest limits
 
@@ -1153,9 +1169,10 @@ a joint distribution, not a bigger constant.
   lake are built by the Python pipeline, which by design never runs in the
   serving path; the button reports their age and says plainly that it cannot
   rebuild them.
-- `GAME_LOADING` is now measured against the scoreboard and shipped (§Q). The
-  remaining gap is that one factor cannot represent a quarterback's direct
-  dependency with his own receiver.
+- `GAME_LOADING` is measured and shipped, and the within-team correlation it
+  could not represent is measured and shipped too (§Q). Correlation is now
+  position-pair resolution, not player-pair — two specific receivers on one team
+  get their position's average, not their own history.
 - The aging curves are a **floor on decline**: the delta method still conditions
   on surviving into the second season, so real cohorts fall off faster.
 - The QB curve cannot reach the ages that matter for quarterbacks.

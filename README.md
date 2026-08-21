@@ -37,6 +37,21 @@ npm install
 cp .env.example .env.local   # then fill in your keys
 ```
 
+## Production secrets
+
+Four features — the freshness panel, the canonical store, the projection history
+and the daily refresh cron — are deployed but inert until the deployment can
+reach Supabase. Three variables turn them on:
+
+```bash
+npm run setup:vercel     # reads .env.local, generates CRON_SECRET, pushes to Vercel
+npx vercel --prod        # redeploy so they take effect
+```
+
+The script is idempotent, so re-running it is also how you rotate a value. Until
+it has run, the pages say plainly that the store is unreachable rather than
+pretending there is no data.
+
 ## Commands
 
 ```bash

@@ -21,7 +21,8 @@
     "snapshot:ci": "tsx scripts/snapshot.ts",
     "build": "tsc --build",
     "dev": "npm run build && npm run dev --workspace=@ffe/web",
-    "sync:canonical": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/sync-canonical.ts"
+    "sync:canonical": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/sync-canonical.ts",
+    "setup:vercel": "bash scripts/setup-vercel-env.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -10,7 +10,12 @@ import {
   positionColor,
 } from '@/components/charts/primitives';
 import { buildDynastyView, type DynastyAsset } from '@/lib/dynasty';
-import { analysePortfolio, portfolioRead, type PortfolioPlayer } from '@/lib/portfolio';
+import {
+  analysePortfolio,
+  loadCorrelations,
+  portfolioRead,
+  type PortfolioPlayer,
+} from '@/lib/portfolio';
 import { loadArtifact } from '@/lib/projections';
 import { loadMarketValues } from '@/lib/values';
 import { reliabilityLabel, trendLabel } from '@/lib/history';
@@ -48,9 +53,10 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
    * offence has a bad Sunday they have it together, which a sum of values
    * structurally cannot show.
    */
-  const [portfolioArtifact, portfolioValues] = await Promise.all([
+  const [portfolioArtifact, portfolioValues, correlations] = await Promise.all([
     loadArtifact(view.snapshot.league.season, view.snapshot.asOfWeek),
     loadMarketValues(view.snapshot.league.format, view.snapshot.league.superFlex),
+    loadCorrelations().catch(() => null),
   ]);
   const myRoster = view.snapshot.rosters.find((r) => r.teamId === myTeamId);
   const portfolio =
@@ -75,6 +81,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
               },
             ];
           }),
+          correlations,
         );
 
   const nav = (

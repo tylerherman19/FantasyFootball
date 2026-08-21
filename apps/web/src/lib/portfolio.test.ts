@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { analysePortfolio, correlationOf, portfolioRead, type PortfolioPlayer } from './portfolio';
+import {
+  analysePortfolio,
+  correlationOf,
+  portfolioRead,
+  type CorrelationTable,
+  type PortfolioPlayer,
+} from './portfolio';
+
+/** The measured table, abbreviated. Signs are the point. */
+const TABLE: CorrelationTable = {
+  generatedAt: '2026-08-21T00:00:00Z',
+  pairs: {
+    'QB-WR': { correlation: 0.262, pairs: 20568 },
+    'QB-TE': { correlation: 0.211, pairs: 9840 },
+    'WR-WR': { correlation: 0.0, pairs: 35554 },
+    'RB-RB': { correlation: -0.022, pairs: 11625 },
+    'RB-WR': { correlation: -0.018, pairs: 54049 },
+  },
+};
 
 /**
  * The property that makes this worth having: two rosters with identical
@@ -21,6 +39,37 @@ const player = (over: Partial<PortfolioPlayer> & { playerId: string }): Portfoli
 });
 
 describe('correlationOf', () => {
+  it('uses the measured pair correlation for team-mates', () => {
+    /*
+     * The direct-dependency channel: a quarterback throws the passes his
+     * receiver catches. One environment factor cannot see that — it implied
+     * 0.074 for this pair against a measured 0.262.
+     */
+    const qb = player({ playerId: 'qb', position: 'QB', team: 'CIN', gameLoading: 0.178 });
+    const wr = player({ playerId: 'wr', position: 'WR', team: 'CIN', gameLoading: 0.031 });
+
+    expect(correlationOf(qb, wr, TABLE)).toBeCloseTo(0.262, 6);
+    // Without the table it falls back to the factor model, which is much lower.
+    expect(correlationOf(qb, wr)).toBeCloseTo(Math.sqrt(0.178 * 0.031), 6);
+  });
+
+  it('lets team-mates correlate negatively when they compete', () => {
+    // Two backs split the same carries. One eating means the other did not,
+    // and no factor model can produce a negative number.
+    const a = player({ playerId: 'a', position: 'RB', team: 'CIN' });
+    const b = player({ playerId: 'b', position: 'RB', team: 'CIN' });
+
+    expect(correlationOf(a, b, TABLE)).toBeCloseTo(-0.022, 6);
+  });
+
+  it('keeps the factor model for opponents, where there is no direct link', () => {
+    // Same game, different teams: only the shared scoreboard connects them.
+    const a = player({ playerId: 'a', position: 'QB', team: 'CIN', gameLoading: 0.178 });
+    const b = player({ playerId: 'b', position: 'WR', team: 'PHI', gameLoading: 0.031 });
+
+    expect(correlationOf(a, b, TABLE)).toBeCloseTo(Math.sqrt(0.178 * 0.031), 6);
+  });
+
   it('is the product of factor loadings — the square roots — not of the variance shares', () => {
     /*
      * `gameLoading` is a share of variance. In a one-factor model the

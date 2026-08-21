@@ -1,0 +1,44 @@
+{
+  "firstSeason": 2016,
+  "generatedAt": "2026-08-21T23:28:39.694590+00:00",
+  "method": "Pearson correlation of weekly fantasy-point deviations between every pair of skill players on the same team in the same week, each centred on his own mean for that season. Grouped by position pair, which is the resolution the sample supports.",
+  "pairs": {
+    "QB-RB": {
+      "correlation": 0.0548,
+      "pairs": 12664
+    },
+    "QB-TE": {
+      "correlation": 0.2109,
+      "pairs": 9840
+    },
+    "QB-WR": {
+      "correlation": 0.2615,
+      "pairs": 20568
+    },
+    "RB-RB": {
+      "correlation": -0.0218,
+      "pairs": 11625
+    },
+    "RB-TE": {
+      "correlation": -0.0085,
+      "pairs": 25928
+    },
+    "RB-WR": {
+      "correlation": -0.0182,
+      "pairs": 54049
+    },
+    "TE-TE": {
+      "correlation": 0.0063,
+      "pairs": 6327
+    },
+    "TE-WR": {
+      "correlation": 0.0031,
+      "pairs": 41598
+    },
+    "WR-WR": {
+      "correlation": 0.0004,
+      "pairs": 35554
+    }
+  },
+  "why": "A one-factor game-environment model can only represent a shared environment. It cannot represent a direct dependency, and the quarterback-to-receiver link is exactly that: he throws the passes the receiver catches. The factor model implied 0.074 for QB-WR; this measures it."
+}

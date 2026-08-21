@@ -1,4 +1,4 @@
-import type { ArtifactPlayer } from './projections';
+import { readArtifactFile } from './projections';
 
 /**
  * A dynasty roster as a portfolio of correlated assets (§23).
@@ -24,12 +24,31 @@ import type { ArtifactPlayer } from './projections';
  * scored, which is exogenous to his target share in a way that earlier attempts
  * — correlating one fantasy score against another — were not.
  *
- * The limit worth naming: one factor represents the *shared environment* and
- * nothing else. A quarterback and his own receiver also have a direct
- * dependency — he throws the passes the receiver catches — which a shootout
- * variable does not capture, so real QB-to-his-own-WR1 correlation sits above
- * what this produces. Fixing that needs a joint distribution, not a bigger
- * constant.
+ * **And the factor model is not enough, which is now measured rather than
+ * suspected.** One factor can only represent a shared environment. It cannot
+ * represent a *direct dependency*, and the most important correlation in fantasy
+ * football is exactly that: a quarterback throws the passes his receiver
+ * catches. Their fates are linked by the same completions, not merely by the
+ * same scoreboard.
+ *
+ * `model/export_correlation.py` measures within-team co-movement directly, by
+ * position pair, and the gap is large:
+ *
+ *     QB-WR  +0.262 measured   against 0.074 from the factor model
+ *     QB-TE  +0.211
+ *     WR-WR   0.000            target competition cancels the game effect
+ *     RB-RB  -0.022            negative: backs split the same carries
+ *     RB-WR  -0.018            negative: a run-heavy script starves receivers
+ *
+ * Those signs are the finding. Same-position team-mates are *not* positively
+ * correlated — they compete — which is why every attempt to measure the game
+ * effect by correlating team-mates returned roughly zero. Two effects of
+ * opposite sign, cancelling.
+ *
+ * So team-mates use the measured pair correlation, and players on *opposing*
+ * teams in one game keep the factor model, because there is no direct dependency
+ * between them — only the shared scoreboard, which is precisely what one factor
+ * is for.
  */
 
 export interface PortfolioPlayer {
@@ -80,28 +99,60 @@ export interface PortfolioAnalysis {
  *
  * Same player is 1 by definition and is handled by the caller.
  */
-export const correlationOf = (a: PortfolioPlayer, b: PortfolioPlayer): number => {
+export interface CorrelationTable {
+  readonly generatedAt: string;
+  readonly pairs: Readonly<Record<string, { readonly correlation: number; readonly pairs: number }>>;
+}
+
+let correlationCache: CorrelationTable | null | undefined;
+
+export const loadCorrelations = async (): Promise<CorrelationTable | null> => {
+  if (correlationCache !== undefined) return correlationCache;
+  try {
+    const raw = await readArtifactFile('correlation.json');
+    correlationCache = raw === null ? null : (JSON.parse(raw) as CorrelationTable);
+  } catch {
+    correlationCache = null;
+  }
+  return correlationCache;
+};
+
+const pairKey = (a: string, b: string): string => [a, b].sort().join('-');
+
+export const correlationOf = (
+  a: PortfolioPlayer,
+  b: PortfolioPlayer,
+  table: CorrelationTable | null = null,
+): number => {
   if (a.gameId === '' || b.gameId === '') return 0;
   if (a.gameId !== b.gameId) return 0;
 
   /*
-   * `sqrt`, not a product — and the first version of this had it wrong.
+   * Team-mates: use the measured pair correlation.
    *
-   * `gameLoading` is the share of a player's *variance* explained by the game.
-   * In a one-factor model `X = sqrt(l)·F + sqrt(1−l)·E`, so the correlation
-   * between two players is the product of their factor *loadings* — the square
-   * roots — not the product of the variance shares.
+   * This is the direct-dependency channel — the same completions, the same
+   * carries — and it is the one a single environment factor cannot see. It is
+   * also the only place a *negative* correlation is correct, and the measured
+   * table has several: two backs on one team split the same carries, so one
+   * eating means the other did not.
+   */
+  if (table !== null && a.team !== '' && a.team === b.team) {
+    const measured = table.pairs[pairKey(a.position, b.position)];
+    if (measured !== undefined) return Math.max(-1, Math.min(1, measured.correlation));
+  }
+
+  /*
+   * Opposing players in one game: the factor model, which is what it is for.
    *
-   * Multiplying the shares understated every pairing badly: with the measured
-   * QB 0.178 and WR 0.031 it gives 0.006, effectively declaring a quarterback
-   * and his receiver independent, when the correct figure is 0.074. On the old
-   * asserted constants it was 0.18 against a correct 0.42. Either way the
-   * portfolio was under-penalising stacked rosters, which is the exact error the
-   * feature exists to catch.
+   * There is no direct dependency across the line of scrimmage — only the
+   * shared scoreboard. `gameLoading` is a share of *variance*, so in a
+   * one-factor model the correlation is the product of the factor loadings (the
+   * square roots), not of the shares. Multiplying the shares understates every
+   * pairing and under-penalises stacked rosters, which is the error this whole
+   * view exists to catch.
    *
-   * Opposing players in one game get the same positive term. A shootout lifts
-   * both and a defensive struggle sinks both, so the sign is genuinely
-   * ambiguous, and assuming opponents are negatively correlated would be a
+   * The sign is left positive. A shootout lifts both sides and a defensive
+   * struggle sinks both; assuming opponents move against each other is a
    * stronger claim than the evidence supports.
    */
   return Math.max(0, Math.min(1, Math.sqrt(a.gameLoading * b.gameLoading)));
@@ -133,7 +184,10 @@ const concentrations = (
     .sort((a, b) => b.share - a.share);
 };
 
-export const analysePortfolio = (players: readonly PortfolioPlayer[]): PortfolioAnalysis => {
+export const analysePortfolio = (
+  players: readonly PortfolioPlayer[],
+  table: CorrelationTable | null = null,
+): PortfolioAnalysis => {
   const expected = players.reduce((sum, p) => sum + p.mean, 0);
 
   // Independent: variances add. Correlated: the full quadratic form, which is
@@ -143,7 +197,7 @@ export const analysePortfolio = (players: readonly PortfolioPlayer[]): Portfolio
   let variance = 0;
   for (const a of players) {
     for (const b of players) {
-      const rho = a.playerId === b.playerId ? 1 : correlationOf(a, b);
+      const rho = a.playerId === b.playerId ? 1 : correlationOf(a, b, table);
       variance += rho * a.sd * b.sd;
     }
   }
@@ -175,6 +229,10 @@ export const portfolioRead = (analysis: PortfolioAnalysis): string => {
   if (analysis.correlationPenalty > 1.06) {
     parts.push(
       `Your starters are stacked: shared games widen your weekly range about ${((analysis.correlationPenalty - 1) * 100).toFixed(0)}% beyond what the individual projections imply. That is upside on good Sundays and a floor you cannot rely on.`,
+    );
+  } else if (analysis.correlationPenalty < 0.98) {
+    parts.push(
+      'Your starters partly cancel each other: measured co-movement between them is negative, which happens when you hold players who compete for the same touches. That narrows your weekly range — a floor bought by giving up ceiling.',
     );
   } else if (analysis.correlationPenalty < 1.02) {
     parts.push(

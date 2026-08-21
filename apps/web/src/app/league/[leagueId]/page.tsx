@@ -22,7 +22,7 @@ import { positionalStrength } from '@/lib/positional-strength';
 import { requireSession } from '@/lib/session';
 import { InsightList } from '@/components/design/primitives';
 import { buildInsights } from '@/lib/insights';
-import { analysePortfolio, type PortfolioPlayer } from '@/lib/portfolio';
+import { analysePortfolio, loadCorrelations, type PortfolioPlayer } from '@/lib/portfolio';
 import { loadAvailability } from '@/lib/availability';
 import { loadArtifact, loadLatestArtifact, scoreFor } from '@/lib/projections';
 import { loadMarketValues } from '@/lib/values';
@@ -78,7 +78,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
    * lookup is defensive: a missing artifact should cost one insight, never the
    * whole page.
    */
-  const [homeArtifact, homeValues, homeAvailability, homeFreshness, rosterAnalysis] =
+  const [homeArtifact, homeValues, homeAvailability, homeFreshness, rosterAnalysis, homeCorrelations] =
     await Promise.all([
       loadArtifact(snapshot.league.season, snapshot.asOfWeek).catch(() => null),
       loadMarketValues(snapshot.league.format, snapshot.league.superFlex).catch(() => new Map()),
@@ -87,6 +87,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
       myTeamId === null || notDrafted
         ? Promise.resolve(null)
         : analyzeRoster(view, myTeamId).catch(() => null),
+      loadCorrelations().catch(() => null),
     ]);
 
   const myRosterPlayers =
@@ -115,6 +116,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
               },
             ];
           }),
+          homeCorrelations,
         );
 
   const insights = buildInsights({

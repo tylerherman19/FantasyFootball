@@ -4,7 +4,14 @@ import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
 import { Confidence, Why } from '@/components/Why';
 import { PositionChip, RangeBar } from '@/components/charts/primitives';
-import { careerPhase, loadAgeCurves, remainingPeakSeasons, shareOfPeak } from '@/lib/age-curves';
+import {
+  careerPhase,
+  loadAgeCurves,
+  multiYearValue,
+  remainingPeakSeasons,
+  shareOfPeak,
+  yearByYearOutlook,
+} from '@/lib/age-curves';
 import { explain, usageRows } from '@/lib/explain';
 import { loadHistory, reliabilityLabel, trendLabel } from '@/lib/history';
 import { loadLeague } from '@/lib/league-data';
@@ -110,6 +117,8 @@ export default async function PlayerPage({
   const share = shareOfPeak(ageCurves, position, years);
   const remaining = remainingPeakSeasons(ageCurves, position, years, 4);
   const phase = careerPhase(ageCurves, position, years);
+  const outlook = yearByYearOutlook(ageCurves, position, years, 5);
+  const fourYear = multiYearValue(ageCurves, position, years, 4);
 
   const owner = snapshot.rosters.find((roster) =>
     roster.playerIds.some((id) => String(id) === playerId),
@@ -392,6 +401,80 @@ export default async function PlayerPage({
               seasons, so it cannot see the ones whose careers ended — which means real cohorts fall
               off faster than this.
             </p>
+          </Section>
+        )}
+
+        {outlook.some((v) => v !== null) && explanation !== null && (
+          <Section
+            title="The next five years"
+            note="Each season as a share of what he produces now, from his position's fitted curve. Undiscounted on purpose — how much sooner-is-better matters to you is the contend-or-rebuild question, and answering it twice would be answering it wrong."
+          >
+            <table className="w-full max-w-xl">
+              <thead>
+                <tr className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  <th className="pb-1 text-left font-normal">Season</th>
+                  <th className="pb-1 text-right font-normal">Age</th>
+                  <th className="pb-1 text-right font-normal">vs today</th>
+                  <th className="pb-1 text-right font-normal">Weekly points</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t" style={{ borderColor: 'var(--rule)' }}>
+                  <td className="py-1.5 text-sm font-medium">Now</td>
+                  <td className="tabular py-1.5 text-right text-sm">
+                    {years === null ? '—' : years.toFixed(1)}
+                  </td>
+                  <td className="tabular py-1.5 text-right text-sm">1.00</td>
+                  <td className="tabular py-1.5 text-right text-sm font-medium">
+                    {explanation.total.toFixed(1)}
+                  </td>
+                </tr>
+                {outlook.map((ratio, index) => (
+                  <tr
+                    key={index}
+                    className="border-t"
+                    style={{ borderColor: 'var(--rule)' }}
+                  >
+                    <td className="py-1.5 text-sm">+{index + 1}</td>
+                    <td className="tabular py-1.5 text-right text-sm">
+                      {years === null ? '—' : (years + index + 1).toFixed(1)}
+                    </td>
+                    <td
+                      className="tabular py-1.5 text-right text-sm"
+                      style={{
+                        color:
+                          ratio === null
+                            ? 'var(--ink-faint)'
+                            : ratio >= 1
+                              ? 'var(--pos)'
+                              : 'var(--neg)',
+                      }}
+                    >
+                      {ratio === null ? 'unknown' : ratio.toFixed(2)}
+                    </td>
+                    <td className="tabular py-1.5 text-right text-sm">
+                      {ratio === null ? '—' : (explanation.total * ratio).toFixed(1)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {fourYear !== null && (
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed">
+                Over four years he is worth about{' '}
+                <strong className="tabular">{fourYear.toFixed(1)}</strong> of his current seasons.
+                That is the number to compare against another player at a different point on the
+                same curve — it prices seasons still to come at what each man is worth today.
+              </p>
+            )}
+
+            {outlook.some((v) => v === null) && (
+              <p className="mt-2 max-w-2xl text-xs leading-relaxed" style={{ color: 'var(--ink-faint)' }}>
+                Seasons marked unknown fall outside the fitted range. The curve declines to guess
+                rather than extrapolate off its own end.
+              </p>
+            )}
           </Section>
         )}
 

@@ -184,3 +184,55 @@ export const peakAge = (curves: AgeCurves | null, position: string): number | nu
 
   return ages.reduce((best, n) => ((curve[String(n)] ?? 0) > (curve[String(best)] ?? 0) ? n : best), ages[0]!);
 };
+
+/**
+ * A player's expected production for each of the next `years` seasons, as a
+ * share of his *current* level rather than of his position's peak.
+ *
+ * This is the shape dynasty valuation needs. "He is at 82% of peak" is a fact
+ * about the position; "he will be worth 0.91 of what he is now next year and
+ * 0.68 in three years" is a fact about him, and it is what makes two players
+ * comparable when they are at different points on the same curve.
+ *
+ * Returns nulls for years the curve cannot reach, rather than flattening them
+ * to 1.0 — a quarterback whose curve stops at 27 should produce an absent
+ * number for his age-33 season, not a confident one.
+ */
+export const yearByYearOutlook = (
+  curves: AgeCurves | null,
+  position: string,
+  age: number | null,
+  years = 5,
+): (number | null)[] => {
+  const now = shareOfPeak(curves, position, age);
+  if (now === null || now <= 0 || age === null) return Array<number | null>(years).fill(null);
+
+  return Array.from({ length: years }, (_, offset) => {
+    const later = shareOfPeak(curves, position, age + offset + 1);
+    return later === null ? null : later / now;
+  });
+};
+
+/**
+ * Multi-year value, as a multiple of one current season.
+ *
+ * Sums the year-by-year outlook, so a 23-year-old back reading 3.4 over four
+ * years and a 28-year-old reading 2.1 are directly comparable in the only
+ * currency that matters — seasons of production still to come, priced at what
+ * each player is worth today.
+ *
+ * Deliberately *not* discounted. A discount rate encodes how much sooner-is-
+ * better matters to a particular manager in a particular season, which is a
+ * decision the contend-or-rebuild read already makes explicitly. Baking one in
+ * here would make that judgement twice, silently, and in the wrong place.
+ */
+export const multiYearValue = (
+  curves: AgeCurves | null,
+  position: string,
+  age: number | null,
+  years = 4,
+): number | null => {
+  const outlook = yearByYearOutlook(curves, position, age, years);
+  const known = outlook.filter((v): v is number => v !== null);
+  return known.length === 0 ? null : 1 + known.reduce((a, b) => a + b, 0);
+};

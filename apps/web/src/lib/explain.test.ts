@@ -132,7 +132,14 @@ describe('usageRows', () => {
 
 // ---------------------------------------------------------------------------
 
-import { careerPhase, remainingPeakSeasons, shareOfPeak, type AgeCurves } from './age-curves';
+import {
+  careerPhase,
+  multiYearValue,
+  remainingPeakSeasons,
+  shareOfPeak,
+  yearByYearOutlook,
+  type AgeCurves,
+} from './age-curves';
 
 /**
  * The aging curve replaces a table of hand-set decline ages. These pin the
@@ -185,5 +192,36 @@ describe('age curves', () => {
     expect(young).toBeCloseTo(2.89, 6);
     expect(older).toBeCloseTo(2.51, 6);
     expect(young).toBeGreaterThan(older);
+  });
+});
+
+describe('multi-year outlook', () => {
+  it('prices each future season against today, not against the peak', () => {
+    // A 24-year-old back is at 0.94 of peak. Next year he is 0.82 of peak,
+    // which is 0.87 of what he is now — that second number is the one a trade
+    // turns on.
+    const outlook = yearByYearOutlook(CURVES, 'RB', 24, 2);
+
+    expect(outlook[0]).toBeCloseTo(0.82 / 0.94, 6);
+    expect(outlook[1]).toBeCloseTo(0.75 / 0.94, 6);
+  });
+
+  it('makes two players at different points on the curve comparable', () => {
+    const young = multiYearValue(CURVES, 'RB', 22, 3)!;
+    const old = multiYearValue(CURVES, 'RB', 24, 3)!;
+
+    expect(young).toBeGreaterThan(old);
+    // Both counted as "this season plus the next three".
+    expect(young).toBeGreaterThan(1);
+  });
+
+  it('reports unknown rather than flattening seasons off the curve\'s end', () => {
+    // The QB curve stops at 25; clamping means later years are known but flat.
+    const outlook = yearByYearOutlook(CURVES, 'QB', 24, 3);
+    expect(outlook.every((v) => v !== null)).toBe(true);
+
+    // An unknown position yields nulls throughout rather than a fabricated 1.0.
+    expect(yearByYearOutlook(CURVES, 'K', 27, 3)).toEqual([null, null, null]);
+    expect(multiYearValue(CURVES, 'K', 27, 3)).toBeNull();
   });
 });

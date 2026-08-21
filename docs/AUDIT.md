@@ -1073,6 +1073,38 @@ the two *declined* rungs above the shipped one, purely because they were measure
 on a shorter window. Fixed by storing the baseline's MAE on the same row and
 adding a `model_ladder` view that ranks by measured skill.
 
+### P — History surfaced, design system adopted, performance measured
+
+**§35/§48 answered.** The player page reads the store back and explains what
+moved. The distinction it exists for: a projection can change because the
+*player* changed or because the *model* changed, and those are different news.
+`model_version` sits beside every row so the two are separable, and when the
+model moved the explanation says so and declines to name a stat — attributing a
+shrinkage re-fit to a receiver's target share would be the product inventing a
+story about him.
+
+Drivers are reported in the stat's own units. "His targets fell by 2.4 a game"
+is a fact about football; "he lost 3.1 points" is a fact about your scoring.
+
+*And a bug caught in the same feature.* The first version returned an empty list
+for both "no rows" and "could not connect", so production — where Supabase is
+unconfigured — displayed "the store began recording this week". A confident wrong
+explanation, in the feature whose whole purpose is explaining honestly. Now a
+discriminated result: ok / unconfigured / unreachable, each said plainly.
+
+**Eight pages migrated without touching them.** `StatTile` and `StatRow` were the
+older twins of `Metric`/`MetricRow`; both are now re-implemented on the design
+system with their APIs unchanged, so power, roster, dynasty, trades, waivers,
+schedule, usage and scheme moved by having their primitive change underneath.
+The per-statistic surfaces are gone (§74), and a tile with no context now renders
+an em dash instead of looking finished (§67).
+
+**Performance measured rather than assumed.** Every route drops to ~120 ms once
+its cache fills — except the player page, which sat at 265 ms cold *and* warm.
+A page that does not benefit from caching is doing something uncached per render:
+the history read carried `no-store`. Now cached for five minutes (it changes
+weekly), and the page runs 115–135 ms warm, in line with the rest.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -1104,8 +1136,11 @@ adding a `model_ladder` view that ranks by measured skill.
   it; the older pages still carry their own shapes.
 - The design system exists; the home, player and team pages are built on it and
   eight older pages still carry their own shapes.
-- The canonical store exists and is populated, but nothing reads it yet: the
-  history it now keeps is not surfaced as "why did this ranking change" (§35,
-  §48). That is the next thing it unlocks rather than something it delivers.
-- `sync:canonical` is run by hand. It belongs on the weekly job.
-- A league page builds in roughly 2s with 2,000 simulations; not profiled.
+- The store holds a single week, so the history section says "first
+  publication". It fills from the next weekly build — the feature works, it just
+  has nothing to show yet.
+- Production cannot read the store at all: the Supabase environment variables
+  are not set in Vercel. The page says so explicitly rather than guessing.
+- Cold page load is ~1.2–1.4 s, dominated by the Sleeper fetch and the 2,000
+  iteration season simulation, shared across a league and paid once per process.
+  Not yet attacked.

@@ -168,6 +168,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
 
     crosswalk = load_crosswalk(crosswalk_path)
     players: dict[str, dict] = {}
+    why: dict[str, dict] = {}
     unmapped = 0
 
     def add(
@@ -218,12 +219,16 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             "basis": "rookie-prior" if is_rookie else "history",
         }
 
-        # The decomposition, as stat lines rather than points, for the same
-        # reason the projection itself is a stat line: the league does the
-        # scoring. A waterfall in points would be wrong in two of three leagues.
+        # The decomposition goes to a *separate* artifact, not this one.
+        #
+        # It is a third of the payload and exactly one page reads it. Shipping
+        # it inside the projections file made every roster, lineup, trade and
+        # waiver render carry half a megabyte it never opens. Same seam, same
+        # per-league scoring at serve time — just loaded by the page that
+        # actually asks the question.
         explanation = explanations.get(source_id)
         if explanation is not None:
-            players[sleeper_id]["why"] = {
+            why[sleeper_id] = {
                 "prior": explanation.prior,
                 "opportunity": explanation.opportunity,
                 "effectiveGames": explanation.effective_games,
@@ -232,7 +237,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         elif is_rookie:
             # A rookie has no history to decompose. Saying so is the honest
             # explanation, and it is the one the manager most needs to hear.
-            players[sleeper_id]["why"] = {"effectiveGames": 0.0}
+            why[sleeper_id] = {"effectiveGames": 0.0}
 
     for source_id, stats in skill_lines.items():
         add(source_id, stats)
@@ -255,6 +260,12 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         "rookieCount": sum(1 for p in players.values() if p.get("basis") == "rookie-prior"),
         "byeTeams": len(byes),
         "players": players,
+    }, {
+        "modelVersion": MODEL_VERSION,
+        "season": season,
+        "week": week,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "why": why,
     }
 
 
@@ -278,10 +289,17 @@ if __name__ == "__main__":
     season = int(sys.argv[1]) if len(sys.argv) > 1 else default_season
     week = int(sys.argv[2]) if len(sys.argv) > 2 else default_week
 
-    artifact = build_artifact(season, week, default_lake(), Path("model/artifacts/crosswalk.json"))
+    artifact, explanations_artifact = build_artifact(
+        season, week, default_lake(), Path("model/artifacts/crosswalk.json")
+    )
 
     out = Path(f"model/artifacts/projections-{season}-{week:02d}.json")
     out.write_text(json.dumps(artifact, separators=(",", ":"), sort_keys=True), encoding="utf-8")
+
+    why_out = Path(f"model/artifacts/explanations-{season}-{week:02d}.json")
+    why_out.write_text(
+        json.dumps(explanations_artifact, separators=(",", ":"), sort_keys=True), encoding="utf-8"
+    )
 
     by_position: dict[str, int] = {}
     for player in artifact["players"].values():
@@ -293,5 +311,6 @@ if __name__ == "__main__":
         f"{artifact['unmappedCount']} unmapped, "
         f"{artifact['byeTeams']} byes"
     )
+    print(f"{why_out}: {len(explanations_artifact['why'])} decompositions")
     for position, count in sorted(by_position.items(), key=lambda kv: -kv[1]):
         print(f"  {position or '?':4s} {count:5d}")

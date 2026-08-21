@@ -36,20 +36,69 @@ export interface ArtifactPlayer {
    */
   readonly basis?: 'history' | 'rookie-prior';
   /**
-   * The model's own decomposition, as stat lines rather than points.
+   * The model's own decomposition, attached only where it has been loaded.
    *
-   * `prior` is every stat at its positional average; `opportunity` is his
-   * volume with the positional rates. Scored per league, the two gaps are what
-   * his usage and his efficiency are each worth. Absent for anyone the usage
-   * model did not build — rookies, kickers, IDP, team defenses.
+   * Lives in a *separate* artifact and is merged in by `loadExplanation` on the
+   * one page that asks for it. It is a third of the payload and every other
+   * page — roster, lineup, trades, waivers — would otherwise carry half a
+   * megabyte it never opens.
    */
-  readonly why?: {
-    readonly prior?: Readonly<Record<string, number>>;
-    readonly opportunity?: Readonly<Record<string, number>>;
-    readonly observed?: Readonly<Record<string, number>>;
-    readonly effectiveGames: number;
-  };
+  readonly why?: PlayerExplanation;
 }
+
+/**
+ * Why a projection is what it is, as stat lines rather than points.
+ *
+ * `prior` is every stat at its positional average; `opportunity` is his volume
+ * with the positional rates. Scored per league at serve time, the two gaps are
+ * what his usage and his efficiency are each worth. Absent for anyone the usage
+ * model did not build — rookies, kickers, IDP, team defenses.
+ */
+export interface PlayerExplanation {
+  readonly prior?: Readonly<Record<string, number>>;
+  readonly opportunity?: Readonly<Record<string, number>>;
+  readonly observed?: Readonly<Record<string, number>>;
+  readonly effectiveGames: number;
+}
+
+interface ExplanationArtifact {
+  readonly modelVersion: string;
+  readonly generatedAt: string;
+  readonly why: Record<string, PlayerExplanation>;
+}
+
+const explanations = new Map<string, ExplanationArtifact | null>();
+
+/**
+ * The decomposition for one player, loaded on demand.
+ *
+ * Separate from `loadArtifact` on purpose: only the player page needs this, and
+ * making every other route pay for it was a self-inflicted regression from
+ * shipping explainability inside the main artifact.
+ */
+export const loadExplanation = async (
+  season: number,
+  week: number,
+  playerId: string,
+): Promise<PlayerExplanation | undefined> => {
+  const key = `${season}-${String(week).padStart(2, '0')}`;
+
+  let artifact = explanations.get(key);
+  if (artifact === undefined) {
+    artifact = null;
+    const raw = await readArtifactFile(`explanations-${key}.json`);
+    if (raw !== null) {
+      try {
+        artifact = JSON.parse(raw) as ExplanationArtifact;
+      } catch {
+        artifact = null;
+      }
+    }
+    explanations.set(key, artifact);
+  }
+
+  return artifact?.why[playerId];
+};
 
 export interface ProjectionArtifact {
   readonly modelVersion: string;

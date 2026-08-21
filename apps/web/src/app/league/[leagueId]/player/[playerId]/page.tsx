@@ -19,7 +19,7 @@ import { loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
 import { loadAvailability } from '@/lib/availability';
 import { loadIdentities } from '@/lib/crosswalk';
-import { loadArtifact } from '@/lib/projections';
+import { loadArtifact, loadExplanation } from '@/lib/projections';
 import { loadOffense, offenseRead, rankOf } from '@/lib/offense';
 import { loadMarketValues } from '@/lib/values';
 
@@ -96,7 +96,15 @@ export default async function PlayerPage({
     loadOffense().catch(() => null),
   ]);
 
-  const player = artifact?.players[playerId];
+  const bare = artifact?.players[playerId];
+  // The decomposition lives in its own artifact so the other ten routes do not
+  // carry it. Merged here, on the one page that asks the question.
+  const why = bare === undefined ? undefined : await loadExplanation(
+    snapshot.league.season,
+    snapshot.asOfWeek,
+    playerId,
+  ).catch(() => undefined);
+  const player = bare === undefined ? undefined : { ...bare, ...(why ? { why } : {}) };
   const identity = identities[playerId];
   if (player === undefined && identity === undefined) notFound();
 

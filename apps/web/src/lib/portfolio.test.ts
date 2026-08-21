@@ -155,3 +155,62 @@ describe('portfolioRead', () => {
     expect(portfolioRead(analysis)).toMatch(/No concentration worth flagging/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+import { simulateMultiYearValue, type AgeCurves as Curves } from './age-curves';
+
+/**
+ * §20 asks for dynasty value *with uncertainty*. These pin the two things that
+ * make the distribution worth having over a point estimate.
+ */
+const WITH_SPREAD: Curves = {
+  generatedAt: '2026-08-21T00:00:00Z',
+  caveat: '',
+  curves: { RB: { '24': 0.94, '25': 0.82, '26': 0.75, '27': 0.7 } },
+  transitions: [
+    { position: 'RB', from_age: 24, ratio: 0.88, pairs: 112, ratio_sd: 0.4, ratio_se: 0.05 },
+    { position: 'RB', from_age: 25, ratio: 0.91, pairs: 94, ratio_sd: 0.45, ratio_se: 0.06 },
+    { position: 'RB', from_age: 26, ratio: 0.93, pairs: 88, ratio_sd: 0.42, ratio_se: 0.06 },
+  ],
+};
+
+describe('simulateMultiYearValue', () => {
+  it('produces a spread, not a point', () => {
+    const d = simulateMultiYearValue(WITH_SPREAD, 'RB', 24, 3)!;
+
+    expect(d.p90).toBeGreaterThan(d.median);
+    expect(d.median).toBeGreaterThan(d.p10);
+    // Aging spread for backs is large; the interval should be visibly wide.
+    expect(d.p90 - d.p10).toBeGreaterThan(0.5);
+  });
+
+  it('is deterministic, so a number does not change on refresh', () => {
+    const a = simulateMultiYearValue(WITH_SPREAD, 'RB', 24, 3);
+    const b = simulateMultiYearValue(WITH_SPREAD, 'RB', 24, 3);
+
+    expect(a).toEqual(b);
+  });
+
+  it('reports survival odds as a probability', () => {
+    const d = simulateMultiYearValue(WITH_SPREAD, 'RB', 24, 3)!;
+
+    expect(d.survivalOdds).toBeGreaterThanOrEqual(0);
+    expect(d.survivalOdds).toBeLessThanOrEqual(1);
+  });
+
+  it('declines to answer past the fitted range rather than extrapolating', () => {
+    // Transitions stop at 26, so a four-year horizon from 24 cannot complete.
+    expect(simulateMultiYearValue(WITH_SPREAD, 'RB', 24, 6)).toBeNull();
+    expect(simulateMultiYearValue(WITH_SPREAD, 'QB', 24, 2)).toBeNull();
+    expect(simulateMultiYearValue(null, 'RB', 24, 2)).toBeNull();
+  });
+
+  it('never lets a season go negative', () => {
+    // ratio_sd of 0.4 on a median of 0.88 means draws below zero are common,
+    // and a negative season would corrupt every year that compounds after it.
+    const d = simulateMultiYearValue(WITH_SPREAD, 'RB', 24, 3)!;
+
+    expect(d.p10).toBeGreaterThanOrEqual(1);
+  });
+});

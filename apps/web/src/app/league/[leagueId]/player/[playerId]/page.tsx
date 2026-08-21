@@ -11,6 +11,7 @@ import {
   multiYearValue,
   remainingPeakSeasons,
   shareOfPeak,
+  simulateMultiYearValue,
   yearByYearOutlook,
 } from '@/lib/age-curves';
 import { explain, usageRows } from '@/lib/explain';
@@ -128,6 +129,9 @@ export default async function PlayerPage({
   const phase = careerPhase(ageCurves, position, years);
   const outlook = yearByYearOutlook(ageCurves, position, years, 5);
   const fourYear = multiYearValue(ageCurves, position, years, 4);
+  // §20 wants dynasty value with uncertainty. The point estimate walks the
+  // median curve, which asserts every player ages like the average one.
+  const fourYearRange = simulateMultiYearValue(ageCurves, position, years, 4);
 
   const owner = snapshot.rosters.find((roster) =>
     roster.playerIds.some((id) => String(id) === playerId),
@@ -483,13 +487,38 @@ export default async function PlayerPage({
               </tbody>
             </table>
 
-            {fourYear !== null && (
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed">
-                Over four years he is worth about{' '}
-                <strong className="tabular">{fourYear.toFixed(1)}</strong> of his current seasons.
-                That is the number to compare against another player at a different point on the
-                same curve — it prices seasons still to come at what each man is worth today.
-              </p>
+            {fourYearRange !== null ? (
+              <div className="mt-4 max-w-2xl">
+                <div className="eyebrow mb-2">Four-year value, in current seasons</div>
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  <span className="tabular text-2xl font-semibold">
+                    {fourYearRange.median.toFixed(1)}
+                  </span>
+                  <span className="tabular text-sm" style={{ color: 'var(--ink-muted)' }}>
+                    {fourYearRange.p10.toFixed(1)} – {fourYearRange.p90.toFixed(1)} at the 10th and
+                    90th
+                  </span>
+                  <span className="tabular text-sm" style={{ color: 'var(--ink-muted)' }}>
+                    {(fourYearRange.survivalOdds * 100).toFixed(0)}% still worth half of today in
+                    year four
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-relaxed">
+                  Simulated rather than read off the median curve, because players do not age like
+                  the average player — the year-over-year spread for this position is wide enough
+                  that a single number would be a forecast pretending to be a fact. The band is
+                  where two-thirds of simulated careers land.
+                </p>
+              </div>
+            ) : (
+              fourYear !== null && (
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed">
+                  Over four years he is worth about{' '}
+                  <strong className="tabular">{fourYear.toFixed(1)}</strong> of his current seasons.
+                  Not simulated — the fitted curve does not reach far enough past his age to sample
+                  a full four-year path, so this is the median walk and nothing more.
+                </p>
+              )
             )}
 
             {outlook.some((v) => v === null) && (

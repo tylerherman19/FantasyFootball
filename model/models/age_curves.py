@@ -74,6 +74,17 @@ class AgeTransition:
     #: a whole cohort upward, and production ratios are badly right-skewed.
     ratio: float
     pairs: int
+    #: Spread of the individual ratios behind the median.
+    #:
+    #: The curve says what the *average* 26-year-old back does next year. This
+    #: says how much individual backs differ from that average, and it is large
+    #: — aging is a population tendency, not a schedule. A dynasty value quoted
+    #: without it is a point estimate pretending to be a forecast.
+    ratio_sd: float
+    #: Standard error of the median itself, which shrinks with sample size.
+    #: Distinct from ratio_sd: one is "how much do players differ", the other is
+    #: "how well do we know the average".
+    ratio_se: float
 
 
 def _player_seasons(store: FeatureStore) -> pl.DataFrame:
@@ -150,7 +161,13 @@ def fit_transitions(seasons: pl.DataFrame) -> list[AgeTransition]:
         return []
 
     grouped = paired.group_by(["position", "age"]).agg(
-        pl.col("ratio").median().alias("ratio"), pl.len().alias("pairs")
+        pl.col("ratio").median().alias("ratio"),
+        pl.len().alias("pairs"),
+        # Interquartile range rather than standard deviation: production ratios
+        # have a long right tail (a backup who becomes a starter triples), and a
+        # standard deviation would be dominated by a handful of those rather
+        # than describing the typical player. Scaled to a normal-equivalent sd.
+        ((pl.col("ratio").quantile(0.75) - pl.col("ratio").quantile(0.25)) / 1.349).alias("ratio_sd"),
     )
 
     return [
@@ -159,6 +176,11 @@ def fit_transitions(seasons: pl.DataFrame) -> list[AgeTransition]:
             from_age=int(row["age"]),
             ratio=round(float(row["ratio"]), 4),
             pairs=int(row["pairs"]),
+            ratio_sd=round(float(row["ratio_sd"] or 0.0), 4),
+            # Standard error of a median is about 1.253 x sd / sqrt(n).
+            ratio_se=round(
+                1.253 * float(row["ratio_sd"] or 0.0) / max(1.0, float(row["pairs"]) ** 0.5), 4
+            ),
         )
         for row in grouped.sort(["position", "age"]).to_dicts()
         if int(row["pairs"]) >= MIN_PAIRS

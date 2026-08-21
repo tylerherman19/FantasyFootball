@@ -20,11 +20,23 @@ import { readArtifactFile } from './projections';
  * understates how fast a cohort actually falls off. The artifact says so too.
  */
 
+export interface AgeTransition {
+  readonly position: string;
+  readonly from_age: number;
+  readonly ratio: number;
+  readonly pairs: number;
+  /** Spread of individual ratios: how much players differ from the average. */
+  readonly ratio_sd: number;
+  /** Standard error of the median: how well we know the average. */
+  readonly ratio_se: number;
+}
+
 export interface AgeCurves {
   readonly generatedAt: string;
   readonly caveat: string;
   /** position -> age (as string) -> share of that position's peak production. */
   readonly curves: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  readonly transitions?: readonly AgeTransition[];
 }
 
 let cache: AgeCurves | null | undefined;
@@ -235,4 +247,130 @@ export const multiYearValue = (
   const outlook = yearByYearOutlook(curves, position, age, years);
   const known = outlook.filter((v): v is number => v !== null);
   return known.length === 0 ? null : 1 + known.reduce((a, b) => a + b, 0);
+};
+
+
+// ---------------------------------------------------------------------------
+// Probabilistic multi-year value (§20)
+// ---------------------------------------------------------------------------
+
+export interface ValueDistribution {
+  readonly median: number;
+  readonly p10: number;
+  readonly p25: number;
+  readonly p75: number;
+  readonly p90: number;
+  /** Chance he is still worth at least this share of today by the final year. */
+  readonly survivalOdds: number;
+  readonly years: number;
+}
+
+/**
+ * Multi-year value as a distribution rather than a number (§20).
+ *
+ * The point estimate this replaces walked the median curve and summed it, which
+ * silently asserts that every 24-year-old back ages like the average
+ * 24-year-old back. They do not, and the data says so loudly: the year-over-year
+ * ratio for backs has a spread of roughly 0.4-0.5 around a median near 0.9.
+ * Aging is a population tendency, not a schedule.
+ *
+ * So each simulated career samples its own path — one draw per year from that
+ * year's measured transition — and the spread of the resulting totals is the
+ * honest answer to "what is he worth over four years".
+ *
+ * Two sources of uncertainty, and they are not the same thing:
+ *
+ * - `ratio_sd` — how much individual players differ from the average. This is
+ *   the big one, and it does not shrink with more data because it is real
+ *   variation between players rather than ignorance about them.
+ * - `ratio_se` — how well the average itself is known. Small where the sample
+ *   is large, and it is the part that improves as seasons accumulate.
+ *
+ * Both are sampled: the second once per simulated career (the curve is either
+ * right or wrong, consistently), the first once per year (each season is its
+ * own roll). Treating them alike would understate the spread.
+ *
+ * Seeded, so the same player yields the same distribution on every render and a
+ * number on the page does not change when you refresh it.
+ */
+export const simulateMultiYearValue = (
+  curves: AgeCurves | null,
+  position: string,
+  age: number | null,
+  years = 4,
+  iterations = 2000,
+  seed = 1,
+): ValueDistribution | null => {
+  if (curves === null || age === null) return null;
+
+  const transitions = curves.transitions;
+  if (transitions === undefined || transitions.length === 0) return null;
+
+  const byAge = new Map<number, AgeTransition>();
+  for (const t of transitions) {
+    if (t.position === position) byAge.set(t.from_age, t);
+  }
+  if (byAge.size === 0) return null;
+
+  // Small deterministic PRNG: mulberry32. Local rather than imported from core
+  // because core is the simulation engine and this is a page-level estimate.
+  let state = seed >>> 0;
+  const random = (): number => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(state ^ (state >>> 15), 1 | state);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const normal = (): number => {
+    // Box-Muller. One draw discarded per call is cheaper than caching here.
+    const u = Math.max(1e-12, random());
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
+  };
+
+  const totals: number[] = [];
+  const finals: number[] = [];
+
+  for (let i = 0; i < iterations; i += 1) {
+    // One curve-level error per career: if the fitted median is off, it is off
+    // for every year of this player's future, not independently each season.
+    const curveError = normal();
+
+    let level = 1;
+    let total = 1;
+    let known = true;
+
+    for (let year = 0; year < years; year += 1) {
+      const transition = byAge.get(Math.floor(age) + year);
+      if (transition === undefined) {
+        known = false;
+        break;
+      }
+
+      const ratio = transition.ratio + curveError * transition.ratio_se + normal() * transition.ratio_sd;
+      // A season cannot be negative, and no player triples year over year in a
+      // way worth propagating through a four-year compound.
+      level *= Math.max(0, Math.min(2.5, ratio));
+      total += level;
+    }
+
+    if (!known) continue;
+    totals.push(total);
+    finals.push(level);
+  }
+
+  if (totals.length < iterations / 4) return null;
+
+  totals.sort((a, b) => a - b);
+  const at = (q: number): number => totals[Math.min(totals.length - 1, Math.floor(q * totals.length))]!;
+
+  return {
+    median: at(0.5),
+    p10: at(0.1),
+    p25: at(0.25),
+    p75: at(0.75),
+    p90: at(0.9),
+    // "Still a starter" in the loosest sense: at least half of today.
+    survivalOdds: finals.filter((f) => f >= 0.5).length / finals.length,
+    years,
+  };
 };

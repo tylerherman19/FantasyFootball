@@ -47,7 +47,7 @@
     }
   },
   "firstSeason": 2016,
-  "generatedAt": "2026-08-21T17:57:18.503229+00:00",
+  "generatedAt": "2026-08-21T22:55:43.130833+00:00",
   "method": "delta (paired consecutive seasons), median ratio, peak-normalised",
   "minGames": 6,
   "minPairs": 20,
@@ -56,193 +56,257 @@
       "from_age": 23,
       "pairs": 27,
       "position": "QB",
-      "ratio": 1.0407
+      "ratio": 1.0407,
+      "ratio_sd": 0.2074,
+      "ratio_se": 0.05
     },
     {
       "from_age": 24,
       "pairs": 31,
       "position": "QB",
-      "ratio": 0.9612
+      "ratio": 0.9612,
+      "ratio_sd": 0.1513,
+      "ratio_se": 0.0341
     },
     {
       "from_age": 25,
       "pairs": 27,
       "position": "QB",
-      "ratio": 0.9674
+      "ratio": 0.9674,
+      "ratio_sd": 0.1748,
+      "ratio_se": 0.0422
     },
     {
       "from_age": 26,
       "pairs": 20,
       "position": "QB",
-      "ratio": 0.9863
+      "ratio": 0.9863,
+      "ratio_sd": 0.1892,
+      "ratio_se": 0.053
     },
     {
       "from_age": 22,
       "pairs": 66,
       "position": "RB",
-      "ratio": 1.0493
+      "ratio": 1.0493,
+      "ratio_sd": 0.4966,
+      "ratio_se": 0.0766
     },
     {
       "from_age": 23,
       "pairs": 100,
       "position": "RB",
-      "ratio": 0.9402
+      "ratio": 0.9402,
+      "ratio_sd": 0.4964,
+      "ratio_se": 0.0622
     },
     {
       "from_age": 24,
       "pairs": 112,
       "position": "RB",
-      "ratio": 0.8775
+      "ratio": 0.8775,
+      "ratio_sd": 0.3955,
+      "ratio_se": 0.0468
     },
     {
       "from_age": 25,
       "pairs": 94,
       "position": "RB",
-      "ratio": 0.9057
+      "ratio": 0.9057,
+      "ratio_sd": 0.4498,
+      "ratio_se": 0.0581
     },
     {
       "from_age": 26,
       "pairs": 71,
       "position": "RB",
-      "ratio": 0.9387
+      "ratio": 0.9387,
+      "ratio_sd": 0.3884,
+      "ratio_se": 0.0578
     },
     {
       "from_age": 27,
       "pairs": 57,
       "position": "RB",
-      "ratio": 0.7696
+      "ratio": 0.7696,
+      "ratio_sd": 0.3136,
+      "ratio_se": 0.052
     },
     {
       "from_age": 28,
       "pairs": 36,
       "position": "RB",
-      "ratio": 0.7844
+      "ratio": 0.7844,
+      "ratio_sd": 0.3239,
+      "ratio_se": 0.0676
     },
     {
       "from_age": 29,
       "pairs": 24,
       "position": "RB",
-      "ratio": 0.9019
+      "ratio": 0.9019,
+      "ratio_sd": 0.3687,
+      "ratio_se": 0.0943
     },
     {
       "from_age": 22,
       "pairs": 26,
       "position": "TE",
-      "ratio": 1.0625
+      "ratio": 1.0625,
+      "ratio_sd": 0.6026,
+      "ratio_se": 0.1481
     },
     {
       "from_age": 23,
       "pairs": 56,
       "position": "TE",
-      "ratio": 1.1261
+      "ratio": 1.1261,
+      "ratio_sd": 0.4551,
+      "ratio_se": 0.0762
     },
     {
       "from_age": 24,
       "pairs": 78,
       "position": "TE",
-      "ratio": 1.0237
+      "ratio": 1.0237,
+      "ratio_sd": 0.5179,
+      "ratio_se": 0.0735
     },
     {
       "from_age": 25,
       "pairs": 73,
       "position": "TE",
-      "ratio": 0.9586
+      "ratio": 0.9586,
+      "ratio_sd": 0.5067,
+      "ratio_se": 0.0743
     },
     {
       "from_age": 26,
       "pairs": 65,
       "position": "TE",
-      "ratio": 0.7407
+      "ratio": 0.7407,
+      "ratio_sd": 0.3847,
+      "ratio_se": 0.0598
     },
     {
       "from_age": 27,
       "pairs": 51,
       "position": "TE",
-      "ratio": 0.9542
+      "ratio": 0.9542,
+      "ratio_sd": 0.28,
+      "ratio_se": 0.0491
     },
     {
       "from_age": 28,
       "pairs": 53,
       "position": "TE",
-      "ratio": 0.9585
+      "ratio": 0.9585,
+      "ratio_sd": 0.5214,
+      "ratio_se": 0.0897
     },
     {
       "from_age": 29,
       "pairs": 42,
       "position": "TE",
-      "ratio": 0.7809
+      "ratio": 0.7809,
+      "ratio_sd": 0.3328,
+      "ratio_se": 0.0643
     },
     {
       "from_age": 30,
       "pairs": 25,
       "position": "TE",
-      "ratio": 0.8899
+      "ratio": 0.8899,
+      "ratio_sd": 0.3604,
+      "ratio_se": 0.0903
     },
     {
       "from_age": 21,
       "pairs": 31,
       "position": "WR",
-      "ratio": 1.2124
+      "ratio": 1.2124,
+      "ratio_sd": 0.4964,
+      "ratio_se": 0.1117
     },
     {
       "from_age": 22,
       "pairs": 94,
       "position": "WR",
-      "ratio": 1.1358
+      "ratio": 1.1358,
+      "ratio_sd": 0.622,
+      "ratio_se": 0.0804
     },
     {
       "from_age": 23,
       "pairs": 126,
       "position": "WR",
-      "ratio": 0.9388
+      "ratio": 0.9388,
+      "ratio_sd": 0.4782,
+      "ratio_se": 0.0534
     },
     {
       "from_age": 24,
       "pairs": 152,
       "position": "WR",
-      "ratio": 0.9751
+      "ratio": 0.9751,
+      "ratio_sd": 0.4566,
+      "ratio_se": 0.0464
     },
     {
       "from_age": 25,
       "pairs": 133,
       "position": "WR",
-      "ratio": 0.9116
+      "ratio": 0.9116,
+      "ratio_sd": 0.3802,
+      "ratio_se": 0.0413
     },
     {
       "from_age": 26,
       "pairs": 109,
       "position": "WR",
-      "ratio": 0.9368
+      "ratio": 0.9368,
+      "ratio_sd": 0.3445,
+      "ratio_se": 0.0413
     },
     {
       "from_age": 27,
       "pairs": 112,
       "position": "WR",
-      "ratio": 0.879
+      "ratio": 0.879,
+      "ratio_sd": 0.3434,
+      "ratio_se": 0.0407
     },
     {
       "from_age": 28,
       "pairs": 88,
       "position": "WR",
-      "ratio": 0.854
+      "ratio": 0.854,
+      "ratio_sd": 0.3624,
+      "ratio_se": 0.0484
     },
     {
       "from_age": 29,
       "pairs": 56,
       "position": "WR",
-      "ratio": 0.7549
+      "ratio": 0.7549,
+      "ratio_sd": 0.2895,
+      "ratio_se": 0.0485
     },
     {
       "from_age": 30,
       "pairs": 35,
       "position": "WR",
-      "ratio": 0.8227
+      "ratio": 0.8227,
+      "ratio_sd": 0.2211,
+      "ratio_se": 0.0468
     },
     {
       "from_age": 31,
       "pairs": 30,
       "position": "WR",
-      "ratio": 0.6617
+      "ratio": 0.6617,
+      "ratio_sd": 0.1421,
+      "ratio_se": 0.0325
     }
   ]
 }

@@ -10,6 +10,9 @@ import {
   positionColor,
 } from '@/components/charts/primitives';
 import { buildDynastyView, type DynastyAsset } from '@/lib/dynasty';
+import { analysePortfolio, portfolioRead, type PortfolioPlayer } from '@/lib/portfolio';
+import { loadArtifact } from '@/lib/projections';
+import { loadMarketValues } from '@/lib/values';
 import { reliabilityLabel, trendLabel } from '@/lib/history';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
@@ -39,6 +42,41 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
 
   const dynasty = myTeamId === null ? null : await buildDynastyView(view, myTeamId);
 
+  /*
+   * The roster as correlated assets (§23). Everything else on this page treats
+   * players as independent, and two men in the same offence are not — when that
+   * offence has a bad Sunday they have it together, which a sum of values
+   * structurally cannot show.
+   */
+  const [portfolioArtifact, portfolioValues] = await Promise.all([
+    loadArtifact(view.snapshot.league.season, view.snapshot.asOfWeek),
+    loadMarketValues(view.snapshot.league.format, view.snapshot.league.superFlex),
+  ]);
+  const myRoster = view.snapshot.rosters.find((r) => r.teamId === myTeamId);
+  const portfolio =
+    myRoster === undefined || portfolioArtifact === null
+      ? null
+      : analysePortfolio(
+          myRoster.playerIds.flatMap((rawId): PortfolioPlayer[] => {
+            const id = String(rawId);
+            const p = portfolioArtifact.players[id];
+            if (p === undefined) return [];
+            return [
+              {
+                playerId: id,
+                name: p.name,
+                position: p.position,
+                team: p.team,
+                mean: 0,
+                sd: p.sd,
+                gameId: p.gameId,
+                gameLoading: p.gameLoading,
+                marketValue: portfolioValues.get(id)?.value ?? 0,
+              },
+            ];
+          }),
+        );
+
   const nav = (
     <LeagueNav
       leagueId={leagueId}
@@ -67,6 +105,8 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
             <strong style={{ color: 'var(--ink)' }}>No team to advise.</strong> Either the league
             hasn&apos;t drafted, or {session.username} isn&apos;t one of its managers.
           </div>
+
+
         </main>
       </>
     );
@@ -445,6 +485,85 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
                 he needs the deep shot to be available.
               </p>
             </div>
+          </Section>
+        )}
+
+        {portfolio !== null && (
+          <Section
+            title="Your roster as a portfolio"
+            note="Everything above treats players as independent. They are not: two men in the same offence share a quarterback, a play-caller and a game script, so their bad Sundays arrive together. That is the one thing a sum of values cannot show you, and it is why finance thinks in covariance rather than in totals."
+          >
+            <p className="mb-5 max-w-2xl text-base leading-relaxed">{portfolioRead(portfolio)}</p>
+
+            <div className="mb-5 flex flex-wrap gap-x-10 gap-y-4">
+              <div>
+                <div className="eyebrow mb-1">Correlation penalty</div>
+                <div
+                  className="tabular text-2xl font-semibold"
+                  style={{
+                    color: portfolio.correlationPenalty > 1.06 ? 'var(--warn)' : 'var(--ink)',
+                  }}
+                >
+                  {portfolio.correlationPenalty.toFixed(3)}×
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  how much shared games widen your weekly range
+                </div>
+              </div>
+
+              <div>
+                <div className="eyebrow mb-1">Top-two share</div>
+                <div className="tabular text-2xl font-semibold">
+                  {(portfolio.topTwoShare * 100).toFixed(0)}%
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  of roster value in two players
+                </div>
+              </div>
+
+              {portfolio.byTeam[0] !== undefined && (
+                <div>
+                  <div className="eyebrow mb-1">Largest offence exposure</div>
+                  <div className="tabular text-2xl font-semibold">
+                    {(portfolio.byTeam[0].share * 100).toFixed(0)}%
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                    {portfolio.byTeam[0].label} — {portfolio.byTeam[0].players.length} player
+                    {portfolio.byTeam[0].players.length === 1 ? '' : 's'}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <table className="w-full max-w-lg">
+              <thead>
+                <tr className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                  <th className="pb-1 text-left font-normal">Offence</th>
+                  <th className="pb-1 text-right font-normal">Share of value</th>
+                  <th className="pb-1 text-left font-normal">&nbsp;</th>
+                </tr>
+              </thead>
+              <tbody>
+                {portfolio.byTeam.slice(0, 6).map((group) => (
+                  <tr key={group.key} className="border-t" style={{ borderColor: 'var(--rule)' }}>
+                    <td className="py-1.5 text-sm">{group.label}</td>
+                    <td className="tabular py-1.5 pr-3 text-right text-sm">
+                      {(group.share * 100).toFixed(0)}%
+                    </td>
+                    <td className="py-1.5">
+                      <CellBar value={group.share} max={1} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <p className="mt-3 max-w-2xl text-xs leading-relaxed" style={{ color: 'var(--ink-faint)' }}>
+              Correlation here is structural, not measured: players in the same game co-move by the
+              product of their game loadings, and players in different games are treated as
+              independent. A true covariance matrix needs a joint distribution this repository does
+              not yet estimate, and the game-loading constants it rests on are themselves hand-set.
+            </p>
           </Section>
         )}
       </main>

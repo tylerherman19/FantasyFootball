@@ -53,6 +53,25 @@ describe('correlationOf', () => {
     expect(correlationOf(qb, wr)).toBeCloseTo(Math.sqrt(0.178 * 0.031), 6);
   });
 
+  it('prefers a specific pair over its position average', () => {
+    /*
+     * The resolution that matters. A quarterback and his primary target measure
+     * near 0.42; the position average is 0.262. Using the average for them
+     * flattens the single most important correlation on a fantasy roster.
+     */
+    const withSpecific: CorrelationTable = {
+      ...TABLE,
+      playerPairs: { 'qb|wr': { correlation: 0.42, raw: 0.61, shared: 46 } },
+    };
+    const qb = player({ playerId: 'qb', position: 'QB', team: 'CIN' });
+    const wr = player({ playerId: 'wr', position: 'WR', team: 'CIN' });
+
+    expect(correlationOf(qb, wr, withSpecific)).toBeCloseTo(0.42, 6);
+    // A different receiver on the same team falls back to the position average.
+    const other = player({ playerId: 'wr2', position: 'WR', team: 'CIN' });
+    expect(correlationOf(qb, other, withSpecific)).toBeCloseTo(0.262, 6);
+  });
+
   it('lets team-mates correlate negatively when they compete', () => {
     // Two backs split the same carries. One eating means the other did not,
     // and no factor model can produce a negative number.

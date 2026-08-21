@@ -101,7 +101,20 @@ export interface PortfolioAnalysis {
  */
 export interface CorrelationTable {
   readonly generatedAt: string;
+  /** Position-pair averages: 'QB-WR', 'RB-RB'. */
   readonly pairs: Readonly<Record<string, { readonly correlation: number; readonly pairs: number }>>;
+  /**
+   * Specific pairs, keyed `playerIdA|playerIdB` with ids sorted.
+   *
+   * Position-pair resolution says every quarterback-receiver duo co-moves at
+   * 0.262, which is plainly false — a quarterback and his primary target are
+   * linked far more tightly than the same quarterback and his fifth option.
+   * Measured over shared weeks and shrunk toward the position pair by empirical
+   * Bayes, true stacks come out near 0.42.
+   */
+  readonly playerPairs?: Readonly<
+    Record<string, { readonly correlation: number; readonly raw: number; readonly shared: number }>
+  >;
 }
 
 let correlationCache: CorrelationTable | null | undefined;
@@ -137,6 +150,13 @@ export const correlationOf = (
    * eating means the other did not.
    */
   if (table !== null && a.team !== '' && a.team === b.team) {
+    // Most specific first: this exact pair, if they have shared enough weeks to
+    // be estimated. A quarterback and his WR1 measure near 0.42 against a
+    // position average of 0.262, and using the average for them would flatten
+    // the single most important correlation on a fantasy roster.
+    const specific = table.playerPairs?.[[a.playerId, b.playerId].sort().join('|')];
+    if (specific !== undefined) return Math.max(-1, Math.min(1, specific.correlation));
+
     const measured = table.pairs[pairKey(a.position, b.position)];
     if (measured !== undefined) return Math.max(-1, Math.min(1, measured.correlation));
   }

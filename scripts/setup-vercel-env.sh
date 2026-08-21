@@ -17,7 +17,8 @@
 # Run it yourself. The values never leave your machine except to go to your own
 # Vercel account, and nothing here prints a secret to the terminal.
 #
-#     bash scripts/setup-vercel-env.sh
+#     bash scripts/setup-vercel-env.sh --dry-run   # show what it would do
+#     bash scripts/setup-vercel-env.sh             # do it
 #
 # Idempotent: an existing variable is removed and re-added rather than
 # duplicated, so re-running it is safe and is also how you rotate a value.
@@ -25,6 +26,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+DRY_RUN=0
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=1
+fi
 
 if [[ ! -f .env.local ]]; then
   echo "error: .env.local not found. Copy .env.example and fill it in first." >&2
@@ -67,6 +73,14 @@ fi
 
 push() {
   local key="$1" value="$2"
+
+  if (( DRY_RUN )); then
+    # Length only. Enough to confirm the right value was found, useless to
+    # anyone reading over a shoulder or scrolling back through a terminal.
+    echo "  would set $key (${#value} chars) in production, preview, development"
+    return
+  fi
+
   for env in production preview development; do
     # Remove first so a re-run replaces rather than erroring on a duplicate.
     npx --yes vercel env rm "$key" "$env" --yes >/dev/null 2>&1 || true
@@ -75,10 +89,20 @@ push() {
   echo "  set $key"
 }
 
-echo "pushing to Vercel (production, preview, development):"
+if (( DRY_RUN )); then
+  echo "dry run — nothing will be sent:"
+else
+  echo "pushing to Vercel (production, preview, development):"
+fi
 push NEXT_PUBLIC_SUPABASE_URL "$SUPABASE_URL"
 push SUPABASE_SECRET_KEY "$SUPABASE_KEY"
 push CRON_SECRET "$CRON"
+
+if (( DRY_RUN )); then
+  echo
+  echo "dry run complete. Re-run without --dry-run to apply."
+  exit 0
+fi
 
 echo
 echo "done. Redeploy for them to take effect:"

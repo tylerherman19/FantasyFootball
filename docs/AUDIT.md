@@ -1048,6 +1048,31 @@ into `explanations-{season}-{week}.json`, loaded on demand. Main artifact back t
 1.10 MB. Stated precisely: parse cost was 4 ms, so this is deployment size and
 cold-start memory, not a speed-up.
 
+### O — The canonical store (§9.3, Phase 2)
+
+Applied to production. Serving still reads the artifact — a local file read
+beats a network round trip, and that seam is what keeps Python out of the
+serving path. What is fixed is that the artifact was the *only* copy: one week,
+overwritten in place, so the previous state vanished on every rebuild and §35/§48
+were unanswerable because nothing remembered.
+
+`players` (7,962) carries an internal `player_uid` with external ids as
+attributes — Carnell Tate is `gsis:00-0041438` rather than `13279`, which closes
+the §5 finding that a "platform-neutral" model was keyed on `sleeper_id` and
+could not represent a player without one. `player_projections` (2,515) is the
+history. `model_versions` is the ledger, including what did not ship.
+
+Play-by-play, weekly stats and features stay in Parquet. Twenty-five seasons of
+play-level data is not a Postgres shape.
+
+**Two findings on the first run.** 21 duplicate Sleeper ids collapse onto one
+person — two platform entries for the same player, invisible while `sleeper_id`
+was the key, and each was getting its own roster slot, projection and market
+value. And a trap I built then removed: sorting `model_versions` by MAE ranked
+the two *declined* rungs above the shipped one, purely because they were measured
+on a shorter window. Fixed by storing the baseline's MAE on the same row and
+adding a `model_ladder` view that ranks by measured skill.
+
 ### Honest limits
 
 - The migration is unapplied, so `sources` is empty and the panel says so.
@@ -1079,6 +1104,8 @@ cold-start memory, not a speed-up.
   it; the older pages still carry their own shapes.
 - The design system exists; the home, player and team pages are built on it and
   eight older pages still carry their own shapes.
-- Still unbuilt: the canonical database (Phase 2's core, and the largest single
-  remaining item). A league page builds in roughly 2s with 2,000 simulations;
-  that has not been profiled properly.
+- The canonical store exists and is populated, but nothing reads it yet: the
+  history it now keeps is not surfaced as "why did this ranking change" (§35,
+  §48). That is the next thing it unlocks rather than something it delivers.
+- `sync:canonical` is run by hand. It belongs on the weekly job.
+- A league page builds in roughly 2s with 2,000 simulations; not profiled.

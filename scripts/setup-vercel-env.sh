@@ -71,6 +71,20 @@ if [[ -z "$CRON" ]]; then
   echo "generated CRON_SECRET and appended it to .env.local"
 fi
 
+# Resolve the CLI once.
+#
+# The first version called `npx vercel` for every operation — three variables x
+# three environments x two commands is eighteen invocations, each re-resolving
+# the package. With output suppressed that looked like a hang: the header
+# printed and then nothing moved for over a minute. Resolving once makes it
+# quick, and printing per environment makes it visibly alive.
+VERCEL="$(command -v vercel || true)"
+if [[ -z "$VERCEL" ]]; then
+  echo "resolving vercel CLI..."
+  npx --yes vercel --version >/dev/null 2>&1
+  VERCEL="npx --yes vercel"
+fi
+
 push() {
   local key="$1" value="$2"
 
@@ -81,12 +95,25 @@ push() {
     return
   fi
 
+  printf '  %s' "$key"
   for env in production preview development; do
     # Remove first so a re-run replaces rather than erroring on a duplicate.
-    npx --yes vercel env rm "$key" "$env" --yes >/dev/null 2>&1 || true
-    printf '%s' "$value" | npx --yes vercel env add "$key" "$env" >/dev/null 2>&1
+    # Errors here are expected when the variable does not exist yet.
+    $VERCEL env rm "$key" "$env" --yes >/dev/null 2>&1 || true
+
+    # Failures here are NOT expected, and the first version swallowed them:
+    # `set -e` killed the script mid-run with the output redirected to
+    # /dev/null, so it exited silently having done part of the job. Captured
+    # and reported instead.
+    if ! printf '%s' "$value" | $VERCEL env add "$key" "$env" >/tmp/ffe-env-add.log 2>&1; then
+      echo " — FAILED on $env"
+      echo "vercel said:" >&2
+      tail -5 /tmp/ffe-env-add.log >&2
+      exit 1
+    fi
+    printf ' %s' "$env"
   done
-  echo "  set $key"
+  echo " ✓"
 }
 
 if (( DRY_RUN )); then

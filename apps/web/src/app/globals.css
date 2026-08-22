@@ -114,7 +114,7 @@ body {
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-display), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -145,6 +145,61 @@ html.theme-switching *::after {
 /* Numbers must align in columns; that is most of what makes a table readable. */
 .tabular {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/*
+ * Figures, in the face built for them.
+ *
+ * A column of projections is scanned, not read: the eye compares digits in the
+ * same position down the column, and that only works if every glyph occupies
+ * the same width. Monospace does it properly rather than relying on a
+ * proportional font's tabular variant, and it is the look the reference gets
+ * from Decima Mono.
+ */
+.figure {
+  font-family: var(--font-mono), ui-monospace, 'SF Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * The headline of a finding (§42).
+ *
+ * Big, heavy, tight, and stating a conclusion rather than naming a section.
+ * "Garrett Wilson has a favourable matchup" rather than "Matchup". The deck
+ * underneath carries the qualification so the headline does not have to.
+ */
+.headline {
+  font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.15rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.021em;
+  color: var(--ink);
+}
+
+.deck {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  max-width: 46rem;
+}
+
+/*
+ * The line under a chart naming where the numbers came from.
+ *
+ * Every chart in the reference carries one, and it is not decoration: a figure
+ * without a source is an assertion, and this product's whole argument is that
+ * its numbers can be checked.
+ */
+.source-line {
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--rule);
+  padding-top: 0.4rem;
+  margin-top: 0.6rem;
 }
 
 .rule-top {

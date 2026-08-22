@@ -77,7 +77,7 @@ export const StatTile = ({
   <div className="py-1">
     <div className="eyebrow mb-1">{label}</div>
     <div
-      className="tabular text-xl font-semibold sm:text-2xl"
+      className="figure text-xl font-semibold sm:text-2xl"
       style={{
         color:
           tone === 'good'

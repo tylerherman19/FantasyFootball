@@ -45,7 +45,7 @@ export const Metric = ({
   <div>
     <div className="eyebrow mb-1">{label}</div>
     <div
-      className={`tabular font-semibold ${size === 'large' ? 'text-3xl' : 'text-2xl'}`}
+      className={`figure font-semibold ${size === 'large' ? 'text-3xl' : 'text-2xl'}`}
       style={tone === undefined ? undefined : { color: tone }}
     >
       {value}
@@ -157,11 +157,14 @@ export const Insight = ({ insight }: { readonly insight: InsightData }) => (
       </span>
     </div>
 
-    <h3 className="mb-1.5 text-base font-semibold leading-snug">{insight.headline}</h3>
+    <h3
+      className="mb-1.5 leading-tight"
+      style={{ fontSize: '1.22rem', fontWeight: 700, letterSpacing: '-0.017em' }}
+    >
+      {insight.headline}
+    </h3>
 
-    <p className="mb-2 max-w-3xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-      {insight.evidence}
-    </p>
+    <p className="deck mb-2">{insight.evidence}</p>
 
     <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
       {insight.recommendation !== undefined && (

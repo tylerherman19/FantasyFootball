@@ -17,11 +17,27 @@ export async function GET(): Promise<NextResponse> {
   const artifact = await loadLatestArtifact(defaultSeason());
   const sources = await readFreshness(artifact?.generatedAt ?? null);
 
-  const worst = sources.some((s) => s.health === 'failing' || s.health === 'never')
-    ? 'failing'
-    : sources.some((s) => s.health === 'stale')
-      ? 'stale'
-      : 'healthy';
+  /*
+   * Severity, not a max over labels.
+   *
+   * The first version rolled any `never` up to `failing`, so one optional
+   * source that had simply not run yet made the entire system report as broken.
+   * "Failing" should mean something is repeatedly erroring; a source that has
+   * not run is incomplete, and one that is past its cadence is stale. Three
+   * different words because they warrant three different reactions.
+   */
+  const failing = sources.filter((s) => s.health === 'failing');
+  const never = sources.filter((s) => s.health === 'never');
+  const stale = sources.filter((s) => s.health === 'stale');
+
+  const worst =
+    failing.length > 0
+      ? 'failing'
+      : never.length > 0
+        ? 'incomplete'
+        : stale.length > 0
+          ? 'stale'
+          : 'healthy';
 
   return NextResponse.json(
     {

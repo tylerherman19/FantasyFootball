@@ -21,6 +21,7 @@ const TONE: Record<string, { dot: string; label: string }> = {
   failing: { dot: 'var(--neg)', label: 'Failing' },
   never: { dot: 'var(--neg)', label: 'Never run' },
   unknown: { dot: 'var(--ink-faint)', label: 'Not recorded' },
+  incomplete: { dot: 'var(--warn)', label: 'Incomplete' },
 };
 
 /**
@@ -52,9 +53,17 @@ export const humanAge = (minutes: number | null): string => {
   return days < 30 ? `${days}d ago` : `${Math.round(days / 30)}mo ago`;
 };
 
+/**
+ * Severity, not a max over labels.
+ *
+ * Rolling any `never` up to `failing` meant one source that had simply not run
+ * yet turned the whole header red. Three states, three reactions: something is
+ * erroring, something has not run, something is past its cadence.
+ */
 const worstOf = (sources: readonly SourceFreshness[]): string => {
   if (sources.length === 0) return 'unknown';
-  if (sources.some((s) => s.health === 'failing' || s.health === 'never')) return 'failing';
+  if (sources.some((s) => s.health === 'failing')) return 'failing';
+  if (sources.some((s) => s.health === 'never')) return 'incomplete';
   if (sources.some((s) => s.health === 'stale')) return 'stale';
   return 'healthy';
 };

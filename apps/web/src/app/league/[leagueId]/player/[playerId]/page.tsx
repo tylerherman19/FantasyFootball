@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
 import { WhatIf } from '@/components/WhatIf';
+import { Distribution, ThresholdOdds } from '@/components/Distribution';
 import { Confidence, Why } from '@/components/Why';
+import { distributionOf } from '@/lib/distribution';
 import { PositionChip, RangeBar } from '@/components/charts/primitives';
 import {
   careerPhase,
@@ -121,6 +123,12 @@ export default async function PlayerPage({
   const usage = player === undefined ? [] : usageRows(player);
   const past = history?.bySleeperId.get(playerId) ?? null;
 
+  // §49: the model has always produced a distribution; the page showed its mean.
+  const spread =
+    player === undefined || explanation === null
+      ? null
+      : distributionOf(explanation.total, player.sd);
+
   const opportunity = explanation?.steps[1]?.value ?? 0;
   const efficiency = explanation?.steps[2]?.value ?? 0;
 
@@ -208,19 +216,14 @@ export default async function PlayerPage({
             </div>
           </div>
 
-          {player !== undefined && (
+          {spread !== null && (
             <div>
-              <div className="eyebrow mb-1">Weekly range</div>
-              <RangeBar
-                value={explanation?.total ?? 0}
-                low={Math.max(0, (explanation?.total ?? 0) - player.sd)}
-                high={(explanation?.total ?? 0) + player.sd}
-                min={0}
-                max={Math.max(30, (explanation?.total ?? 0) + player.sd * 1.2)}
-              />
-              <div className="tabular mt-1 text-xs" style={{ color: 'var(--ink-faint)' }}>
-                {Math.max(0, (explanation?.total ?? 0) - player.sd).toFixed(1)} –{' '}
-                {((explanation?.total ?? 0) + player.sd).toFixed(1)} on a typical week
+              <div className="eyebrow mb-1">Typical week</div>
+              <div className="tabular text-2xl font-semibold">
+                {spread.percentiles[1]!.value.toFixed(1)}–{spread.percentiles[3]!.value.toFixed(1)}
+              </div>
+              <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                middle half of outcomes
               </div>
             </div>
           )}
@@ -263,6 +266,35 @@ export default async function PlayerPage({
                 {verdict(name, position, opportunity, efficiency, explanation.isPrior)}
               </p>
             </Section>
+
+            {spread !== null && (
+              <Section
+                title="The range, not the number"
+                note="The model has always produced a distribution — a calibrated spread the simulator draws from ten thousand times — and the product showed you its centre. Two players projected the same are not the same player if one is tight and the other is not. Hover any band for exact figures."
+              >
+                <Distribution distribution={spread} />
+
+                <div className="mt-5">
+                  <div className="eyebrow mb-2">Chance of clearing</div>
+                  <ThresholdOdds distribution={spread} />
+                </div>
+
+                <table className="mt-5 w-full max-w-sm">
+                  <tbody>
+                    {spread.percentiles.map((p) => (
+                      <tr key={p.label} className="border-t" style={{ borderColor: 'var(--rule)' }}>
+                        <td className="py-1 text-sm" style={{ color: 'var(--ink-muted)' }}>
+                          {p.label}
+                        </td>
+                        <td className="tabular py-1 text-right text-sm font-medium">
+                          {p.value.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Section>
+            )}
 
             <Section
               title="Why this number"

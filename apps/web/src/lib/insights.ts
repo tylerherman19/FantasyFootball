@@ -129,13 +129,42 @@ export const buildInsights = (input: InsightInputs): InsightData[] => {
    * every other item on this list wrong, and the whole reason the refresh
    * system exists is that the previous failure was invisible.
    */
-  const failing = input.freshness.filter((s) => s.health === 'failing' || s.health === 'never');
+  /*
+   * Only genuine failures, and only the kind a person can act on.
+   *
+   * The first version counted every source that had not been pushed on demand,
+   * which included the five built offline by the Python pipeline and one read
+   * live on every request. It put "7 data sources not reporting" at the top of
+   * this page, ranked above the lineup, about data that was entirely fine. A
+   * warning that is always on is a warning nobody reads.
+   */
+  const failing = input.freshness.filter(
+    (s) => s.health === 'failing' || (s.kind === 'serve' && s.health === 'never'),
+  );
   if (failing.length > 0) {
     out.push({
       category: 'data',
       importance: 0.99,
       headline: `${failing.length} data source${failing.length === 1 ? '' : 's'} not reporting`,
       evidence: `${failing.map((s) => s.label).join(', ')}. Everything else on this page is computed from data that may be out of date, and the model cannot tell you by how much.`,
+      href: '/api/data-status',
+      exploreLabel: 'Data status',
+    });
+  }
+
+  // Stale is a different message from broken: the data exists, it is simply
+  // older than its cadence, and there is a command that fixes it.
+  const stale = input.freshness.filter((s) => s.health === 'stale');
+  if (stale.length > 0 && failing.length === 0) {
+    out.push({
+      category: 'data',
+      importance: 0.45,
+      headline: `${stale.length === 1 ? stale[0]!.label : `${stale.length} sources`} past its refresh window`,
+      evidence: `${stale
+        .map((s) => `${s.label} (${s.ageMinutes === null ? 'unknown age' : `${Math.round(s.ageMinutes / 60)}h`})`)
+        .join(', ')}. Not broken — older than its cadence. ${
+        stale[0]?.rebuildCommand ? `Rebuild with ${stale[0].rebuildCommand}.` : ''
+      }`,
       href: '/api/data-status',
       exploreLabel: 'Data status',
     });

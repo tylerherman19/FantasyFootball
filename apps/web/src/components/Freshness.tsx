@@ -20,7 +20,23 @@ const TONE: Record<string, { dot: string; label: string }> = {
   stale: { dot: 'var(--warn)', label: 'Stale' },
   failing: { dot: 'var(--neg)', label: 'Failing' },
   never: { dot: 'var(--neg)', label: 'Never run' },
-  unknown: { dot: 'var(--ink-muted)', label: 'Unknown' },
+  unknown: { dot: 'var(--ink-faint)', label: 'Not recorded' },
+};
+
+/**
+ * What each source *is*, so the panel stops offering a button for things a
+ * button cannot do.
+ *
+ * Five of seven sources are built by the Python pipeline. The first version of
+ * this panel treated all of them as refreshable, reported them as failing when
+ * nobody refreshed them, and put "7 data sources not reporting" at the top of
+ * the league home — about data that was fine. A panel that is always red
+ * teaches you to ignore it.
+ */
+const KIND_NOTE: Record<string, string> = {
+  live: 'read on every request',
+  serve: 'refreshable on demand',
+  offline: 'built offline',
 };
 
 /** "4 minutes ago" — plain words, because a raw ISO string is not an answer. */
@@ -88,7 +104,16 @@ export const Freshness = ({
               {sources.map((source) => {
                 const rowTone = TONE[source.health] ?? TONE.unknown!;
                 return (
-                  <tr key={source.source} className="align-baseline">
+                  <tr
+                    key={source.source}
+                    className="align-baseline"
+                    // Drill-down on hover: what it is, and what rebuilds it.
+                    title={
+                      source.rebuildCommand === null
+                        ? `${source.label} — ${KIND_NOTE[source.kind] ?? ''}`
+                        : `${source.label} — ${KIND_NOTE[source.kind] ?? ''}. Rebuild: ${source.rebuildCommand}`
+                    }
+                  >
                     <td className="py-0.5 pr-3">
                       <span
                         aria-hidden
@@ -97,12 +122,31 @@ export const Freshness = ({
                       />
                       {source.label}
                     </td>
+                    <td className="py-0.5 pr-3 text-right text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+                      {source.kind === 'offline' ? 'batch' : source.kind}
+                    </td>
                     <td className="py-0.5 text-right">{humanAge(source.ageMinutes)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        )}
+
+        {/* What to actually do about anything stale. A command beats a red dot. */}
+        {sources.some((s) => s.health === 'stale' && s.rebuildCommand !== null) && (
+          <div className="mt-2 border-t pt-2" style={{ borderColor: 'var(--rule)' }}>
+            <p className="mb-1 text-[10px] uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
+              Rebuild
+            </p>
+            {sources
+              .filter((s) => s.health === 'stale' && s.rebuildCommand !== null)
+              .map((s) => (
+                <p key={s.source} className="leading-relaxed">
+                  <code style={{ color: 'var(--ink-muted)' }}>{s.rebuildCommand}</code>
+                </p>
+              ))}
+          </div>
         )}
 
         {/* Named rather than hidden: a failure the interface swallows is how

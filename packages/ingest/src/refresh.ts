@@ -22,6 +22,19 @@ export type RefreshTrigger = 'cron' | 'manual' | 'deploy';
 
 export type SourceHealth = 'healthy' | 'stale' | 'failing' | 'never' | 'unknown';
 
+/**
+ * How a source is produced, which decides what the UI can offer.
+ *
+ * `live` is read on every request behind a short memo — always current, nothing
+ * to refresh. `serve` can be pushed on demand. `offline` is built by the Python
+ * pipeline and no button can rebuild it, so the honest affordance is the command
+ * that does.
+ *
+ * Without this the panel offered "refresh" for five sources it could not
+ * refresh, and reported them as failing forever when nobody did.
+ */
+export type SourceKind = 'live' | 'serve' | 'offline';
+
 /** Row counts a provider reports about its own run. */
 export interface RefreshCounts {
   readonly processed?: number;
@@ -48,6 +61,9 @@ export interface RefreshOutcome extends RefreshCounts {
 export interface SourceFreshness {
   readonly source: string;
   readonly label: string;
+  readonly kind: SourceKind;
+  /** For `offline` sources: what actually rebuilds it. */
+  readonly rebuildCommand: string | null;
   readonly health: SourceHealth;
   readonly lastSuccessAt: string | null;
   readonly dataTimestamp: string | null;
@@ -202,6 +218,8 @@ export class PostgrestRefreshStore implements RefreshStore {
       {
         source: string;
         label: string;
+        kind: SourceKind;
+        rebuild_command: string | null;
         health: SourceHealth;
         last_success_at: string | null;
         data_timestamp: string | null;
@@ -217,6 +235,8 @@ export class PostgrestRefreshStore implements RefreshStore {
     return rows.map((row) => ({
       source: row.source,
       label: row.label,
+      kind: row.kind ?? 'serve',
+      rebuildCommand: row.rebuild_command ?? null,
       health: row.health,
       lastSuccessAt: row.last_success_at,
       dataTimestamp: row.data_timestamp,

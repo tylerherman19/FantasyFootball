@@ -87,6 +87,32 @@ const post = async (path: string, rows: unknown[], prefer: string): Promise<numb
 };
 
 /**
+ * Update an existing row.
+ *
+ * Distinct from `post` with an upsert, which PostgREST validates as an INSERT
+ * first — so a partial row trips NOT NULL on columns it was never going to
+ * write, and any column left out gets silently reset to its default. Both
+ * happened here: `label` rejected the write, and `kind` would have been reset
+ * from 'offline' back to 'serve', undoing the migration that fixed the panel.
+ *
+ * These rows are seeded by migration and only ever updated, so PATCH is the
+ * honest verb.
+ */
+const patch = async (path: string, body: unknown): Promise<boolean> => {
+  const res = await fetch(`${url}/rest/v1/${path}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: key,
+      authorization: `Bearer ${key}`,
+      'content-type': 'application/json',
+      prefer: 'return=minimal',
+    },
+    body: JSON.stringify(body),
+  });
+  return res.ok;
+};
+
+/**
  * The internal key.
  *
  * gsis where we have it, because it is the id every league-independent dataset
@@ -308,6 +334,94 @@ const main = async (): Promise<void> => {
 
   await post('model_versions?on_conflict=model_version', versions, 'resolution=merge-duplicates');
   console.log(`model_versions: ${versions.length} recorded`);
+
+  /*
+   * Record the offline sources.
+   *
+   * `data_sources` was seeded with seven providers and only two of them —
+   * Sleeper and market values — are fetched at serve time. The other five are
+   * built here, by the Python pipeline, and nothing ever wrote their status. So
+   * they sat at `never` forever and the league home led with "7 data sources
+   * not reporting" as its most important insight, about data that was fine.
+   *
+   * This is the writer they never had. The timestamp is the artifact's own
+   * `generatedAt` where it has one, and the file's modification time where it
+   * does not — because what a reader wants to know is how old the *data* is,
+   * not when this script last ran over it.
+   */
+  const stamp = async (
+    source: string,
+    file: string,
+    count: number | null,
+  ): Promise<void> => {
+    const path = join(ARTIFACTS, file);
+    let when: string;
+    let records = count;
+
+    try {
+      const stat = await import('node:fs/promises').then((fs) => fs.stat(path));
+      when = stat.mtime.toISOString();
+
+      const parsed = JSON.parse(await readFile(path, 'utf8')) as {
+        generatedAt?: string;
+        count?: number;
+        playerCount?: number;
+      };
+      if (typeof parsed.generatedAt === 'string') when = parsed.generatedAt;
+      records ??= parsed.playerCount ?? parsed.count ?? null;
+    } catch {
+      // A missing artifact is not an error to record — it is a source that has
+      // not been built, which the view already reports as unknown.
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const ok = await patch(`data_sources?source=eq.${encodeURIComponent(source)}`, {
+      last_attempt_at: now,
+      last_success_at: now,
+      data_timestamp: when,
+      last_status: 'ok',
+      last_error: null,
+      last_record_count: records,
+      consecutive_failures: 0,
+      updated_at: now,
+    });
+    console.log(`  ${source}: ${ok ? `data from ${when.slice(0, 16)}` : 'FAILED'}`);
+  };
+
+  console.log('offline sources:');
+  const current = files.sort().at(-1);
+  if (current !== undefined) await stamp('projections', current, null);
+  await stamp('crosswalk', 'crosswalk.json', identities.length);
+
+  // The lake has no artifact of its own, so nflverse and injuries are dated
+  // from the ingest manifest that `model/ingest/nflverse.py` writes.
+  try {
+    const manifestPath = join(process.cwd(), 'data', 'lake', 'manifest.json');
+    const stat = await import('node:fs/promises').then((fs) => fs.stat(manifestPath));
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      assets?: { rows?: number }[];
+    };
+    const rows = (manifest.assets ?? []).reduce((sum, a) => sum + (a.rows ?? 0), 0);
+
+    const now = new Date().toISOString();
+    for (const source of ['nflverse', 'injuries']) {
+      await patch(`data_sources?source=eq.${source}`, {
+        last_attempt_at: now,
+        last_success_at: now,
+        data_timestamp: stat.mtime.toISOString(),
+        last_status: 'ok',
+        last_error: null,
+        last_record_count: rows,
+        consecutive_failures: 0,
+        updated_at: now,
+      });
+    }
+    console.log(`  nflverse + injuries: lake from ${stat.mtime.toISOString().slice(0, 16)}`);
+  } catch {
+    // No manifest means the lake has never been synced here, which the view
+    // reports as unknown rather than as a failure.
+  }
   console.log(`\ntotal: ${totalProjections.toLocaleString()} projections across ${files.length} week(s)`);
 };
 

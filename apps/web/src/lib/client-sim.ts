@@ -431,3 +431,81 @@ export const evaluateSwapClient = (
 
   return { inPlayerId, outPlayerId, titleDelta, playoffDelta, pointsDelta, negligible, explanation };
 };
+
+
+// ---------------------------------------------------------------------------
+// Roster-level scenarios (§60)
+// ---------------------------------------------------------------------------
+
+export interface InjuryScenario {
+  readonly playerId: string;
+  readonly name: string;
+  readonly titleBefore: number;
+  readonly titleAfter: number;
+  readonly playoffBefore: number;
+  readonly playoffAfter: number;
+  /** Percentage points of title probability lost if he misses the season. */
+  readonly titleCost: number;
+  /** Share of your title odds riding on this one man. */
+  readonly shareOfOdds: number;
+}
+
+/**
+ * What happens to your season if one player is gone.
+ *
+ * The what-if that already existed was player-level: move his targets, watch his
+ * projection move. This is the roster-level one the brief asks for in §60 — "what
+ * if the QB gets injured" — and it is a different question, because the answer
+ * is not about him. It is about how much of your title probability was resting on
+ * him, which is a fact about how your roster is built.
+ *
+ * Implemented as removal rather than as a projection haircut. A season-ending
+ * injury is not "he scores less"; it is the lineup solver having to find
+ * somebody else every week, and the cost is whatever the next man up cannot do.
+ * Halving his projection would understate it precisely when the bench is thin,
+ * which is exactly when a manager needs to know.
+ *
+ * Seeded and deterministic, so the same roster gives the same answer twice.
+ */
+export const injuryScenarios = (
+  wire: WireLeague,
+  myTeamId: string,
+  playerIds: readonly string[],
+  iterations = 1_500,
+): InjuryScenario[] => {
+  const base = rebuildContext(wire, iterations);
+  const before = currentOdds(base, myTeamId);
+
+  return playerIds
+    .flatMap((playerId): InjuryScenario[] => {
+      const player = wire.players[playerId];
+      if (player === undefined) return [];
+
+      // Remove him from the roster entirely and re-simulate.
+      const context: SimContext = {
+        ...base,
+        teams: base.teams.map((team) =>
+          team.teamId === myTeamId
+            ? { ...team, playerIds: team.playerIds.filter((id) => String(id) !== playerId) }
+            : team,
+        ),
+      };
+
+      const after = currentOdds(context, myTeamId);
+      const titleCost = before.titlePct - after.titlePct;
+
+      return [
+        {
+          playerId,
+          name: player.name,
+          titleBefore: before.titlePct,
+          titleAfter: after.titlePct,
+          playoffBefore: before.playoffPct,
+          playoffAfter: after.playoffPct,
+          titleCost,
+          shareOfOdds: before.titlePct > 0 ? titleCost / before.titlePct : 0,
+        },
+      ];
+    })
+    .sort((a, b) => b.titleCost - a.titleCost);
+};

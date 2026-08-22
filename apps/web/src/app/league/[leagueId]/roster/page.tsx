@@ -1,4 +1,8 @@
 import Link from 'next/link';
+import { Fragility } from '@/components/Fragility';
+import { serializeLeague } from '@/lib/serialize';
+import { loadMarketValues } from '@/lib/values';
+import { loadPlayerInfo } from '@/lib/players';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
@@ -38,10 +42,25 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
   const view = await loadLeague(leagueId, session.username);
   const { snapshot, myTeamId } = view;
 
-  const [analysis, { players: usageAll }] = await Promise.all([
+  const [analysis, { players: usageAll }, fragilityValues, fragilityPlayers] = await Promise.all([
     myTeamId === null ? Promise.resolve(null) : analyzeRoster(view, myTeamId),
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+    loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
   ]);
+
+  /*
+   * The roster-level what-if (§60) needs the league on the wire, because the
+   * simulation runs in the browser — N full seasons is not something to do on a
+   * server render, and it only happens when a reader asks for it.
+   *
+   * Only starters are tested. Simulating the removal of a fourth-string tight
+   * end costs the same as simulating a quarterback and answers nothing.
+   */
+  const fragilityWire = serializeLeague(view, fragilityValues, fragilityPlayers);
+  const fragilityCandidates = (analysis?.players ?? [])
+    .filter((player) => player.starting)
+    .map((player) => ({ id: player.playerId, name: player.name }));
 
   const isDynasty = snapshot.league.format === 'dynasty' || snapshot.league.format === 'keeper';
   const usageOf = new Map(usageAll.map((player) => [player.playerId, player]));
@@ -499,6 +518,20 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             )}
           </>
         )}
+
+        {myTeamId !== null && fragilityCandidates.length > 0 && (
+          <Section
+            title="What is your season resting on?"
+            note="The other what-if asks how a player's role might change. This asks what happens if he is gone — a different question, because the answer is about your roster rather than about him."
+          >
+            <Fragility
+              wire={fragilityWire}
+              myTeamId={myTeamId}
+              candidates={fragilityCandidates}
+            />
+          </Section>
+        )}
+
       </main>
     </>
   );

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
+import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { CellBar, PositionChip } from '@/components/charts/primitives';
 import { loadLeague } from '@/lib/league-data';
 import {
@@ -107,7 +108,51 @@ export default async function TeamPage({
         format={snapshot.league.format}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:ml-14">
+      <RailLayout
+        rail={
+          <>
+            {offense !== undefined && (
+              <RailBlock
+                title="Offence at a glance"
+                note="Tendencies are choices, so none of this is opponent-adjusted — a coach who throws on early downs does so against every defense."
+              >
+                <RailStat label="Plays per game" value={offense.playsPerGame.toFixed(1)} />
+                <RailStat label="Seconds per play" value={offense.secondsPerPlay.toFixed(1)} hint="Neutral situations only." />
+                <RailStat
+                  label="Pass over expected"
+                  value={`${offense.proe >= 0 ? '+' : '−'}${(Math.abs(offense.proe) * 100).toFixed(1)}%`}
+                />
+                <RailStat label="Neutral pass rate" value={pct(offense.neutralPassRate)} />
+                {offense.redZonePassRate !== undefined && (
+                  <RailStat label="Red-zone pass" value={pct(offense.redZonePassRate)} />
+                )}
+              </RailBlock>
+            )}
+
+            {pressure !== undefined && (
+              <RailBlock title="Defence: what they choose">
+                <RailStat label="Blitz rate" value={pct(pressure.blitzRate)} />
+                <RailStat label="Five or more rushers" value={pct(pressure.extraRusherRate)} />
+                {pressure.boxCount !== null && (
+                  <RailStat label="Box count" value={pressure.boxCount.toFixed(2)} />
+                )}
+              </RailBlock>
+            )}
+
+            {coverage !== undefined && (
+              <RailBlock
+                title="Coverage"
+                note="From participation charting, retired upstream — this describes completed seasons and will not move during this one."
+              >
+                <RailStat label="Man" value={pct(coverage.manRate)} />
+                <RailStat label="Two-high" value={pct(coverage.twoHighRate)} />
+                <RailStat label="Single-high" value={pct(coverage.singleHighRate)} />
+                <RailStat label="Cover 0" value={pct(coverage.cover0Rate)} />
+              </RailBlock>
+            )}
+          </>
+        }
+      >
         <h1 className="mb-1 text-3xl font-semibold tracking-tight">{team}</h1>
         <p className="mb-8 text-xs" style={{ color: 'var(--ink-faint)' }}>
           Offensive tendencies from {offense?.season ?? snapshot.league.season} play-by-play
@@ -318,7 +363,7 @@ export default async function TeamPage({
             </table>
           </Section>
         )}
-      </main>
+      </RailLayout>
     </>
   );
 }

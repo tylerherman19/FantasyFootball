@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Fragility } from '@/components/Fragility';
+import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { serializeLeague } from '@/lib/serialize';
 import { loadMarketValues } from '@/lib/values';
 import { loadPlayerInfo } from '@/lib/players';
@@ -90,7 +91,45 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
         }
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+      <RailLayout
+        rail={
+          analysis === null ? null : (
+            <>
+              <RailBlock
+                title="Roster shape"
+                note="Top-two reliance is the fragility measure: a team drawing more than a third of its points from two players is one injury from collapse, whatever its record says."
+              >
+                <RailStat label="Starting lineup" value={`${analysis.lineupTotal.toFixed(1)} pts`} />
+                <RailStat label="Top-two reliance" value={`${(analysis.topTwoShare * 100).toFixed(0)}%`} />
+                {analysis.averageStarterAge !== null && (
+                  <RailStat
+                    label="Starter age"
+                    value={`${analysis.averageStarterAge.toFixed(1)} yrs`}
+                    hint="Value-weighted, so a bench of rookies does not disguise an old starting eleven."
+                  />
+                )}
+                <RailStat label="Players" value={String(analysis.players.length)} />
+              </RailBlock>
+
+              <RailBlock
+                title="How value is priced"
+                note="Market value is what the field would pay; lineup loss is what he is worth to you. The gap between them is where trades are found."
+              >
+                <RailStat
+                  label="Lineup loss"
+                  value="per player"
+                  hint="Points the optimal lineup gives up without him — his marginal value, not his projection."
+                />
+                <RailStat
+                  label="Market"
+                  value="FantasyCalc"
+                  hint="Dynasty or redraft, superflex-aware, matched to this league's format."
+                />
+              </RailBlock>
+            </>
+          )
+        }
+      >
         {analysis === null ? (
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>No roster to analyse.</strong> Either the league
@@ -532,7 +571,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
           </Section>
         )}
 
-      </main>
+      </RailLayout>
     </>
   );
 }

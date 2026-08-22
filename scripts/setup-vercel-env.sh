@@ -88,6 +88,16 @@ fi
 push() {
   local key="$1" value="$2"
 
+  # `NEXT_PUBLIC_*` is inlined into the browser bundle by the framework, so it
+  # is public by construction and Vercel refuses to store it with secret
+  # visibility on Production or Preview. That refusal is correct — marking it
+  # secret would be theatre, not security. The two values that ARE secret keep
+  # the default sensitive visibility.
+  local flags=()
+  if [[ "$key" == NEXT_PUBLIC_* ]]; then
+    flags+=(--no-sensitive)
+  fi
+
   if (( DRY_RUN )); then
     # Length only. Enough to confirm the right value was found, useless to
     # anyone reading over a shoulder or scrolling back through a terminal.
@@ -105,7 +115,7 @@ push() {
     # `set -e` killed the script mid-run with the output redirected to
     # /dev/null, so it exited silently having done part of the job. Captured
     # and reported instead.
-    if ! printf '%s' "$value" | $VERCEL env add "$key" "$env" >/tmp/ffe-env-add.log 2>&1; then
+    if ! printf '%s' "$value" | $VERCEL env add "$key" "$env" "${flags[@]}" >/tmp/ffe-env-add.log 2>&1; then
       echo " — FAILED on $env"
       echo "vercel said:" >&2
       tail -5 /tmp/ffe-env-add.log >&2

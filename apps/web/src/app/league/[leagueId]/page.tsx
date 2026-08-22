@@ -21,6 +21,8 @@ import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { positionalStrength } from '@/lib/positional-strength';
 import { requireSession } from '@/lib/session';
 import { InsightList } from '@/components/design/primitives';
+import { Figure } from '@/components/design/Figure';
+import { OddsField } from '@/components/charts/OddsField';
 import { buildInsights } from '@/lib/insights';
 import { analysePortfolio, loadCorrelations, type PortfolioPlayer } from '@/lib/portfolio';
 import { loadAvailability } from '@/lib/availability';
@@ -172,6 +174,46 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
       />
 
       <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+        {/*
+         * Lead with a picture (§42).
+         *
+         * The page opened with a ranked list of text, and a ranked list cannot
+         * show the thing that decides a dynasty season: whether the league is
+         * bunched — one trade moves you three places — or already split, in
+         * which case it does not.
+         */}
+        {!notDrafted && result.teams.length > 1 && (
+          <Figure
+            headline={
+              me === null
+                ? `${snapshot.league.name} is ${
+                    Math.max(...result.teams.map((t) => t.titlePct)) -
+                      Math.min(...result.teams.map((t) => t.titlePct)) >
+                    0.25
+                      ? 'already split'
+                      : 'still bunched'
+                  }`
+                : `You are ${myRank === null ? '—' : `${myRank} of ${standings.length}`} to win ${snapshot.league.name}`
+            }
+            deck={
+              me === null
+                ? 'Championship probability across every team, from the same simulation the rest of this page uses.'
+                : `${(me.titlePct * 100).toFixed(1)}% to win it and ${(me.playoffPct * 100).toFixed(0)}% to reach the playoffs, over ${result.iterations.toLocaleString()} simulated seasons. Hover any dot for that team.`
+            }
+            source={`${result.iterations.toLocaleString()} season simulations · model ${view.modelVersion ?? 'unknown'}`}
+          >
+            <OddsField
+              teams={result.teams.map((team) => ({
+                teamId: team.teamId,
+                name: teamNames.get(team.teamId) ?? team.teamId,
+                titlePct: team.titlePct,
+                playoffPct: team.playoffPct,
+                isMine: team.teamId === myTeamId,
+              }))}
+            />
+          </Figure>
+        )}
+
         {insights.length > 0 && (
           <Section
             title="What matters right now"

@@ -93,9 +93,15 @@ push() {
   # visibility on Production or Preview. That refusal is correct — marking it
   # secret would be theatre, not security. The two values that ARE secret keep
   # the default sensitive visibility.
-  local flags=()
+  #
+  # A plain string, not an array. macOS ships bash 3.2, where expanding an
+  # EMPTY array as "${flags[@]}" trips `set -u` with "unbound variable" — so the
+  # array version worked for the one key that needed a flag and blew up on the
+  # two that did not. The flag here is a fixed literal, so word-splitting an
+  # unquoted string is safe.
+  local flags=""
   if [[ "$key" == NEXT_PUBLIC_* ]]; then
-    flags+=(--no-sensitive)
+    flags="--no-sensitive"
   fi
 
   if (( DRY_RUN )); then
@@ -110,12 +116,13 @@ push() {
     # Remove first so a re-run replaces rather than erroring on a duplicate.
     # Errors here are expected when the variable does not exist yet.
     $VERCEL env rm "$key" "$env" --yes >/dev/null 2>&1 || true
+    : >/tmp/ffe-env-add.log
 
     # Failures here are NOT expected, and the first version swallowed them:
     # `set -e` killed the script mid-run with the output redirected to
     # /dev/null, so it exited silently having done part of the job. Captured
     # and reported instead.
-    if ! printf '%s' "$value" | $VERCEL env add "$key" "$env" "${flags[@]}" >/tmp/ffe-env-add.log 2>&1; then
+    if ! printf '%s' "$value" | $VERCEL env add "$key" "$env" $flags >/tmp/ffe-env-add.log 2>&1; then
       echo " — FAILED on $env"
       echo "vercel said:" >&2
       tail -5 /tmp/ffe-env-add.log >&2

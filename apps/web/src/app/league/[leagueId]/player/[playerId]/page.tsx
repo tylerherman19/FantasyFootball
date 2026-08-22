@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
+import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { WhatIf } from '@/components/WhatIf';
 import { Distribution, ThresholdOdds } from '@/components/Distribution';
 import { Confidence, Why } from '@/components/Why';
@@ -173,7 +174,80 @@ export default async function PlayerPage({
         format={snapshot.league.format}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:ml-14">
+      <RailLayout
+        rail={
+          <>
+            {explanation !== null && (
+              <RailBlock
+                title="How confident, and why not more"
+                note="Confidence reports how much the model has seen, not how good the number feels."
+              >
+                <Confidence explanation={explanation} />
+              </RailBlock>
+            )}
+
+            {spread !== null && (
+              <RailBlock
+                title="The distribution"
+                note="Gaussian with a spread calibrated against real forecast error, and the same one the season simulation draws from — so this page cannot disagree with your title odds."
+              >
+                {spread.percentiles.map((pc) => (
+                  <RailStat key={pc.label} label={pc.label} value={pc.value.toFixed(1)} />
+                ))}
+              </RailBlock>
+            )}
+
+            {player !== undefined && (
+              <RailBlock title="Where the number comes from">
+                <RailStat
+                  label="Basis"
+                  value={player.basis === 'rookie-prior' ? 'draft capital' : 'own history'}
+                  hint={
+                    player.basis === 'rookie-prior'
+                      ? 'No NFL snaps. Priced from draft slot and depth chart, which beat a flat rookie baseline by 16.7% out of sample.'
+                      : 'Opportunity and efficiency rebuilt from his own recent games, shrunk toward his position.'
+                  }
+                />
+                {explanation !== null && !explanation.isPrior && (
+                  <RailStat
+                    label="Games behind it"
+                    value={explanation.effectiveGames.toFixed(1)}
+                    hint="Recency-weighted: a game ten back counts half."
+                  />
+                )}
+                <RailStat
+                  label="Spread"
+                  value={player.sd.toFixed(1)}
+                  hint="Calibrated per position against measured forecast error."
+                />
+                {player.byeWeek !== null && (
+                  <RailStat label="Bye" value={`week ${player.byeWeek}`} />
+                )}
+              </RailBlock>
+            )}
+
+            {offense !== undefined && (
+              <RailBlock
+                title="His offence"
+                note="Usage is downstream of team behaviour. A back on a slow, run-first offence sees carries one on a fast, pass-first offence never will."
+              >
+                <RailStat label="Plays per game" value={offense.playsPerGame.toFixed(1)} />
+                <RailStat
+                  label="Pass over expected"
+                  value={`${offense.proe >= 0 ? '+' : '−'}${(Math.abs(offense.proe) * 100).toFixed(1)}%`}
+                />
+                {offense.redZonePassRate !== undefined && (
+                  <RailStat
+                    label="Red-zone pass"
+                    value={`${(offense.redZonePassRate * 100).toFixed(0)}%`}
+                    hint="Where touchdown equity is assigned."
+                  />
+                )}
+              </RailBlock>
+            )}
+          </>
+        }
+      >
         <div className="mb-8">
           <div className="flex flex-wrap items-baseline gap-3">
             <PositionChip position={position} />
@@ -279,20 +353,6 @@ export default async function PlayerPage({
                   <ThresholdOdds distribution={spread} />
                 </div>
 
-                <table className="mt-5 w-full max-w-sm">
-                  <tbody>
-                    {spread.percentiles.map((p) => (
-                      <tr key={p.label} className="border-t" style={{ borderColor: 'var(--rule)' }}>
-                        <td className="py-1 text-sm" style={{ color: 'var(--ink-muted)' }}>
-                          {p.label}
-                        </td>
-                        <td className="tabular py-1 text-right text-sm font-medium">
-                          {p.value.toFixed(1)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </Section>
             )}
 
@@ -669,7 +729,7 @@ export default async function PlayerPage({
             </p>
           </Section>
         )}
-      </main>
+      </RailLayout>
     </>
   );
 }

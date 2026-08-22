@@ -104,8 +104,17 @@ const LADDER: readonly { label: string; p: number }[] = [
  * carrying information.
  */
 const thresholdsFor = (mean: number): number[] => {
-  const step = mean < 10 ? 5 : 10;
-  const first = Math.ceil((mean + step / 2) / step) * step;
+  /*
+   * Five-point steps, starting just above the projection.
+   *
+   * The first version stepped by ten above a projection of ten, which put a
+   * 20.2-point receiver's ladder at 30/40/50 — and 40 and 50 both came back 0%,
+   * so two of three lines carried no information. A useful ladder brackets the
+   * outcomes that actually happen: for that receiver it is 25/30/35, where the
+   * answers are 22%, 6% and 1%.
+   */
+  const step = 5;
+  const first = Math.ceil((mean + 2) / step) * step;
   return [first, first + step, first + step * 2];
 };
 

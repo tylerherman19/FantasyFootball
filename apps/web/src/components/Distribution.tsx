@@ -20,8 +20,8 @@ const BANDS = [
 
 export const Distribution = ({
   distribution,
-  width = 420,
-  height = 64,
+  width = 380,
+  height = 76,
 }: {
   readonly distribution: Dist;
   readonly width?: number;
@@ -41,7 +41,15 @@ export const Distribution = ({
 
   return (
     <div>
-      <svg width={width} height={height} role="img" aria-label={`Projection range ${p10.toFixed(1)} to ${p90.toFixed(1)}`}>
+      <svg
+        viewBox={`-10 0 ${width + 20} ${height}`}
+        width="100%"
+        height={height}
+        preserveAspectRatio="xMinYMid meet"
+        role="img"
+        aria-label={`Projection range ${p10.toFixed(1)} to ${p90.toFixed(1)}`}
+        style={{ maxWidth: width + 20 }}
+      >
         {BANDS.map((band) => {
           const from = percentiles[band.from]!;
           const to = percentiles[band.to]!;

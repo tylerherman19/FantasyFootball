@@ -22,6 +22,7 @@ import { positionalStrength } from '@/lib/positional-strength';
 import { requireSession } from '@/lib/session';
 import { InsightList } from '@/components/design/primitives';
 import { Figure } from '@/components/design/Figure';
+import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { OddsField } from '@/components/charts/OddsField';
 import { buildInsights } from '@/lib/insights';
 import { analysePortfolio, loadCorrelations, type PortfolioPlayer } from '@/lib/portfolio';
@@ -173,7 +174,65 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+      <RailLayout
+        rail={
+          <>
+            <RailBlock
+              title="How this was computed"
+              note="Every probability on this page comes from the same run. Nothing here is a separate estimate that could disagree with the chart above it."
+            >
+              <RailStat
+                label="Simulated seasons"
+                value={result.iterations.toLocaleString()}
+                hint="Each season plays out every remaining week, solves each manager's optimal lineup, and runs the playoff bracket."
+              />
+              <RailStat
+                label="Model"
+                value={view.modelVersion ?? 'none'}
+                hint="Opportunity x efficiency with empirical-Bayes shrinkage, plus a draft-capital rookie prior."
+              />
+              <RailStat
+                label="Out-of-sample skill"
+                value="+5.6%"
+                hint="MAE against a Marcel baseline over 21,679 player-weeks, 2022-2025. Beats it in all four seasons separately."
+              />
+              <RailStat
+                label="Built in"
+                value={`${view.loadMs ?? 0} ms`}
+                hint="Cold build. Cached for five minutes afterwards."
+              />
+            </RailBlock>
+
+            <RailBlock
+              title="What the model declined to use"
+              note="Recorded because a negative result nobody writes down is a negative result somebody repeats."
+            >
+              <p className="mb-2">
+                Opponent strength does not move a projection. Measured twice — scaled against points
+                allowed, then against opportunity allowed — and both degraded as the adjustment grew.
+              </p>
+              <RailStat label="v2 matchup" value="declined" hint="MAE 4.564 vs v1 4.568, degrading monotonically with weight." />
+              <RailStat label="v3 allocation" value="declined" hint="MAE 4.567 vs v1 4.568. Same shape of failure." />
+            </RailBlock>
+
+            {me !== null && (
+              <RailBlock
+                title="Your position"
+                note="Playoff odds move on wins; title odds move on roster strength. A wide gap between them is a team that gets in and loses."
+              >
+                <RailStat label="Title" value={`${(me.titlePct * 100).toFixed(1)}%`} />
+                <RailStat label="Playoffs" value={`${(me.playoffPct * 100).toFixed(0)}%`} />
+                <RailStat label="Projected wins" value={me.expectedWins.toFixed(1)} />
+                <RailStat
+                  label="Conversion"
+                  value={me.playoffPct > 0 ? `${((me.titlePct / me.playoffPct) * 100).toFixed(0)}%` : '—'}
+                  hint="How often reaching the playoffs turns into winning it."
+                />
+              </RailBlock>
+            )}
+          </>
+        }
+      >
         {/*
          * Lead with a picture (§42).
          *
@@ -668,7 +727,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
           teamNames={view.teamNames}
           myTeamId={view.myTeamId}
         />
-      </main>
+      </RailLayout>
     </>
   );
 }

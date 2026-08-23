@@ -1,4 +1,12 @@
-import { optimalLineup, asPlayerId, type LineupCandidate, type Position } from '@ffe/core';
+import {
+  optimalLineup,
+  asPlayerId,
+  SLOT_ELIGIBILITY,
+  type LineupCandidate,
+  type LineupSlot,
+  type Position,
+} from '@ffe/core';
+import Link from 'next/link';
 import { LeagueNav } from '@/components/LeagueNav';
 import { RailBlock, RailLayout } from '@/components/design/DrillRail';
 import { LeagueRail } from '@/components/design/LeagueRail';
@@ -6,6 +14,7 @@ import { requireSession } from '@/lib/session';
 import { LineupBoard, type LineupSlotView } from '@/components/LineupBoard';
 import { StarterMatchups, type StarterMatchup } from '@/components/StarterMatchups';
 import { loadDefenses, matchupFor, opponentFrom } from '@/lib/defense';
+import { callVerdict, flippableCount, loadSchemeFinding } from '@/lib/scheme-impact';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -96,8 +105,30 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
    * only the positions a scheme read says anything useful about — a kicker's
    * week is not decided by coverage shell.
    */
-  const defenses = await loadDefenses();
+  const [defenses, schemeFinding] = await Promise.all([loadDefenses(), loadSchemeFinding()]);
   const SCHEME_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+
+  /*
+   * What each starter is actually being started *over*.
+   *
+   * This is the number the matchup has to beat to matter. Without it a hostile
+   * read is just a red word next to a player the manager was always going to
+   * start, and the page has spent its most prominent real estate telling him
+   * something with no action attached.
+   *
+   * Eligibility comes from the slot, not the position, so a back in the FLEX is
+   * correctly compared against the best receiver on the bench as well.
+   */
+  const alternativeFor = (slot: LineupSlotView): { name: string; margin: number } | null => {
+    const eligible = SLOT_ELIGIBILITY[slot.slot as LineupSlot];
+    if (eligible === null || eligible === undefined || slot.playerId === null) return null;
+
+    const best = [...bench]
+      .filter((candidate) => eligible.includes(candidate.position as Position))
+      .sort((a, b) => b.projected - a.projected)[0];
+
+    return best === undefined ? null : { name: best.name, margin: slot.projected - best.projected };
+  };
 
   const matchups: StarterMatchup[] = slots.flatMap((slot) => {
     if (slot.playerId === null || !SCHEME_POSITIONS.has(slot.position)) return [];
@@ -121,9 +152,15 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
           profile === undefined
             ? null
             : matchupFor(slot.position, profile, Object.values(defenses.teams)),
+        verdict: (() => {
+          const alternative = alternativeFor(slot);
+          return callVerdict(alternative?.margin ?? 0, slot.sd, alternative?.name ?? null, schemeFinding);
+        })(),
       },
     ];
   });
+
+  const schemeCanReach = flippableCount(matchups.flatMap((m) => (m.verdict ? [m.verdict] : [])));
 
   const total = slots.reduce((sum, slot) => sum + slot.projected, 0);
   const hurtStarters = slots.filter((slot) => slot.injuryStatus !== null);
@@ -261,6 +298,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         {byPosition.size > 0 && (
           <Section
             title="Where this week's points come from"
+            source="model v1-usage+positional · projections rebuilt weekly"
             note="Projected starting points by position. A week concentrated in one place is a week that lives or dies with one game script."
             aside={
               <Legend
@@ -374,6 +412,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         {myTeamId !== null && (
           <Section
             title="Price a change"
+            source="2,000 season simulations · model v1-usage+positional"
             note="Pick a starter to see who could legally take the slot and what each swap does to your title odds — including, often, that it does nothing worth thinking about."
           >
             <LineupBoard league={wire} myTeamId={myTeamId} slots={slots} bench={bench} />
@@ -383,7 +422,23 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         {matchups.length > 0 && (
           <Section
             title="What each starter is walking into"
-            note="The opposing defense's measured tendencies, next to the projection they bear on — so the matchup is read where the decision is made rather than on a separate page. Every claim is a rank you can argue with, not a grade."
+            source="nflverse play-by-play, 2024-25 · scheme measured three times, applied zero times"
+            note={
+              <>
+                The opposing defense&rsquo;s measured tendencies, next to the projection they bear
+                on — and, first, whether the matchup can reach the call at all.{' '}
+                <strong>
+                  {schemeCanReach === 0
+                    ? 'This week it reaches none of them.'
+                    : `This week it reaches ${schemeCanReach} of ${matchups.length}.`}
+                </strong>{' '}
+                Every start/sit margin is compared against the largest movement scheme could
+                produce without 21,679 player-weeks having detected it.{' '}
+                <Link href={`/league/${leagueId}/scheme`} className="underline" style={{ color: 'var(--ink-muted)' }}>
+                  See the measurement
+                </Link>
+              </>
+            }
           >
             <StarterMatchups rows={matchups} />
           </Section>

@@ -158,6 +158,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
         {/* ---- opportunity leaderboard --------------------------------- */}
         <Section
           title="Opportunity leaders"
+            source="model v1-usage+positional · projections rebuilt weekly"
           note={
             <>
               Carries plus targets — everything that can turn into production. This is the most

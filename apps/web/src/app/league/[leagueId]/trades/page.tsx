@@ -177,6 +177,7 @@ export default async function TradesPage({
 
         <Section
           title="Trade calculator"
+            source="2,000 season simulations · model v1-usage+positional"
           note={
             <>
               Pick players from either side. Each change re-simulates the rest of the season in your
@@ -219,34 +220,91 @@ export default async function TradesPage({
                     {partner.reason}
                   </p>
 
-                  {partner.offers.length > 0 && (
-                    <div className="mt-3 border-t pt-2" style={{ borderColor: 'var(--rule)' }}>
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest"
-                        style={{ color: 'var(--ink-faint)' }}>
-                        Offer them
-                      </div>
-                      <ul className="text-sm">
-                        {partner.offers.map((offer) => (
-                          <li key={offer.playerId} className="flex items-center gap-2 py-0.5">
-                            <PositionChip position={offer.position} />
-                            <span className="min-w-0 flex-1 truncate text-xs">{offer.name}</span>
-                            <CellBar
-                              value={offer.helpsThemBy}
-                              max={Math.max(
-                                ...trades.partners.flatMap((other) =>
-                                  other.offers.map((entry) => entry.helpsThemBy),
-                                ),
-                                1,
-                              )}
-                              width={80}
-                              color="var(--good)"
-                              label={`+${offer.helpsThemBy.toFixed(1)} to them`}
-                            />
-                          </li>
-                        ))}
-                      </ul>
+                  {/*
+                    * Both halves of the trade.
+                    *
+                    * This listed only what to send, which is not a proposal —
+                    * "offer them Justice Hill" says nothing about what Justice
+                    * Hill is meant to bring home. Send and ask side by side, each
+                    * measured against the hole it fills on the other roster.
+                    */}
+                  {/*
+                    * `asks` is read defensively because the cached TradeView
+                    * outlives a deploy: a shape added in one release meets
+                    * objects serialised by the previous one, and the field is
+                    * simply absent for the life of that cache entry. TypeScript
+                    * cannot see that — the type is right, the runtime value is
+                    * older than the type.
+                    */}
+                  {(partner.offers.length > 0 || (partner.asks ?? []).length > 0) && (
+                    <div
+                      className="mt-3 grid gap-x-6 gap-y-3 border-t pt-2 sm:grid-cols-2"
+                      style={{ borderColor: 'var(--rule)' }}
+                    >
+                      {([
+                        {
+                          key: 'send',
+                          label: 'You send',
+                          rows: partner.offers,
+                          colour: 'var(--bad)',
+                          suffix: 'to them',
+                          hint: 'Spare in your lineup, and fills a position they are thin at.',
+                        },
+                        {
+                          key: 'get',
+                          label: 'You ask for',
+                          rows: partner.asks ?? [],
+                          colour: 'var(--good)',
+                          suffix: 'to you',
+                          hint: 'Spare in their lineup, and fills a position you are thin at.',
+                        },
+                      ] as const).map((side) => (
+                        <div key={side.key}>
+                          <div
+                            className="mb-1 text-[10px] font-semibold uppercase tracking-widest"
+                            style={{ color: 'var(--ink-faint)' }}
+                            title={side.hint}
+                          >
+                            {side.label}
+                          </div>
+                          {side.rows.length === 0 ? (
+                            <p className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                              Nothing of theirs is both spare and useful to you — which is why this
+                              partner is lower down the list.
+                            </p>
+                          ) : (
+                            <ul className="text-sm">
+                              {side.rows.map((row) => (
+                                <li
+                                  key={row.playerId}
+                                  className="flex items-center gap-2 py-0.5"
+                                  title={`${row.name} (${row.position}) — projects ${row.projected.toFixed(1)} a week, worth about ${row.helpsThemBy.toFixed(1)} ${side.suffix}`}
+                                >
+                                  <PositionChip position={row.position} />
+                                  <span className="min-w-0 flex-1 truncate text-xs">{row.name}</span>
+                                  <CellBar
+                                    value={row.helpsThemBy}
+                                    max={Math.max(
+                                      ...trades.partners.flatMap((other) =>
+                                        [...other.offers, ...(other.asks ?? [])].map(
+                                          (e) => e.helpsThemBy,
+                                        ),
+                                      ),
+                                      1,
+                                    )}
+                                    width={64}
+                                    color={side.colour}
+                                    label={`+${row.helpsThemBy.toFixed(1)} ${side.suffix}`}
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
+
                 </article>
               ))}
             </div>
@@ -256,6 +314,7 @@ export default async function TradesPage({
         {trades !== null && trades.depth.length > 0 && (
           <Section
             title="What you can actually spare"
+            source="model v1-usage+positional · projections rebuilt weekly"
             note={
               <>
                 Measured by consequence, not headcount: what your best lineup loses without each

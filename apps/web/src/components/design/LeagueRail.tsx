@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { RailBlock, RailStat } from './DrillRail';
 import type { LeagueView } from '@/lib/league-data';
@@ -74,11 +75,23 @@ export const LeagueRail = ({
         note="Recorded because a negative result nobody writes down is one somebody repeats."
       >
         <p className="mb-2">
-          Opponent strength does not move a projection. Measured twice — against points allowed, then
-          against opportunity allowed — and both degraded as the adjustment grew.
+          Opponent strength does not move a projection. Measured three times — against points
+          allowed, against opportunity allowed, and finally against the spread rather than the mean
+          — and it survived none of them.
         </p>
         <RailStat label="v2 matchup" value="declined" hint="MAE 4.564 against v1's 4.568, worsening monotonically with weight." />
         <RailStat label="v3 allocation" value="declined" hint="MAE 4.567 against 4.568. Same shape of failure." />
+        <RailStat
+          label="Scheme on spread"
+          value="declined"
+          hint="WR 0.997 against RB 1.005 — the two should have moved apart and moved together instead. 21,679 player-weeks."
+        />
+
+        <p className="mt-3">
+          <Link href="/model" className="underline" style={{ color: 'var(--ink-muted)' }}>
+            How the model works
+          </Link>
+        </p>
       </RailBlock>
     </>
   );

@@ -1,0 +1,131 @@
+{
+  "n": 21679,
+  "seasons": [
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "terciles": {
+    "loadedBoxBelow": -0.3165,
+    "softShellAbove": 0.3684
+  },
+  "buckets": [
+    {
+      "position": "QB",
+      "bucket": "loaded box",
+      "n": 785,
+      "residualSd": 0.9876,
+      "meanZ": -0.0145,
+      "aboveP90": 0.107,
+      "thin": false
+    },
+    {
+      "position": "QB",
+      "bucket": "neutral",
+      "n": 855,
+      "residualSd": 1.0099,
+      "meanZ": -0.1102,
+      "aboveP90": 0.0947,
+      "thin": false
+    },
+    {
+      "position": "QB",
+      "bucket": "soft shell",
+      "n": 807,
+      "residualSd": 0.9626,
+      "meanZ": -0.1049,
+      "aboveP90": 0.088,
+      "thin": false
+    },
+    {
+      "position": "RB",
+      "bucket": "loaded box",
+      "n": 1839,
+      "residualSd": 1.0188,
+      "meanZ": -0.0776,
+      "aboveP90": 0.1028,
+      "thin": false
+    },
+    {
+      "position": "RB",
+      "bucket": "neutral",
+      "n": 1964,
+      "residualSd": 1.0166,
+      "meanZ": -0.059,
+      "aboveP90": 0.1034,
+      "thin": false
+    },
+    {
+      "position": "RB",
+      "bucket": "soft shell",
+      "n": 1864,
+      "residualSd": 1.0234,
+      "meanZ": -0.0324,
+      "aboveP90": 0.1003,
+      "thin": false
+    },
+    {
+      "position": "WR",
+      "bucket": "loaded box",
+      "n": 2973,
+      "residualSd": 0.9784,
+      "meanZ": -0.0455,
+      "aboveP90": 0.1012,
+      "thin": false
+    },
+    {
+      "position": "WR",
+      "bucket": "neutral",
+      "n": 3094,
+      "residualSd": 0.9324,
+      "meanZ": -0.0908,
+      "aboveP90": 0.0895,
+      "thin": false
+    },
+    {
+      "position": "WR",
+      "bucket": "soft shell",
+      "n": 2985,
+      "residualSd": 0.9753,
+      "meanZ": -0.0657,
+      "aboveP90": 0.0945,
+      "thin": false
+    },
+    {
+      "position": "TE",
+      "bucket": "loaded box",
+      "n": 1502,
+      "residualSd": 1.012,
+      "meanZ": -0.0401,
+      "aboveP90": 0.1012,
+      "thin": false
+    },
+    {
+      "position": "TE",
+      "bucket": "neutral",
+      "n": 1548,
+      "residualSd": 1.0113,
+      "meanZ": -0.0423,
+      "aboveP90": 0.1021,
+      "thin": false
+    },
+    {
+      "position": "TE",
+      "bucket": "soft shell",
+      "n": 1445,
+      "residualSd": 0.9564,
+      "meanZ": -0.0244,
+      "aboveP90": 0.0893,
+      "thin": false
+    }
+  ],
+  "ratios": {
+    "QB": 0.9746,
+    "RB": 1.0045,
+    "WR": 0.9969,
+    "TE": 0.945
+  },
+  "separation": 0.0076,
+  "verdict": "declined"
+}

@@ -184,6 +184,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {/* ---- team value ------------------------------------------------- */}
         <Section
           title="What your team is worth"
+            source="FantasyCalc market values · matched to this league's format"
           note={
             <>
               Market value is what other managers would actually pay, from trades executed in real
@@ -304,6 +305,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {dynasty.assets.some((asset) => asset.age !== null && asset.marketValue > 0) && (
           <Section
             title="Your window, player by player"
+            source="FantasyCalc values · aging curves fitted 2016-2025 by the delta method"
             note={
               <>
                 Age against market value, with each position&apos;s decline age as the dividing
@@ -368,6 +370,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {withHistory.length > 0 && (
           <Section
             title="What your players have actually done"
+            source="nflverse weekly stats, 2023-25"
             note={
               <>
                 Three seasons of real games, kept as a distribution rather than an average — because
@@ -508,6 +511,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {portfolio !== null && (
           <Section
             title="Your roster as a portfolio"
+            source="Measured within-team correlation, 2016-2025 · 2,000 season simulations · model v1-usage+positional"
             note="Everything above treats players as independent. They are not: two men in the same offence share a quarterback, a play-caller and a game script, so their bad Sundays arrive together. That is the one thing a sum of values cannot show you, and it is why finance thinks in covariance rather than in totals."
           >
             <p className="mb-5 max-w-2xl text-base leading-relaxed">{portfolioRead(portfolio)}</p>

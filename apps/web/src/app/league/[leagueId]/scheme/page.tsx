@@ -13,8 +13,10 @@ import {
   positionColor,
 } from '@/components/charts/primitives';
 import { loadDefenses, matchupFor, opponentFrom, shellLabel, type DefenseProfile } from '@/lib/defense';
+import { callVerdict, flippableCount, loadSchemeFinding } from '@/lib/scheme-impact';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
+import { loadArtifact } from '@/lib/projections';
 import { buildUsage } from '@/lib/usage';
 
 /**
@@ -39,9 +41,11 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
   const view = await loadLeague(leagueId, session.username);
   const { snapshot } = view;
 
-  const [defenses, { players }] = await Promise.all([
+  const [defenses, { players }, finding, artifact] = await Promise.all([
     loadDefenses(),
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+    loadSchemeFinding(),
+    loadArtifact(snapshot.league.season, snapshot.asOfWeek),
   ]);
 
   const nav = (
@@ -93,6 +97,48 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
     })
     .sort((a, b) => b.player.points - a.player.points);
 
+  /*
+   * The margin each of your players has over the next man at his position.
+   *
+   * This is what turns a scheme read into a decision. A hostile matchup for a
+   * receiver you would start anyway — because the alternative is four points
+   * worse — is a fact about the defense, not a fact about your week, and the
+   * page should not dress the two up the same way.
+   *
+   * Measured against the next-best player at the same position on your own
+   * roster, which is the substitution actually available. The lineup page
+   * computes a true slot margin against the optimal lineup; this one is
+   * deliberately the simpler quantity and is labelled as such rather than
+   * quietly reported as the same number.
+   */
+  const byPosition = new Map<string, number[]>();
+  for (const { player } of myMatchups) {
+    const bucket = byPosition.get(player.position) ?? [];
+    bucket.push(player.points);
+    byPosition.set(player.position, bucket);
+  }
+  for (const bucket of byPosition.values()) bucket.sort((a, b) => b - a);
+
+  const nextBestAt = (position: string, points: number): { name: string; margin: number } | null => {
+    const others = myMatchups.filter(
+      (entry) => entry.player.position === position && entry.player.points < points,
+    );
+    const best = others[0];
+    return best === undefined ? null : { name: best.player.name, margin: points - best.player.points };
+  };
+
+  const decisions = myMatchups.map((entry) => {
+    const next = nextBestAt(entry.player.position, entry.player.points);
+    const sd = artifact?.players[entry.player.playerId]?.sd ?? 0;
+    return {
+      ...entry,
+      sd,
+      verdict: callVerdict(next?.margin ?? 0, sd, next?.name ?? null, finding),
+    };
+  });
+
+  const closeCalls = flippableCount(decisions.map((d) => d.verdict));
+
   const extreme = (of: (profile: DefenseProfile) => number, top: boolean) =>
     [...all].sort((a, b) => (top ? of(b) - of(a) : of(a) - of(b)))[0];
 
@@ -108,7 +154,10 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
         rail={
           <LeagueRail view={view}>
             <RailBlock title="What this page answers">
-              Displayed, never fed into the projection. Two measured attempts to adjust for opponent both made the number worse, so scheme lives beside a projection rather than inside it.
+              What each defense is trying to take away from your players this week — and, per
+              player and in points, how much that is worth. Three measured attempts to turn the
+              matchup into a number all failed, so scheme lives beside a projection rather than
+              inside it, and the page says so rather than implying otherwise with a colour.
             </RailBlock>
           </LeagueRail>
         }
@@ -117,8 +166,202 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
             No defensive profile artifact. Build one with{' '}
             <code>python model/export_defense.py 2024 2025</code>.
           </div>
+        {/* ---- your week, leading ----------------------------------------- */}
+        {decisions.length > 0 && (
+          <Section
+            title={`Your week ${snapshot.asOfWeek} roster, against ${new Set(decisions.map((d) => d.opponent)).size} defenses`}
+            source="nflverse play-by-play · scheme read displayed, never applied to the projection"
+            note={
+              <>
+                Every player you are projected to start, the defense he faces, and{' '}
+                <strong>whether the matchup can change the call</strong>. That last column is the
+                one that was missing: a hostile read next to a player whose replacement is four
+                points worse is a fact about the defense, not a fact about your lineup.
+                <br />
+                <span style={{ color: 'var(--ink-faint)' }}>
+                  The bound comes from the variance study below — the largest movement scheme could
+                  produce for that player without {finding === null ? 'the study' : `${finding.n.toLocaleString()} player-weeks`}{' '}
+                  having detected it.
+                </span>
+              </>
+            }
+          >
+            <StatRow columns={3}>
+              <StatTile
+                label="Calls scheme could reach"
+                value={`${closeCalls} of ${decisions.length}`}
+                sub={
+                  closeCalls === 0
+                    ? 'every start/sit margin is wider than the matchup is worth'
+                    : 'margins narrow enough that the read is not irrelevant'
+                }
+              />
+              <StatTile
+                label="Widest bound on your roster"
+                value={`±${Math.max(0, ...decisions.map((d) => d.verdict.bound)).toFixed(2)} pts`}
+                sub="most scheme could move any one of your players"
+              />
+              <StatTile
+                label="Toughest read"
+                value={
+                  [...decisions].sort((a, b) => a.effect.score - b.effect.score)[0]?.player.name ?? '—'
+                }
+                sub={[...decisions].sort((a, b) => a.effect.score - b.effect.score)[0]?.effect.headline ?? ''}
+              />
+            </StatRow>
+
+            <div className="mt-3 grid gap-2">
+              {decisions.map(({ player, opponent, defense, effect, verdict }) => (
+                <article
+                  key={player.playerId}
+                  className="panel p-3"
+                  style={
+                    verdict.couldFlip
+                      ? { borderColor: 'var(--accent)', borderWidth: 1 }
+                      : undefined
+                  }
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PositionChip position={player.position} />
+                    <span className="text-sm font-semibold">{player.name}</span>
+                    <span className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                      {player.team} vs {opponent}
+                    </span>
+                    <span
+                      className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                      style={{ background: 'var(--surface-sunk)', color: scoreColor(effect.score) }}
+                      title={`Scheme read: ${effect.headline}. Displayed only — never applied to the projection.`}
+                    >
+                      {effect.headline}
+                    </span>
+                    <DivergingBar value={effect.score} max={1} width={90} height={9} />
+                  </div>
+
+                  {/*
+                    * The decision sentence sits above the description, not below
+                    * it. A reader who stops after one line should stop having
+                    * learned whether to act, not having learned a coverage stat.
+                    */}
+                  <p
+                    className="mt-1.5 text-xs font-semibold leading-relaxed"
+                    style={{ color: verdict.couldFlip ? 'var(--accent)' : 'var(--ink)' }}
+                  >
+                    {verdict.sentence}
+                  </p>
+
+                  <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                    {effect.detail}
+                  </p>
+
+                  <div
+                    className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]"
+                    style={{ color: 'var(--ink-faint)' }}
+                  >
+                    <span>
+                      {opponent} shell{' '}
+                      <strong style={{ color: 'var(--ink-muted)' }}>{shellLabel(defense.shellIndex)}</strong>
+                    </span>
+                    <span>
+                      projected{' '}
+                      <strong style={{ color: 'var(--ink-muted)' }}>{player.points.toFixed(1)} pts</strong>
+                    </span>
+                    <span>
+                      opportunity{' '}
+                      <strong style={{ color: 'var(--ink-muted)' }}>{player.opportunities.toFixed(1)}</strong>
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* ---- and what that read is worth -------------------------------- */}
+        {finding !== null && (
+          <Section
+            title="What the read above is actually worth"
+            source={`model/backtest/run_scheme_variance.py · ${finding.n.toLocaleString()} player-weeks, ${finding.seasons.join('–')}`}
+            note={
+              <>
+                Three times now this model has tried to turn the matchup into a number, and three
+                times the measurement has said no. The first two scaled the projection by opponent
+                strength — once on points, once on opportunity alone — and both made the forecast
+                worse in proportion to how hard they were applied.
+                <br />
+                <br />
+                The third is new, and it tested the claim this page used to make: that a soft shell
+                leaves a player&rsquo;s average alone while <em>clipping a receiver&rsquo;s ceiling
+                and opening a back&rsquo;s floor</em>. Mean error cannot see a change of that
+                shape, so it was never tested. It is now. If it were real, the two ratios below
+                would sit on opposite sides of 1.00.
+              </>
+            }
+          >
+            <StatRow columns={4}>
+              {(['WR', 'RB', 'TE', 'QB'] as const).map((position) => {
+                const ratio = finding.ratios[position];
+                return (
+                  <StatTile
+                    key={position}
+                    label={`${position} spread ratio`}
+                    value={ratio === undefined ? '—' : ratio.toFixed(3)}
+                    sub="soft shell ÷ loaded box · 1.000 means scheme did nothing"
+                  />
+                );
+              })}
+            </StatRow>
+
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed">
+              Receivers came out at{' '}
+              <strong>{finding.ratios['WR']?.toFixed(3) ?? '—'}</strong> and backs at{' '}
+              <strong>{finding.ratios['RB']?.toFixed(3) ?? '—'}</strong> — a separation of{' '}
+              <strong>{finding.separation.toFixed(3)}</strong>, and in the same direction rather
+              than opposite ones. Whatever small movement is there is the whole league&rsquo;s
+              variance drifting together, which is not a scheme effect. So the claim came out of
+              the model page and this page stopped implying it.
+            </p>
+
+            <div className="panel scroll-x mt-3">
+              <table className="data-table" style={{ minWidth: '34rem' }}>
+                <thead>
+                  <tr>
+                    <th>Position</th>
+                    <th>Defense faced</th>
+                    <th className="text-right">Player-weeks</th>
+                    <th className="text-right" title="Spread of the standardised residual. 1.000 means the stated uncertainty was exactly right for this bucket.">
+                      Residual spread
+                    </th>
+                    <th className="text-right" title="Share of outcomes above the stated 90th percentile. A ceiling effect would show up here first.">
+                      Above p90
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finding.buckets.map((bucket) => (
+                    <tr key={`${bucket.position}-${bucket.bucket}`}>
+                      <td className="font-semibold">{bucket.position}</td>
+                      <td style={{ color: 'var(--ink-muted)' }}>{bucket.bucket}</td>
+                      <td className="tabular text-right">{bucket.n.toLocaleString()}</td>
+                      <td className="tabular text-right">{bucket.residualSd.toFixed(3)}</td>
+                      <td className="tabular text-right">{(bucket.aboveP90 * 100).toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Every bucket sits within a whisker of 1.000, and every &ldquo;above p90&rdquo; near
+              10% — which is the spread calibration working, and the reason this test had the
+              power to find an effect if there had been one. Shell posture is computed from prior
+              seasons only, so no week is judged by play-by-play it produced.
+            </p>
+          </Section>
+        )}
+
         <Section
           title="The trade every defense has to make"
+            source="nflverse play-by-play, 2024-25 · opponent-adjusted"
           note={
             <>
               A defense cannot take away the deep ball and the run at the same time — two safeties
@@ -159,46 +402,6 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
             />
           </StatRow>
         </Section>
-
-        {/* ---- your players against their actual opponents ---------------- */}
-        {myMatchups.length > 0 && (
-          <Section
-            title={`Your players, week ${snapshot.asOfWeek}`}
-            note="Each of your projected players against the defense he actually lines up against, with the read that follows from that defense's tendencies. Green is a matchup that works with what he does; red is one that fights it."
-          >
-            <div className="grid gap-2">
-              {myMatchups.map(({ player, opponent, defense, effect }) => (
-                <article key={player.playerId} className="panel p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <PositionChip position={player.position} />
-                    <span className="text-sm font-semibold">{player.name}</span>
-                    <span className="text-xs" style={{ color: 'var(--ink-faint)' }}>
-                      {player.team} vs {opponent}
-                    </span>
-                    <span
-                      className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                      style={{
-                        background: 'var(--surface-sunk)',
-                        color: scoreColor(effect.score),
-                      }}
-                    >
-                      {effect.headline}
-                    </span>
-                    <DivergingBar value={effect.score} max={1} width={90} height={9} />
-                  </div>
-                  <p className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-                    {effect.detail}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                    <span>{opponent} shell <strong style={{ color: 'var(--ink-muted)' }}>{shellLabel(defense.shellIndex)}</strong></span>
-                    <span>projected <strong style={{ color: 'var(--ink-muted)' }}>{player.points.toFixed(1)} pts</strong></span>
-                    <span>opportunity <strong style={{ color: 'var(--ink-muted)' }}>{player.opportunities.toFixed(1)}</strong></span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Section>
-        )}
 
         {/* ---- the continuum ---------------------------------------------- */}
         <Section

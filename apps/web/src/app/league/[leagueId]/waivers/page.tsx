@@ -119,6 +119,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
         {byOpportunity.length > 0 && (
           <Section
             title="Volume on the wire"
+            source="model v1-usage+positional · projections rebuilt weekly"
             note={
               <>
                 Available players ranked by projected opportunity — carries plus targets — rather
@@ -193,6 +194,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
 
         <Section
           title="Ranked by what they do to your odds"
+            source="2,000 season simulations · model v1-usage+positional"
           note={
             <>
               Not by projected points. A backup running back is worth a lot to the manager whose

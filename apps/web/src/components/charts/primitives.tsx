@@ -551,6 +551,27 @@ export const Scatter = ({
             stroke={point.emphasis === true ? 'var(--ink)' : 'none'}
             strokeWidth={point.emphasis === true ? 1.5 : 0}
           />
+          {/*
+            * A transparent hit target, larger than the dot.
+            *
+            * The dots carry a title and were still effectively unhoverable: a
+            * four-pixel radius asks for pixel-accurate aim, so the drill-down
+            * was there in the markup and unreachable in practice. Twelve pixels
+            * is a comfortable target and costs nothing visually.
+            *
+            * Rendered after the visible dot so it sits on top and always wins
+            * the pointer, and `pointer-events: all` because a fill of `none`
+            * would otherwise let the cursor straight through.
+            */}
+          <circle
+            cx={xScale(point.x)}
+            cy={yScale(point.y)}
+            r={Math.max(12, (point.radius ?? 4) + 6)}
+            fill="transparent"
+            style={{ pointerEvents: 'all', cursor: 'help' }}
+          >
+            <title>{point.label ?? point.key}</title>
+          </circle>
         </g>
       ))}
 

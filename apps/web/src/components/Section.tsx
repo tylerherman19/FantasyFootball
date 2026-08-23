@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react';
 
+/** A stable, URL-safe id from a section title. */
+export const sectionId = (title: string): string =>
+  `s-${title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')}`;
+
 /**
  * A titled block of data.
  *
@@ -24,6 +31,7 @@ export const Section = ({
   title,
   note,
   aside,
+  source,
   children,
   className = '',
 }: {
@@ -31,10 +39,27 @@ export const Section = ({
   note?: ReactNode;
   /** Right-aligned in the heading row — a legend, a count, a caveat. */
   aside?: ReactNode;
+  /**
+   * Where the numbers came from (§63).
+   *
+   * Every chart in the reference carries one, and it is not decoration: a
+   * figure without a source is an assertion, and this product's entire claim is
+   * that its numbers can be checked. It also does quiet work the prose cannot —
+   * "2,000 season simulations" and "2024-25 play-by-play" are different kinds
+   * of confidence, and a reader deserves to know which one they are looking at
+   * without reading a methodology page.
+   */
+  source?: string;
   children: ReactNode;
   className?: string;
 }) => (
-  <section className={`mb-10 ${className}`}>
+  /*
+   * The id is derived from the title so the scroll-following context bar can
+   * observe sections without every page having to invent and thread ids. Slugs
+   * are stable as long as titles are, and a title that changes is a section
+   * whose context needed rewriting anyway.
+   */
+  <section id={sectionId(title)} className={`scroll-mt-40 mb-10 ${className}`}>
     <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <h2
         className="leading-tight"
@@ -48,6 +73,7 @@ export const Section = ({
       <p className="deck mb-3.5 text-[0.875rem]">{note}</p>
     )}
     {children}
+    {source !== undefined && <div className="source-line">Source: {source}</div>}
   </section>
 );
 

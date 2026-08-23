@@ -31,6 +31,19 @@ import { requireSession } from '@/lib/session';
  * here, on one scale each, next to each other.
  */
 
+/**
+ * Proper ordinals.
+ *
+ * The tooltip read "finishes 2 in 31% of seasons" — it only suffixed first
+ * place, so every other cell was ungrammatical in the one place a reader looks
+ * when they want the exact number.
+ */
+const ordinal = (n: number): string => {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+};
+
 export default async function PowerPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
   const session = await requireSession();
@@ -101,6 +114,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             {/* ---- league-wide context ------------------------------------ */}
             <Section
               title="The field"
+            source="2,000 season simulations · model v1-usage+positional"
               note="What a typical roster in this league looks like, so every number below has something to be compared against."
             >
               <StatRow columns={5}>
@@ -238,6 +252,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             {/* ---- positional heat map ------------------------------------ */}
             <Section
               title="Positional strength"
+            source="model v1-usage+positional · projections rebuilt weekly"
               note={
                 <>
                   Each team&apos;s starting points at each position, coloured against the rest of the
@@ -313,7 +328,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
                             {profile.rankDistribution.map((share, position) => (
                               <td key={position} className="p-px">
                                 <div
-                                  title={`${profile.name}: finishes ${position + 1}${position + 1 === 1 ? 'st' : ''} in ${formatPct(share, 1)} of seasons`}
+                                  title={`${profile.name} finishes ${ordinal(position + 1)} in ${formatPct(share, 1)} of simulated seasons · ${profile.expectedWins.toFixed(1)} projected wins · ${formatPct(profile.playoffPct, 0)} to make the playoffs`}
                                   className="tabular flex h-6 items-center justify-center rounded-[2px] text-[10px]"
                                   style={{
                                     background: rampColor(Math.min(1, share * 3)),

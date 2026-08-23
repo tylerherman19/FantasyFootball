@@ -561,6 +561,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
         {myTeamId !== null && fragilityCandidates.length > 0 && (
           <Section
             title="What is your season resting on?"
+            source="2,000 season simulations · model v1-usage+positional"
             note="The other what-if asks how a player's role might change. This asks what happens if he is gone — a different question, because the answer is about your roster rather than about him."
           >
             <Fragility

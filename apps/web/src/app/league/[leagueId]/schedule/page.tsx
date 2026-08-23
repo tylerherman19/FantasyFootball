@@ -127,7 +127,8 @@ export default async function SchedulePage({ params }: { params: Promise<{ leagu
         )}
 
         {mine !== null && (
-          <Section title="Your road" >
+          <Section title="Your road"
+            source="2,000 season simulations · model v1-usage+positional" >
             <StatRow columns={4}>
               <StatTile
                 label="Games left"

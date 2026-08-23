@@ -1,4 +1,5 @@
 import type { MatchupEffect } from '@/lib/defense';
+import type { CallVerdict } from '@/lib/scheme-impact';
 
 /**
  * The scheme read, next to the start/sit decision it bears on.
@@ -22,6 +23,15 @@ export interface StarterMatchup {
   readonly projected: number;
   readonly sd: number;
   readonly effect: MatchupEffect | null;
+  /**
+   * Whether the matchup can reach this call at all.
+   *
+   * The component used to print a scheme read and stop, which invited the
+   * reader to act on it. Three measurements say the read is worth a fraction of
+   * a point, so the honest thing is to put the size of it next to the size of
+   * the decision and let those two numbers speak.
+   */
+  readonly verdict?: CallVerdict;
 }
 
 const POSITION_COLOR: Record<string, string> = {
@@ -103,6 +113,15 @@ export const StarterMatchups = ({ rows }: { readonly rows: readonly StarterMatch
                 style={{ left: pct(row.projected), background: 'var(--ink)' }}
               />
             </div>
+
+            {row.verdict !== undefined && (
+              <p
+                className="mt-1 text-xs font-semibold leading-relaxed"
+                style={{ color: row.verdict.couldFlip ? 'var(--accent)' : 'var(--ink-muted)' }}
+              >
+                {row.verdict.sentence}
+              </p>
+            )}
 
             {row.effect !== null && (
               <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>

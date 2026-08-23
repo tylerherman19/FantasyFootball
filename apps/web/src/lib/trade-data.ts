@@ -67,6 +67,21 @@ export interface TradeView {
       projected: number;
       helpsThemBy: number;
     }[];
+    /**
+     * What to ask for back.
+     *
+     * The first version listed only what to send, which is half a trade and the
+     * less useful half: "offer them Justice Hill" is not a proposal until it
+     * says what Justice Hill is meant to bring home. Same function with the
+     * teams reversed — their spare players measured against your holes.
+     */
+    asks: readonly {
+      playerId: string;
+      name: string;
+      position: string;
+      projected: number;
+      helpsThemBy: number;
+    }[];
   })[];
   /** Marginal value per player, best first — who you can actually move. */
   readonly marginal: readonly {
@@ -285,17 +300,20 @@ const buildTrades = async (
     snapshot.league.rosterSlots,
   );
 
+  const named = (offer: { playerId: unknown; position: string; projected: number; helpsThemBy: number }) => ({
+    playerId: String(offer.playerId),
+    name: artifact.players[String(offer.playerId)]?.name ?? String(offer.playerId),
+    position: offer.position,
+    projected: offer.projected,
+    helpsThemBy: offer.helpsThemBy,
+  });
+
   const partners = rankPartners(analyses, teamId).slice(0, 5).map((fit) => ({
     ...fit,
-    offers: offerCandidates(analyses, teamId, fit.partnerTeamId)
-      .slice(0, 4)
-      .map((offer) => ({
-        playerId: String(offer.playerId),
-        name: artifact.players[String(offer.playerId)]?.name ?? String(offer.playerId),
-        position: offer.position,
-        projected: offer.projected,
-        helpsThemBy: offer.helpsThemBy,
-      })),
+    offers: offerCandidates(analyses, teamId, fit.partnerTeamId).slice(0, 4).map(named),
+    // The same calculation with the teams the other way round: their spare
+    // players, measured against the holes in your roster.
+    asks: offerCandidates(analyses, fit.partnerTeamId, teamId).slice(0, 4).map(named),
   }));
 
   const marginalDetail = marginal

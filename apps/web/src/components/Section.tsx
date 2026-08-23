@@ -3,11 +3,22 @@ import type { ReactNode } from 'react';
 /**
  * A titled block of data.
  *
- * Every section on every page announces itself the same way — label, one line
- * saying what the numbers mean, then the numbers. The note is not decoration:
- * a heat map of positional strength is unreadable until you know whether the
- * colour means points or rank, and putting that where the eye already is beats
- * a legend somewhere else.
+ * Every section announces itself the same way — title, one line saying what the
+ * numbers mean, then the numbers. The note is not decoration: a heat map of
+ * positional strength is unreadable until you know whether the colour means
+ * points or rank, and putting that where the eye already is beats a legend
+ * somewhere else.
+ *
+ * **The title is a heading, not a label.** It used to render at the same weight
+ * and size as the small-caps eyebrow used for field names, which flattened the
+ * page: a section heading and a column header looked identical, so nothing
+ * announced where one idea ended and the next began. It now takes the display
+ * face at a real heading size, which is most of what separates an article from
+ * a dashboard.
+ *
+ * Titles that state a finding — "Baltimore hands off inside the twenty" — read
+ * better than ones that name a category, and `Figure` exists for the charts
+ * where that is worth doing properly with a deck and a source line.
  */
 export const Section = ({
   title,
@@ -23,15 +34,18 @@ export const Section = ({
   children: ReactNode;
   className?: string;
 }) => (
-  <section className={`mb-9 ${className}`}>
-    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h2 className="eyebrow">{title}</h2>
+  <section className={`mb-10 ${className}`}>
+    <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h2
+        className="leading-tight"
+        style={{ fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.016em' }}
+      >
+        {title}
+      </h2>
       {aside}
     </div>
     {note !== undefined && (
-      <p className="mb-3 max-w-3xl text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-        {note}
-      </p>
+      <p className="deck mb-3.5 text-[0.875rem]">{note}</p>
     )}
     {children}
   </section>

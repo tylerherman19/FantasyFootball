@@ -1,4 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section } from '@/components/Section';
 import { WaiverBoard } from '@/components/WaiverBoard';
 import {
@@ -79,7 +81,15 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+      <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              Every free agent is ranked by what he does for your roster specifically, with the bid sized from that edge rather than from a generic ranking.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
         {/*
          * What this board is, before the board.
          *
@@ -193,7 +203,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
         >
           <WaiverBoard league={wire} myTeamId={myTeamId} />
         </Section>
-      </main>
+      </RailLayout>
     </>
   );
 }

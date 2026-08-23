@@ -1,4 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -53,10 +55,6 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
           format={snapshot.league.format}
         />
         <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
-          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
-            No projection artifact for {snapshot.league.season} week {snapshot.asOfWeek}, so there is
-            no usage to show. The model writes one per week; this page reads whatever is there.
-          </div>
         </main>
       </>
     );
@@ -112,7 +110,19 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+        <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              Volume is sticky and efficiency is noise. That asymmetry is the whole reason this model beats a points average.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
+          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
+            No projection artifact for {snapshot.league.season} week {snapshot.asOfWeek}, so there is
+            no usage to show. The model writes one per week; this page reads whatever is there.
+          </div>
         <Section
           title="What this page is"
           note={
@@ -432,7 +442,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
             mine={myRoster}
           />
         </Section>
-      </main>
+      </RailLayout>
     </>
   );
 }

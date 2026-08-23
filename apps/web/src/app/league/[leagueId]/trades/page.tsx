@@ -1,4 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { TradeObjectiveBar } from '@/components/TradeObjectiveBar';
 import { Section } from '@/components/Section';
 import { TradeBuilder } from '@/components/TradeBuilder';
@@ -100,7 +102,15 @@ export default async function TradesPage({
         format={snapshot.league.format}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+      <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              A trade is a portfolio change. Both sides are re-simulated before and after, and fairness is answered separately from whether it helps you.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
         {/*
          * The finding, before the machinery.
          *
@@ -457,7 +467,7 @@ export default async function TradesPage({
           </Section>
         )}
 
-      </main>
+      </RailLayout>
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { optimalLineup, asPlayerId, type LineupCandidate, type Position } from '@ffe/core';
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { requireSession } from '@/lib/session';
 import { LineupBoard, type LineupSlotView } from '@/components/LineupBoard';
 import { StarterMatchups, type StarterMatchup } from '@/components/StarterMatchups';
@@ -170,7 +172,15 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+      <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              Start/sit is priced in title odds, not points. The question is not who scores more but which choice makes you more likely to win the league.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
         {/*
          * The week stated, including what is wrong with it.
          *
@@ -378,7 +388,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
             <StarterMatchups rows={matchups} />
           </Section>
         )}
-      </main>
+      </RailLayout>
     </>
   );
 }

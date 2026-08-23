@@ -1,4 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -108,12 +110,6 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
       <>
         {nav}
         <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
-          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
-            <strong style={{ color: 'var(--ink)' }}>No team to advise.</strong> Either the league
-            hasn&apos;t drafted, or {session.username} isn&apos;t one of its managers.
-          </div>
-
-
         </main>
       </>
     );
@@ -129,7 +125,21 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
     <>
       {nav}
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+        <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              Aging curves are fitted by the delta method — each player compared to himself a year later — so they measure aging rather than who survived.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
+          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
+            <strong style={{ color: 'var(--ink)' }}>No team to advise.</strong> Either the league
+            hasn&apos;t drafted, or {session.username} isn&apos;t one of its managers.
+          </div>
+
+
         {/* ---- the verdict ------------------------------------------------ */}
         <section className="mb-9">
           <div className="panel overflow-hidden">
@@ -573,7 +583,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
             </p>
           </Section>
         )}
-      </main>
+      </RailLayout>
     </>
   );
 }

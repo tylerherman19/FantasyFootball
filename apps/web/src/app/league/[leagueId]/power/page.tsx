@@ -1,4 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -79,7 +81,15 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
         ]}
       />
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+      <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              Three rankings, deliberately. Market value, projected wins and title odds disagree, and the gaps are where the information is.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
         {!drafted ? (
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>Nothing to rank yet.</strong> Every roster is
@@ -502,7 +512,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             )}
           </>
         )}
-      </main>
+      </RailLayout>
     </>
   );
 }

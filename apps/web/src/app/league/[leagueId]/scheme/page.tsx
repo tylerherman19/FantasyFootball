@@ -1,4 +1,6 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -67,10 +69,6 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
       <>
         {nav}
         <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
-          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
-            No defensive profile artifact. Build one with{' '}
-            <code>python model/export_defense.py 2024 2025</code>.
-          </div>
         </main>
       </>
     );
@@ -106,7 +104,19 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
     <>
       {nav}
 
-      <main className="mx-auto max-w-6xl px-5 pb-20 lg:pl-[4.75rem]">
+        <RailLayout
+        rail={
+          <LeagueRail view={view}>
+            <RailBlock title="What this page answers">
+              Displayed, never fed into the projection. Two measured attempts to adjust for opponent both made the number worse, so scheme lives beside a projection rather than inside it.
+            </RailBlock>
+          </LeagueRail>
+        }
+      >
+          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
+            No defensive profile artifact. Build one with{' '}
+            <code>python model/export_defense.py 2024 2025</code>.
+          </div>
         <Section
           title="The trade every defense has to make"
           note={
@@ -355,7 +365,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
             })}
           </div>
         </Section>
-      </main>
+      </RailLayout>
     </>
   );
 }

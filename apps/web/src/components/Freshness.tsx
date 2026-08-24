@@ -97,8 +97,16 @@ export const Freshness = ({
         </span>
       </summary>
 
+      {/*
+        * `min-w-64` with no ceiling is fine in a header that is 1500px wide and
+        * pushes the page sideways on a phone: the panel is right-aligned, so
+        * 256px of table starting near the right edge lands 50px past it and the
+        * whole document scrolls. The minimum is kept — a two-column table needs
+        * it to stay readable — and bounded by the viewport, below which the
+        * table scrolls inside its own box rather than taking the page with it.
+        */}
       <div
-        className="mt-2 min-w-64 border-t pt-2"
+        className="scroll-x mt-2 min-w-64 max-w-[calc(100vw-2.5rem)] border-t pt-2"
         style={{ borderColor: 'var(--rule)' }}
       >
         {sources.length === 0 ? (

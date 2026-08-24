@@ -128,8 +128,9 @@ export const OddsField = ({
 
       {/* Below the axis, where nothing can collide with it. */}
       <Annotation x={pad.left} y={height - pad.bottom + 26} width={width - pad.left - pad.right}>
-        Each dot is a team. Gaps matter more than order — a bunched field means one move changes
-        everything.
+        Look at the gaps, not the places. Teams packed close together means one trade can move you
+        several spots; a team sitting alone out to the right has already pulled away, and catching it
+        takes more than a good week.
       </Annotation>
     </svg>
   );

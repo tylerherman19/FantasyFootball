@@ -6,6 +6,9 @@ import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { WhatIf } from '@/components/WhatIf';
 import { Distribution, ThresholdOdds } from '@/components/Distribution';
 import { Confidence, Why } from '@/components/Why';
+import { SchemeLine } from '@/components/SchemeLine';
+import { loadDefenses, opponentFrom } from '@/lib/defense';
+import { loadSchemeFinding } from '@/lib/scheme-impact';
 import { distributionOf } from '@/lib/distribution';
 import { PositionChip, RangeBar } from '@/components/charts/primitives';
 import {
@@ -96,9 +99,11 @@ export default async function PlayerPage({
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadHistory().catch(() => null),
   ]);
-  const [ageCurves, offenseArtifact] = await Promise.all([
+  const [ageCurves, offenseArtifact, defenses, schemeFinding] = await Promise.all([
     loadAgeCurves().catch(() => null),
     loadOffense().catch(() => null),
+    loadDefenses().catch(() => null),
+    loadSchemeFinding().catch(() => null),
   ]);
 
   const bare = artifact?.players[playerId];
@@ -339,6 +344,26 @@ export default async function PlayerPage({
               <p className="max-w-2xl text-base leading-relaxed">
                 {verdict(name, position, opportunity, efficiency, explanation.isPrior)}
               </p>
+
+              {/*
+                * The matchup, on the page where the player is being judged.
+                *
+                * It used to live only on the scheme tab, which meant the one
+                * page devoted entirely to this player said nothing about who he
+                * is playing. The bound travels with it, so the read cannot be
+                * mistaken for an adjustment the projection above already made —
+                * it explicitly did not.
+                */}
+              <div className="mt-4 max-w-2xl">
+                <SchemeLine
+                  position={position}
+                  opponent={opponentFrom(bare?.gameId ?? '', bare?.team ?? '')}
+                  sd={bare?.sd ?? 0}
+                  defenses={defenses}
+                  finding={schemeFinding}
+                  leagueId={leagueId}
+                />
+              </div>
             </Section>
 
             {spread !== null && (

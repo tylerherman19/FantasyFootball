@@ -5,6 +5,9 @@ import { serializeLeague } from '@/lib/serialize';
 import { loadMarketValues } from '@/lib/values';
 import { loadPlayerInfo } from '@/lib/players';
 import { LeagueNav } from '@/components/LeagueNav';
+import { SchemeLine } from '@/components/SchemeLine';
+import { loadDefenses, opponentFrom } from '@/lib/defense';
+import { loadSchemeFinding } from '@/lib/scheme-impact';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -43,12 +46,15 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
   const view = await loadLeague(leagueId, session.username);
   const { snapshot, myTeamId } = view;
 
-  const [analysis, { players: usageAll }, fragilityValues, fragilityPlayers] = await Promise.all([
-    myTeamId === null ? Promise.resolve(null) : analyzeRoster(view, myTeamId),
-    buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
-    loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-  ]);
+  const [analysis, { players: usageAll }, fragilityValues, fragilityPlayers, defenses, schemeFinding] =
+    await Promise.all([
+      myTeamId === null ? Promise.resolve(null) : analyzeRoster(view, myTeamId),
+      buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+      loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+      loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+      loadDefenses().catch(() => null),
+      loadSchemeFinding().catch(() => null),
+    ]);
 
   /*
    * The roster-level what-if (§60) needs the league on the wire, because the
@@ -200,6 +206,8 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                       <th style={{ width: '2rem' }} />
                       <th style={{ minWidth: '10rem' }}>Player</th>
                       <th>Status</th>
+                      {/* Who each man plays, on the page listing all of them. */}
+                      <th style={{ minWidth: '9rem' }}>Defense faced</th>
                       <th style={{ width: '7rem' }}>Lineup loses</th>
                       <th style={{ width: '7rem' }}>Projects</th>
                       <th className="text-right" title="Carries plus targets">
@@ -243,6 +251,17 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                             style={{ color: player.injuryStatus === null ? 'var(--ink-faint)' : 'var(--bad)' }}
                           >
                             {player.injuryStatus ?? (player.starting ? 'starting' : 'bench')}
+                          </td>
+                          <td>
+                            <SchemeLine
+                              compact
+                              position={player.position}
+                              opponent={opponentFrom(usage?.gameId ?? '', player.team)}
+                              sd={player.sd ?? 0}
+                              defenses={defenses}
+                              finding={schemeFinding}
+                              leagueId={leagueId}
+                            />
                           </td>
                           <td>
                             <CellBar

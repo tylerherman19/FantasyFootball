@@ -36,7 +36,7 @@ export const LeagueRail = ({
       {me !== undefined && me !== null && (
         <RailBlock
           title="Where you stand"
-          note="Playoff odds move on wins; title odds move on roster strength. A wide gap is a team that reaches January and loses."
+          note="Playoff odds mostly follow wins. Title odds follow how good the roster is. A big gap between them is a team that gets to the playoffs and then loses in them."
         >
           <RailStat label="Title" value={`${(me.titlePct * 100).toFixed(1)}%`} />
           <RailStat label="Playoffs" value={`${(me.playoffPct * 100).toFixed(0)}%`} />
@@ -46,7 +46,7 @@ export const LeagueRail = ({
 
       <RailBlock
         title="How this was computed"
-        note="Every probability on this page comes from one run, so nothing here can disagree with anything else on it."
+        note="Every percentage on this page comes out of the same set of simulated seasons, so the playoff odds and the title odds are always telling the same story."
       >
         <RailStat
           label="Simulated seasons"
@@ -72,7 +72,7 @@ export const LeagueRail = ({
 
       <RailBlock
         title="What the model declined"
-        note="Recorded because a negative result nobody writes down is one somebody repeats."
+        note="Things this model tried, measured, and threw out — kept visible because most tools quietly do all three of these."
       >
         <p className="mb-2">
           Opponent strength does not move a projection. Measured three times — against points

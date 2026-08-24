@@ -1,4 +1,7 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { SchemeLine } from '@/components/SchemeLine';
+import { loadDefenses, opponentFrom } from '@/lib/defense';
+import { loadSchemeFinding } from '@/lib/scheme-impact';
 import { RailBlock, RailLayout } from '@/components/design/DrillRail';
 import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section } from '@/components/Section';
@@ -29,10 +32,12 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
   const myTeamId = view.myTeamId;
   const { snapshot } = view;
 
-  const [values, players, freeAgents] = await Promise.all([
+  const [values, players, freeAgents, defenses, schemeFinding] = await Promise.all([
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadFreeAgents(view, view.myTeamId),
+    loadDefenses().catch(() => null),
+    loadSchemeFinding().catch(() => null),
   ]);
 
   const budget = waiverBudgetFor(snapshot, myTeamId);
@@ -150,6 +155,13 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
                     <th className="text-right">Car%</th>
                     <th className="text-right">Pts</th>
                     <th className="text-right">TD-dep</th>
+                    {/*
+                      * Who he plays, in the table where you decide whether to
+                      * spend on him. Compact on purpose — the headline plus a
+                      * hover carrying the detail and the bound, because a
+                      * waiver list is scanned rather than read.
+                      */}
+                    <th style={{ minWidth: '9rem' }}>This week&rsquo;s defense</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -183,6 +195,17 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
                         style={{ color: usage.tdDependence > 0.35 ? 'var(--warn)' : 'var(--ink-faint)' }}
                       >
                         {formatPct(usage.tdDependence)}
+                      </td>
+                      <td>
+                        <SchemeLine
+                          compact
+                          position={usage.position}
+                          opponent={opponentFrom(usage.gameId, usage.team)}
+                          sd={players[usage.playerId]?.sd ?? 0}
+                          defenses={defenses}
+                          finding={schemeFinding}
+                          leagueId={leagueId}
+                        />
                       </td>
                     </tr>
                   ))}

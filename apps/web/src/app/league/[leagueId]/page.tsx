@@ -1,4 +1,5 @@
 import { LeagueNav } from '@/components/LeagueNav';
+import { ordinal } from '@/lib/format';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
@@ -252,12 +253,20 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
                       ? 'already split'
                       : 'still bunched'
                   }`
-                : `You are ${myRank === null ? '—' : `${myRank} of ${standings.length}`} to win ${snapshot.league.name}`
+                /*
+                 * "You are 8 of 10 to win" was read as an eighty-percent
+                 * chance. It meant eighth place, and the sentence structure
+                 * pointed the other way — a ratio next to the word "win" is
+                 * odds in every other context a fantasy manager meets. Rank and
+                 * probability are now separate sentences with separate words,
+                 * and the ordinal does the work "8 of 10" was failing to do.
+                 */
+                : `${ordinal(myRank ?? 0)} of ${standings.length} in ${snapshot.league.name}`
             }
             deck={
               me === null
                 ? 'Championship probability across every team, from the same simulation the rest of this page uses.'
-                : `${(me.titlePct * 100).toFixed(1)}% to win it and ${(me.playoffPct * 100).toFixed(0)}% to reach the playoffs, over ${result.iterations.toLocaleString()} simulated seasons. Hover any dot for that team.`
+                : `A ${(me.titlePct * 100).toFixed(1)}% chance at the title and ${(me.playoffPct * 100).toFixed(0)}% of reaching the playoffs. Each dot below is one team, placed by its title odds — yours is the dark one. Hover any dot for the team.`
             }
             source={`${result.iterations.toLocaleString()} season simulations · model ${view.modelVersion ?? 'unknown'}`}
           >
@@ -276,7 +285,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
         {insights.length > 0 && (
           <Section
             title="What matters right now"
-            note="Ranked by consequence. Every line is a threshold applied to a number the model already computed, and the number is quoted so you can disagree with the threshold rather than trust the sentence."
+            note="The things on your team that are worth doing something about this week, most consequential first. Each one shows the number behind it, so you can decide the threshold was wrong rather than take the sentence on trust."
           >
             <InsightList insights={insights} />
           </Section>
@@ -328,7 +337,16 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
         {me !== null && !notDrafted && (
           <Section title="Your season">
             <StatRow columns={5}>
-              <StatTile label="Projected rank" value={`#${myRank} of ${standings.length}`} />
+              {/*
+                * `sub` was empty on both of these, which renders an em dash —
+                * the tile looks finished and says nothing. Every figure on this
+                * row now carries what it is measured against.
+                */}
+              <StatTile
+                label="Projected rank"
+                value={`#${myRank} of ${standings.length}`}
+                sub="by title odds, end of season"
+              />
               <StatTile
                 label="Projected record"
                 value={`${me.expectedWins.toFixed(1)}-${(snapshot.league.regularSeasonWeeks - me.expectedWins).toFixed(1)}`}
@@ -340,7 +358,12 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
                 sub={`±${(1.96 * standardError(isGuillotine ? me.titlePct : me.playoffPct) * 100).toFixed(1)} pts`}
                 emphasis
               />
-              <StatTile label="Title" value={formatPct(me.titlePct, 1)} emphasis />
+              <StatTile
+                label="Title"
+                value={formatPct(me.titlePct, 1)}
+                emphasis
+                sub={`${(1 / Math.max(me.titlePct, 1e-9)).toFixed(0)}-to-1 · even odds would be ${formatPct(1 / standings.length, 1)}`}
+              />
               <StatTile
                 label="Lineup vs field"
                 value={

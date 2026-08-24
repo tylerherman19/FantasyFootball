@@ -16,7 +16,9 @@ import { loadDefenses, matchupFor, opponentFrom, shellLabel, type DefenseProfile
 import { callVerdict, flippableCount, loadSchemeFinding } from '@/lib/scheme-impact';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
-import { loadArtifact } from '@/lib/projections';
+import { orderRoster } from '@/lib/lineup-order';
+import { loadAvailability } from '@/lib/availability';
+import { isPlayingIn, loadArtifact, scoreFor } from '@/lib/projections';
 import { buildUsage } from '@/lib/usage';
 
 /**
@@ -41,11 +43,12 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
   const view = await loadLeague(leagueId, session.username);
   const { snapshot } = view;
 
-  const [defenses, { players }, finding, artifact] = await Promise.all([
+  const [defenses, { players }, finding, artifact, availability] = await Promise.all([
     loadDefenses(),
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadSchemeFinding(),
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
+    loadAvailability(),
   ]);
 
   const nav = (
@@ -85,59 +88,75 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
     snapshot.rosters.find((roster) => roster.teamId === view.myTeamId)?.playerIds.map(String) ?? [],
   );
 
-  // Your players, each against the defense he actually faces this week.
-  const myMatchups = players
-    .filter((player) => myRoster.has(player.playerId) && player.active && player.points > 1)
-    .flatMap((player) => {
-      const opponent = opponentFrom(player.gameId, player.team);
-      const defense = opponent === null ? undefined : defenses.teams[opponent];
-      if (defense === undefined || opponent === null) return [];
-
-      return [{ player, opponent, defense, effect: matchupFor(player.position, defense, all) }];
-    })
-    .sort((a, b) => b.player.points - a.player.points);
-
   /*
-   * The margin each of your players has over the next man at his position.
+   * Your roster, in starting-lineup order.
    *
-   * This is what turns a scheme read into a decision. A hostile matchup for a
-   * receiver you would start anyway — because the alternative is four points
-   * worse — is a fact about the defense, not a fact about your week, and the
-   * page should not dress the two up the same way.
+   * Sorted by projected points until now, which is a ranking rather than a
+   * roster — the flexes scattered among the receivers and nothing on the page
+   * matched the order the manager reads his own team in. `orderRoster` fills
+   * the league's own slots optimally and puts the bench underneath, so a
+   * superflex league shows a superflex and an IDP league shows its own shape.
    *
-   * Measured against the next-best player at the same position on your own
-   * roster, which is the substitution actually available. The lineup page
-   * computes a true slot margin against the optimal lineup; this one is
-   * deliberately the simpler quantity and is labelled as such rather than
-   * quietly reported as the same number.
+   * It also gives the margin: what each starter is being started *over*, at his
+   * actual slot and under its flex rules. That is the same number the lineup
+   * page quotes, from the same function, which is the point — two pages
+   * disagreeing about how close a call is would discredit both.
    */
-  const byPosition = new Map<string, number[]>();
-  for (const { player } of myMatchups) {
-    const bucket = byPosition.get(player.position) ?? [];
-    bucket.push(player.points);
-    byPosition.set(player.position, bucket);
-  }
-  for (const bucket of byPosition.values()) bucket.sort((a, b) => b - a);
+  const rules = snapshot.league.scoring.raw;
+  const rosterIds = snapshot.rosters.find((roster) => roster.teamId === view.myTeamId)?.playerIds ?? [];
 
-  const nextBestAt = (position: string, points: number): { name: string; margin: number } | null => {
-    const others = myMatchups.filter(
-      (entry) => entry.player.position === position && entry.player.points < points,
-    );
-    const best = others[0];
-    return best === undefined ? null : { name: best.player.name, margin: points - best.player.points };
-  };
+  const orderInputs = rosterIds.flatMap((raw) => {
+    const id = String(raw);
+    const projection = artifact?.players[id];
+    if (projection === undefined || !isPlayingIn(projection, snapshot.asOfWeek)) return [];
 
-  const decisions = myMatchups.map((entry) => {
-    const next = nextBestAt(entry.player.position, entry.player.points);
-    const sd = artifact?.players[entry.player.playerId]?.sd ?? 0;
-    return {
-      ...entry,
-      sd,
-      verdict: callVerdict(next?.margin ?? 0, sd, next?.name ?? null, finding),
-    };
+    return [
+      {
+        playerId: id,
+        position: projection.position,
+        projected: scoreFor(projection, rules, availability[id]?.injuryStatus ?? null, snapshot.asOfWeek),
+        sd: projection.sd,
+      },
+    ];
   });
 
-  const closeCalls = flippableCount(decisions.map((d) => d.verdict));
+  const order = orderRoster(orderInputs, snapshot.league.rosterSlots);
+  const usageOf = new Map(players.map((player) => [player.playerId, player]));
+  const nameOf = (id: string): string =>
+    artifact?.players[id]?.name ?? usageOf.get(id)?.name ?? id;
+
+  const decisions = order.rows.flatMap((row) => {
+    const usage = usageOf.get(row.playerId);
+    const team = artifact?.players[row.playerId]?.team ?? usage?.team ?? '';
+    const gameId = artifact?.players[row.playerId]?.gameId ?? usage?.gameId ?? '';
+
+    const opponent = opponentFrom(gameId, team);
+    const defense = opponent === null ? undefined : defenses.teams[opponent];
+    if (defense === undefined || opponent === null) return [];
+
+    const alternative = order.alternativeFor(row.playerId);
+
+    return [
+      {
+        row,
+        name: nameOf(row.playerId),
+        team,
+        opponent,
+        defense,
+        opportunities: usage?.opportunities ?? 0,
+        effect: matchupFor(row.position, defense, all),
+        verdict: callVerdict(
+          alternative?.margin ?? 0,
+          row.sd,
+          alternative === null ? null : nameOf(alternative.playerId),
+          finding,
+        ),
+      },
+    ];
+  });
+
+  const starters = decisions.filter((entry) => entry.row.starting);
+  const closeCalls = flippableCount(starters.map((d) => d.verdict));
 
   const extreme = (of: (profile: DefenseProfile) => number, top: boolean) =>
     [...all].sort((a, b) => (top ? of(b) - of(a) : of(a) - of(b)))[0];
@@ -162,10 +181,6 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
           </LeagueRail>
         }
       >
-          <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
-            No defensive profile artifact. Build one with{' '}
-            <code>python model/export_defense.py 2024 2025</code>.
-          </div>
         {/* ---- your week, leading ----------------------------------------- */}
         {decisions.length > 0 && (
           <Section
@@ -173,10 +188,20 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
             source="nflverse play-by-play · scheme read displayed, never applied to the projection"
             note={
               <>
-                Every player you are projected to start, the defense he faces, and{' '}
-                <strong>whether the matchup can change the call</strong>. That last column is the
-                one that was missing: a hostile read next to a player whose replacement is four
-                points worse is a fact about the defense, not a fact about your lineup.
+                Your roster in starting-lineup order — this league&rsquo;s own slots, filled
+                optimally, bench underneath — with the defense each man faces and{' '}
+                <strong>whether the matchup can change the call</strong>. That last part is what was
+                missing: a hostile read next to a player whose replacement is four points worse is a
+                fact about the defense, not a fact about your lineup.
+                <br />
+                <span style={{ color: 'var(--ink-faint)' }}>
+                  Each margin is against the best benched player eligible for that exact slot, flex
+                  rules included — the same number the{' '}
+                  <a href={`/league/${leagueId}/lineup`} className="underline">
+                    lineup page
+                  </a>{' '}
+                  quotes, from the same function.
+                </span>
                 <br />
                 <span style={{ color: 'var(--ink-faint)' }}>
                   The bound comes from the variance study below — the largest movement scheme could
@@ -188,8 +213,8 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
           >
             <StatRow columns={3}>
               <StatTile
-                label="Calls scheme could reach"
-                value={`${closeCalls} of ${decisions.length}`}
+                label="Starts scheme could reach"
+                value={`${closeCalls} of ${starters.length}`}
                 sub={
                   closeCalls === 0
                     ? 'every start/sit margin is wider than the matchup is worth'
@@ -203,75 +228,112 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
               />
               <StatTile
                 label="Toughest read"
-                value={
-                  [...decisions].sort((a, b) => a.effect.score - b.effect.score)[0]?.player.name ?? '—'
-                }
-                sub={[...decisions].sort((a, b) => a.effect.score - b.effect.score)[0]?.effect.headline ?? ''}
+                value={[...starters].sort((a, b) => a.effect.score - b.effect.score)[0]?.name ?? '—'}
+                sub={[...starters].sort((a, b) => a.effect.score - b.effect.score)[0]?.effect.headline ?? ''}
               />
             </StatRow>
 
             <div className="mt-3 grid gap-2">
-              {decisions.map(({ player, opponent, defense, effect, verdict }) => (
-                <article
-                  key={player.playerId}
-                  className="panel p-3"
-                  style={
-                    verdict.couldFlip
-                      ? { borderColor: 'var(--accent)', borderWidth: 1 }
-                      : undefined
-                  }
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <PositionChip position={player.position} />
-                    <span className="text-sm font-semibold">{player.name}</span>
-                    <span className="text-xs" style={{ color: 'var(--ink-faint)' }}>
-                      {player.team} vs {opponent}
-                    </span>
-                    <span
-                      className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                      style={{ background: 'var(--surface-sunk)', color: scoreColor(effect.score) }}
-                      title={`Scheme read: ${effect.headline}. Displayed only — never applied to the projection.`}
+              {decisions.map((entry, index) => {
+                const { row, name, team, opponent, defense, effect, verdict } = entry;
+                /*
+                 * One rule between the last starter and the first bench player.
+                 * Slot order only means anything if the line it is building
+                 * toward is visible.
+                 */
+                const firstBench = row.starting === false && decisions[index - 1]?.row.starting === true;
+
+                return (
+                  <div key={row.playerId}>
+                    {firstBench && (
+                      <div
+                        className="mt-4 mb-2 flex items-baseline gap-3 border-t pt-2"
+                        style={{ borderColor: 'var(--rule)' }}
+                      >
+                        <span className="eyebrow" style={{ color: 'var(--ink-faint)' }}>
+                          Bench
+                        </span>
+                        <span className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                          nobody is being started over them, so the matchup has nothing to change
+                        </span>
+                      </div>
+                    )}
+
+                    <article
+                      className="panel p-3"
+                      style={
+                        verdict.couldFlip ? { borderColor: 'var(--accent)', borderWidth: 1 } : undefined
+                      }
                     >
-                      {effect.headline}
-                    </span>
-                    <DivergingBar value={effect.score} max={1} width={90} height={9} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="tabular w-11 shrink-0 text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: row.starting ? 'var(--accent)' : 'var(--ink-faint)' }}
+                          title={row.starting ? `Starting at ${row.slotLabel}` : 'On your bench'}
+                        >
+                          {row.slotLabel}
+                        </span>
+                        <PositionChip position={row.position} />
+                        <span className="text-sm font-semibold">{name}</span>
+                        <span className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                          {team} vs {opponent}
+                        </span>
+                        <span
+                          className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                          style={{ background: 'var(--surface-sunk)', color: scoreColor(effect.score) }}
+                          title={`Scheme read: ${effect.headline}. Displayed only — never applied to the projection.`}
+                        >
+                          {effect.headline}
+                        </span>
+                        <DivergingBar value={effect.score} max={1} width={90} height={9} />
+                      </div>
+
+                      {/*
+                        * The decision sentence sits above the description, not
+                        * below it. A reader who stops after one line should stop
+                        * having learned whether to act, not having learned a
+                        * coverage statistic.
+                        */}
+                      {row.starting && (
+                        <p
+                          className="mt-1.5 text-xs font-semibold leading-relaxed"
+                          style={{ color: verdict.couldFlip ? 'var(--accent)' : 'var(--ink)' }}
+                        >
+                          {verdict.sentence}
+                        </p>
+                      )}
+
+                      <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                        {effect.detail}
+                      </p>
+
+                      <div
+                        className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]"
+                        style={{ color: 'var(--ink-faint)' }}
+                      >
+                        <span>
+                          {opponent} shell{' '}
+                          <strong style={{ color: 'var(--ink-muted)' }}>
+                            {shellLabel(defense.shellIndex)}
+                          </strong>
+                        </span>
+                        <span>
+                          projected{' '}
+                          <strong style={{ color: 'var(--ink-muted)' }}>
+                            {row.projected.toFixed(1)} pts
+                          </strong>
+                        </span>
+                        <span>
+                          opportunity{' '}
+                          <strong style={{ color: 'var(--ink-muted)' }}>
+                            {entry.opportunities.toFixed(1)}
+                          </strong>
+                        </span>
+                      </div>
+                    </article>
                   </div>
-
-                  {/*
-                    * The decision sentence sits above the description, not below
-                    * it. A reader who stops after one line should stop having
-                    * learned whether to act, not having learned a coverage stat.
-                    */}
-                  <p
-                    className="mt-1.5 text-xs font-semibold leading-relaxed"
-                    style={{ color: verdict.couldFlip ? 'var(--accent)' : 'var(--ink)' }}
-                  >
-                    {verdict.sentence}
-                  </p>
-
-                  <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-                    {effect.detail}
-                  </p>
-
-                  <div
-                    className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]"
-                    style={{ color: 'var(--ink-faint)' }}
-                  >
-                    <span>
-                      {opponent} shell{' '}
-                      <strong style={{ color: 'var(--ink-muted)' }}>{shellLabel(defense.shellIndex)}</strong>
-                    </span>
-                    <span>
-                      projected{' '}
-                      <strong style={{ color: 'var(--ink-muted)' }}>{player.points.toFixed(1)} pts</strong>
-                    </span>
-                    <span>
-                      opportunity{' '}
-                      <strong style={{ color: 'var(--ink-muted)' }}>{player.opportunities.toFixed(1)}</strong>
-                    </span>
-                  </div>
-                </article>
-              ))}
+                );
+              })}
             </div>
           </Section>
         )}

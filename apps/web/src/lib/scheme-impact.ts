@@ -96,6 +96,17 @@ export interface CallVerdict {
 }
 
 /**
+ * Enough precision to make the comparison legible.
+ *
+ * One decimal is right for a projection and wrong here: a margin of 0.04 prints
+ * as "0.0 pts", which sits in the same sentence as a bound of "±0.04" and reads
+ * as a contradiction — the reader is told the gap is nothing and then told
+ * nothing cannot close it. Where the two quantities are the same size, show
+ * them at the same size.
+ */
+const points = (value: number): string => (Math.abs(value) < 0.1 ? value.toFixed(2) : value.toFixed(1));
+
+/**
  * Does the scheme read change this start/sit call?
  *
  * Almost always no, and the page should say no in words rather than leaving a
@@ -138,8 +149,8 @@ export const callVerdict = (
     alternative,
     couldFlip,
     sentence: couldFlip
-      ? `Genuinely close — ${margin.toFixed(1)} pts over ${alternative}, inside the ±${bound.toFixed(2)} that scheme could be worth. This is the rare call where the matchup is not irrelevant.`
-      : `Starts over ${alternative} by ${margin.toFixed(1)} pts. Scheme is worth at most ±${bound.toFixed(2)} pts, so the read below is context — it does not change the call.`,
+      ? `Genuinely close — ${points(margin)} pts over ${alternative}, inside the ±${bound.toFixed(2)} that scheme could be worth. This is the rare call where the matchup is not irrelevant.`
+      : `Starts over ${alternative} by ${points(margin)} pts. Scheme is worth at most ±${bound.toFixed(2)} pts, so the read below is context — it does not change the call.`,
   };
 };
 

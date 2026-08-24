@@ -122,6 +122,7 @@ export const LeagueNav = async ({
     </div>
 
     <header
+    data-league-nav
     className="sticky top-0 z-20 mb-6 border-b backdrop-blur lg:ml-14"
     style={{ borderColor: 'var(--rule)', background: 'color-mix(in srgb, var(--ground) 88%, transparent)' }}
   >

@@ -166,7 +166,6 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
       {nav}
 
         <RailLayout
-        contextBar={false}
         rail={<LeagueRail view={view} />}
       >
         {/* ---- your week, leading ----------------------------------------- */}

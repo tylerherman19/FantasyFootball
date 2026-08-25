@@ -70,7 +70,10 @@ export const Section = ({
       {aside}
     </div>
     {note !== undefined && (
-      <p className="deck mb-3.5 text-[0.875rem]">{note}</p>
+      <details className="section-context mb-3">
+        <summary>How to read this</summary>
+        <div className="deck mt-1.5 max-w-3xl text-[0.82rem] leading-relaxed">{note}</div>
+      </details>
     )}
     {children}
     {source !== undefined && <div className="source-line">Source: {source}</div>}

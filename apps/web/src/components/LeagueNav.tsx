@@ -32,32 +32,26 @@ export interface NavProps {
   readonly stamps?: readonly { readonly label: string; readonly value: string }[];
 }
 
-const TABS = [
-  { key: 'outlook', label: 'Outlook', href: '' },
-  { key: 'dynasty', label: 'Verdict', href: '/dynasty' },
-  { key: 'power', label: 'Power', href: '/power' },
-  { key: 'lineup', label: 'Lineup', href: '/lineup' },
-  { key: 'waivers', label: 'Waivers', href: '/waivers' },
-  { key: 'trades', label: 'Trades', href: '/trades' },
-  { key: 'roster', label: 'Roster', href: '/roster' },
-  { key: 'schedule', label: 'Schedule', href: '/schedule' },
-  { key: 'usage', label: 'Usage', href: '/usage' },
-  { key: 'scheme', label: 'Scheme', href: '/scheme' },
+const VIEWS = [
+  { key: 'outlook', label: 'Overview', href: '', group: 'overview' },
+  { key: 'lineup', label: 'Lineup', href: '/lineup', group: 'week' },
+  { key: 'scheme', label: 'Matchups', href: '/scheme', group: 'week' },
+  { key: 'waivers', label: 'Waivers', href: '/waivers', group: 'improve' },
+  { key: 'trades', label: 'Trades', href: '/trades', group: 'improve' },
+  { key: 'roster', label: 'Roster', href: '/roster', group: 'team' },
+  { key: 'dynasty', label: 'Strategy', href: '/dynasty', group: 'team' },
+  { key: 'usage', label: 'Usage', href: '/usage', group: 'team' },
+  { key: 'power', label: 'Power', href: '/power', group: 'league' },
+  { key: 'schedule', label: 'Schedule', href: '/schedule', group: 'league' },
 ] as const;
 
-/** One icon per section, by key. */
-const RAIL_ICONS: Record<string, React.ReactNode> = {
-  outlook: ICONS.outlook,
-  dynasty: ICONS.verdict,
-  power: ICONS.power,
-  lineup: ICONS.lineup,
-  waivers: ICONS.waivers,
-  trades: ICONS.trades,
-  roster: ICONS.roster,
-  schedule: ICONS.schedule,
-  usage: ICONS.usage,
-  scheme: ICONS.scheme,
-};
+const PRIMARY = [
+  { key: 'overview', label: 'Overview', href: '', icon: ICONS.outlook },
+  { key: 'week', label: 'This week', href: '/lineup', icon: ICONS.lineup },
+  { key: 'improve', label: 'Improve', href: '/waivers', icon: ICONS.waivers },
+  { key: 'team', label: 'Team', href: '/roster', icon: ICONS.roster },
+  { key: 'league', label: 'League', href: '/power', icon: ICONS.power },
+] as const;
 
 export const LeagueNav = async ({
   leagueId,
@@ -99,7 +93,9 @@ export const LeagueNav = async ({
       .join(' · '),
   }));
 
-  const activeTab = TABS.find((tab) => tab.key === active);
+  const activeView = VIEWS.find((view) => view.key === active) ?? VIEWS[0];
+  const activeGroup = activeView.group;
+  const subviews = VIEWS.filter((view) => view.group === activeGroup);
 
   /*
    * The rail carries navigation at the edge of the screen, where it belongs on
@@ -108,11 +104,11 @@ export const LeagueNav = async ({
    * The strip stays for narrow screens, where a fixed rail would eat width the
    * tables need more.
    */
-  const railItems = TABS.map((tab) => ({
-    key: tab.key,
-    label: tab.label,
-    href: `/league/${leagueId}${tab.href}`,
-    icon: RAIL_ICONS[tab.key] ?? ICONS.outlook,
+  const railItems = PRIMARY.map((item) => ({
+    key: item.key,
+    label: item.label,
+    href: `/league/${leagueId}${item.href}`,
+    icon: item.icon,
   }));
 
   return (
@@ -142,7 +138,7 @@ export const LeagueNav = async ({
               <LeagueSwitcher
                 leagues={options}
                 currentId={leagueId}
-                section={activeTab?.href ?? ''}
+                section={activeView.href}
               />
             ) : (
               <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">
@@ -187,13 +183,13 @@ export const LeagueNav = async ({
         * for narrow screens, where a fixed rail would take width the tables
         * need more.
         */}
-      <nav className="scroll-x mt-3 flex gap-0.5 lg:hidden">
-        {TABS.map((tab) => {
-          const isActive = tab.key === active;
+      <nav className="scroll-x mt-3 flex gap-0.5 lg:hidden" aria-label="League sections">
+        {PRIMARY.map((item) => {
+          const isActive = item.key === activeGroup;
           return (
             <Link
-              key={tab.key}
-              href={`/league/${leagueId}${tab.href}`}
+              key={item.key}
+              href={`/league/${leagueId}${item.href}`}
               className="whitespace-nowrap px-2.5 py-2 text-[13px] transition-colors"
               style={{
                 color: isActive ? 'var(--ink)' : 'var(--ink-muted)',
@@ -202,11 +198,27 @@ export const LeagueNav = async ({
                 marginBottom: '-1px',
               }}
             >
-              {tab.label}
+              {item.label}
             </Link>
           );
         })}
       </nav>
+
+      {subviews.length > 1 && (
+        <nav className="scroll-x flex gap-4 border-t py-1.5" style={{ borderColor: 'var(--rule)' }} aria-label={`${PRIMARY.find((item) => item.key === activeGroup)?.label ?? 'Section'} views`}>
+          {subviews.map((view) => (
+            <Link
+              key={view.key}
+              href={`/league/${leagueId}${view.href}`}
+              aria-current={view.key === active ? 'page' : undefined}
+              className="whitespace-nowrap text-[11px] font-medium"
+              style={{ color: view.key === active ? 'var(--accent)' : 'var(--ink-faint)' }}
+            >
+              {view.label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </div>
   </header>
   </>

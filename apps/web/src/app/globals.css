@@ -221,6 +221,53 @@ th {
   font-weight: 600;
 }
 
+/* Overview decision board: conclusion, consequence, evidence on demand. */
+.decision-row {
+  display: grid;
+  grid-template-columns: 2.3rem minmax(0, 1fr) 9rem;
+  gap: 1rem;
+  align-items: start;
+  border-top: 1px solid var(--rule);
+  padding: 0.85rem 0;
+}
+.decision-row:first-child { border-top: 2px solid var(--ink); }
+.decision-rank {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding-top: 0.15rem;
+}
+.decision-urgency {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.decision-action { display: flex; flex-direction: column; align-items: flex-end; gap: 0.55rem; padding-top: 0.15rem; }
+.decision-impact-track { display: block; width: 100%; height: 3px; background: var(--p-0); }
+.decision-impact-track span { display: block; height: 100%; }
+.decision-link { color: var(--accent); font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+
+.section-context summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--ink-faint);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.section-context[open] summary { color: var(--accent); }
+
+@media (max-width: 700px) {
+  .decision-row { grid-template-columns: 1.8rem minmax(0, 1fr); gap: 0.65rem; }
+  .decision-action { grid-column: 2; align-items: flex-start; }
+  .decision-impact-track { width: 8rem; }
+}
+
 /*
  * The section label. Every block of data announces itself the same way, which
  * is what lets a reader skim a long page by its headings alone.

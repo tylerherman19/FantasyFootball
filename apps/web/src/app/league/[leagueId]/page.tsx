@@ -230,6 +230,12 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
           </>
         }
       >
+        {insights.length > 0 && (
+          <Section title="Your decision board">
+            <InsightList insights={insights} />
+          </Section>
+        )}
+
         {/*
          * Lead with a picture (§42).
          *
@@ -262,7 +268,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
             deck={
               me === null
                 ? 'Championship probability across every team, from the same simulation the rest of this page uses.'
-                : `A ${(me.titlePct * 100).toFixed(1)}% chance at the title and ${(me.playoffPct * 100).toFixed(0)}% of reaching the playoffs. Each dot below is one team, placed by its title odds — yours is the dark one. Hover any dot for the team.`
+                : `${(me.titlePct * 100).toFixed(1)}% title odds · ${(me.playoffPct * 100).toFixed(0)}% playoff odds. Your team is the dark dot.`
             }
             source={`${result.iterations.toLocaleString()} season simulations · model ${view.modelVersion ?? 'unknown'}`}
           >
@@ -276,15 +282,6 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
               }))}
             />
           </Figure>
-        )}
-
-        {insights.length > 0 && (
-          <Section
-            title="What matters right now"
-            note="The things on your team that are worth doing something about this week, most consequential first. Each one shows the number behind it, so you can decide the threshold was wrong rather than take the sentence on trust."
-          >
-            <InsightList insights={insights} />
-          </Section>
         )}
 
         {/*

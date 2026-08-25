@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { ContextBar } from './ContextBar';
 
 /**
  * The right-hand panel (§62, §86).
@@ -32,15 +31,11 @@ import { ContextBar } from './ContextBar';
 export const RailLayout = ({
   children,
   rail,
-  contextBar = true,
 }: {
   readonly children: ReactNode;
   readonly rail: ReactNode;
-  readonly contextBar?: boolean;
 }) => (
   <div className="mx-auto max-w-[92rem] px-5 lg:pl-[4.75rem]">
-    {contextBar && <ContextBar />}
-
     <div className="lg:flex lg:gap-10">
       <div className="min-w-0 flex-1 pb-8 lg:pb-20">
         {children}

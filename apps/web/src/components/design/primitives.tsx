@@ -149,43 +149,52 @@ const CATEGORY_LABEL: Record<InsightCategory, string> = {
  * with an action, and inventing one to fill the slot is how a product starts
  * telling people to do things it has no basis for.
  */
-export const Insight = ({ insight }: { readonly insight: InsightData }) => (
-  <div className="border-t py-4 first:border-t-0 first:pt-0" style={{ borderColor: 'var(--rule)' }}>
-    <div className="mb-1 flex items-baseline gap-3">
-      <span className="eyebrow" style={{ color: 'var(--ink-faint)' }}>
-        {CATEGORY_LABEL[insight.category]}
-      </span>
-    </div>
+export const Insight = ({ insight, rank }: { readonly insight: InsightData; readonly rank: number }) => {
+  const urgency = insight.importance >= 0.85 ? 'High' : insight.importance >= 0.6 ? 'Medium' : 'Watch';
+  const tone = insight.importance >= 0.85 ? 'var(--accent)' : 'var(--p-high)';
 
-    <h3
-      className="mb-1.5 leading-tight"
-      style={{ fontSize: '1.22rem', fontWeight: 700, letterSpacing: '-0.017em' }}
-    >
-      {insight.headline}
-    </h3>
-
-    <p className="deck mb-2">{insight.evidence}</p>
-
-    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      {insight.recommendation !== undefined && (
-        <span className="text-sm font-medium">{insight.recommendation}</span>
-      )}
-      {insight.href !== undefined && (
-        <Link href={insight.href} className="text-xs underline" style={{ color: 'var(--ink-muted)' }}>
-          {insight.exploreLabel ?? 'Explore'}
-        </Link>
-      )}
-    </div>
-  </div>
-);
+  return (
+    <article className="decision-row">
+      <div className="decision-rank" aria-hidden="true">{String(rank).padStart(2, '0')}</div>
+      <div className="min-w-0">
+        <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="eyebrow">{CATEGORY_LABEL[insight.category]}</span>
+          <span className="decision-urgency" style={{ color: tone }}>{urgency} priority</span>
+        </div>
+        <h3 className="text-[1.05rem] font-bold leading-tight tracking-tight">{insight.headline}</h3>
+        {insight.recommendation !== undefined && (
+          <p className="mt-1 text-sm font-medium">{insight.recommendation}</p>
+        )}
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs" style={{ color: 'var(--ink-muted)' }}>
+            Why this is here
+          </summary>
+          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+            {insight.evidence}
+          </p>
+        </details>
+      </div>
+      <div className="decision-action">
+        <span className="decision-impact-track" aria-hidden="true">
+          <span style={{ width: `${Math.round(insight.importance * 100)}%`, background: tone }} />
+        </span>
+        {insight.href !== undefined && (
+          <Link href={insight.href} className="decision-link">
+            {insight.exploreLabel ?? 'Open'} →
+          </Link>
+        )}
+      </div>
+    </article>
+  );
+};
 
 /** Insights, most consequential first. */
 export const InsightList = ({ insights }: { readonly insights: readonly InsightData[] }) => (
   <div>
     {[...insights]
       .sort((a, b) => b.importance - a.importance)
-      .map((insight) => (
-        <Insight key={`${insight.category}:${insight.headline}`} insight={insight} />
+      .map((insight, index) => (
+        <Insight key={`${insight.category}:${insight.headline}`} insight={insight} rank={index + 1} />
       ))}
   </div>
 );

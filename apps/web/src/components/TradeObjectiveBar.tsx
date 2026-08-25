@@ -6,7 +6,7 @@ import { tradeFilterHref } from '@/lib/trade-filters';
 
 const OBJECTIVES = [
   { key: 'balanced', label: 'Balanced', hint: 'Rank on title odds and starter points' },
-  { key: 'winNow', label: 'Win now', hint: 'Prefer this season\\'s points and title odds' },
+  { key: 'winNow', label: 'Win now', hint: "Prefer this season's points and title odds" },
   { key: 'rebuild', label: 'Rebuild', hint: 'Prefer youth and market value' },
 ] as const;
 

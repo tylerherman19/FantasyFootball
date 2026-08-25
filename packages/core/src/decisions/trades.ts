@@ -442,6 +442,9 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   return helpful.length > 0 ? helpful : ranked.slice(0, 3);
 };
 
+const hasDuplicatePosition = (assets: readonly TradeAsset[]): boolean =>
+  new Set(assets.map((asset) => asset.position)).size !== assets.length;
+
 const pushIfFair = (
   into: Candidate[],
   partnerId: string,
@@ -450,6 +453,11 @@ const pushIfFair = (
   band: number,
   input: TradeFinderInput,
 ): void => {
+  // A real offer should not bundle two players from the same position unless
+  // the target side is also taking that position. Duplicate-position bundles
+  // are usually a roster dump, not a credible dynasty proposal.
+  if (hasDuplicatePosition(iSend) || hasDuplicatePosition(iGet)) return;
+
   const sendValue = sumValue(iSend);
   const getValue = sumValue(iGet);
   if (fairnessGap(sendValue, getValue) > band) return;

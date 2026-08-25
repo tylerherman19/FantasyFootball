@@ -61,21 +61,6 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
-      # Push the week's artifacts into the canonical store.
-      #
-      # This is what turns the artifact from the only copy into the current one.
-      # It has to run on the same schedule as the snapshot, because the thing it
-      # preserves — what the model believed this week — stops existing the moment
-      # the exporter next overwrites the file.
-      #
-      # Idempotent on (player, season, week, model_version), so a re-run corrects
-      # rather than duplicates.
-      - name: Sync the canonical store
-        run: npx tsx scripts/sync-canonical.ts
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-
   # Rebuild every serve-time football artifact from source, including offensive
   # and defensive scheme. Artifacts are committed because Vercel serves them
   # from the immutable deployment filesystem; this commit is therefore both the
@@ -103,6 +88,14 @@ jobs:
           uv run --project model python model/export_player_history.py
         env:
           PYTHONPATH: .
+      # Stamp and store the artifacts only after they have been rebuilt. Running
+      # this in the snapshot job raced the rebuild and recorded yesterday's
+      # timestamps, leaving production marked stale after a successful refresh.
+      - name: Sync rebuilt artifacts and freshness ledger
+        run: npx tsx scripts/sync-canonical.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       - name: Publish rebuilt artifacts for audit/download
         uses: actions/upload-artifact@v4
         with:

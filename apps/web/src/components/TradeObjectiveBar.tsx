@@ -1,6 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+
+import { tradeFilterHref } from '@/lib/trade-filters';
 
 /**
  * What the manager is trying to do, stated rather than inferred.
@@ -37,16 +40,7 @@ export const TradeObjectiveBar = ({ players }: { readonly players: readonly Targ
   const targetPosition = params.get('pos') ?? '';
 
   const setParam = (key: string, value: string) => {
-    const next = new URLSearchParams(params.toString());
-    if (value === '') next.delete(key);
-    else next.set(key, value);
-
-    // Targeting a specific player and a whole position at once is ambiguous, so
-    // choosing one clears the other rather than silently ranking them.
-    if (key === 'target' && value !== '') next.delete('pos');
-    if (key === 'pos' && value !== '') next.delete('target');
-
-    router.push(`${pathname}?${next.toString()}`);
+    router.push(tradeFilterHref(pathname, new URLSearchParams(params.toString()), key, value));
   };
 
   return (
@@ -60,11 +54,15 @@ export const TradeObjectiveBar = ({ players }: { readonly players: readonly Targ
           {OBJECTIVES.map((option) => {
             const isActive = option.key === objective;
             return (
-              <button
+              <Link
                 key={option.key}
-                type="button"
                 title={option.hint}
-                onClick={() => setParam('objective', option.key === 'balanced' ? '' : option.key)}
+                href={tradeFilterHref(
+                  pathname,
+                  new URLSearchParams(params.toString()),
+                  'objective',
+                  option.key === 'balanced' ? '' : option.key,
+                )}
                 className="border px-3 py-1.5 text-xs font-semibold transition-colors"
                 style={{
                   borderColor: isActive ? 'var(--ink)' : 'var(--rule)',
@@ -74,7 +72,7 @@ export const TradeObjectiveBar = ({ players }: { readonly players: readonly Targ
                 }}
               >
                 {option.label}
-              </button>
+              </Link>
             );
           })}
         </div>

@@ -125,6 +125,30 @@ SPREAD_RULES: dict[str, float] = {
 }
 
 
+def apply_weekly_role_gate(
+    position: str,
+    stats: dict[str, float],
+    sd: float,
+    *,
+    has_team: bool,
+    roster_status: str | None,
+    depth_rank: int | None,
+) -> tuple[dict[str, float], float, bool]:
+    """Remove workload the current NFL role says a player cannot have.
+
+    A backup quarterback is categorically different from an RB2 or WR2: absent
+    an announced starter change, he does not share ordinary offensive volume.
+    Likewise, reserve/exempt/retired/cut players cannot receive a weekly line.
+    Missing source data is not treated as proof of inactivity.
+    """
+    inactive_roster = roster_status is not None and roster_status.upper() != "ACT"
+    backup_qb = position.upper() == "QB" and depth_rank is not None and depth_rank > 1
+    active = has_team and not inactive_roster and not backup_qb
+    if active:
+        return dict(stats), sd, True
+    return {key: 0.0 for key in stats}, 0.0, False
+
+
 def load_crosswalk(path: Path) -> dict[str, dict]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     out: dict[str, dict] = {}
@@ -181,14 +205,23 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         # team — silently, and wrongly for everyone who moved in the offseason.
         rosters = rookie_prior.current_rosters(store, as_of)
         team_by_gsis: dict[str, str] = {}
+        status_by_gsis: dict[str, str] = {}
         if rosters.height > 0 and "gsis_id" in rosters.columns:
+            roster_values = [pl.col("team").last()]
+            if "status" in rosters.columns:
+                roster_values.append(pl.col("status").last())
             latest = (
                 rosters.drop_nulls("gsis_id")
                 .sort(["season", "week"])
                 .group_by("gsis_id")
-                .agg(pl.col("team").last())
+                .agg(*roster_values)
             )
             team_by_gsis = dict(zip(latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True))
+            if "status" in latest.columns:
+                status_by_gsis = dict(
+                    zip(latest["gsis_id"].to_list(), latest["status"].to_list(), strict=True)
+                )
+        depth_by_gsis = rookie_prior._current_depth_ranks(store, as_of)
 
     # Byes come from the full season schedule, not from the exported week.
     #
@@ -229,14 +262,23 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             position = FANTASY_POSITION.get(raw_position, raw_position)
             team = canonical_team(team_by_gsis.get(source_id) or identity.get("team"))
 
+        gated_stats, gated_sd, active = apply_weekly_role_gate(
+            position,
+            stats,
+            spreads.get(source_id, 6.0),
+            has_team=bool(team),
+            roster_status=None if is_team_defense else status_by_gsis.get(source_id),
+            depth_rank=None if is_team_defense else depth_by_gsis.get(source_id),
+        )
+
         players[sleeper_id] = {
             "playerId": sleeper_id,
             "name": name,
             "position": position,
             "team": team,
             # Stat line, not points. The league scores it.
-            "stats": {k: round(v, 4) for k, v in stats.items()},
-            "sd": round(spreads.get(source_id, 6.0), 3),
+            "stats": {k: round(v, 4) for k, v in gated_stats.items()},
+            "sd": round(gated_sd, 3),
             "gameId": games.get(team, ""),
             "gameLoading": GAME_LOADING.get(position, 0.3),
             # The week this player's team does not play, for the whole season.
@@ -247,7 +289,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             # given week is `byeWeek` plus the injury designation applied at
             # serve time, both of which vary by week and neither of which
             # belongs in a flag baked once per artifact.
-            "active": bool(team),
+            "active": active,
             # Carried so the UI can say where the number came from. A rookie's
             # line is a draft-capital prior, not an observed history, and a
             # product that shows the two identically is lying by omission.

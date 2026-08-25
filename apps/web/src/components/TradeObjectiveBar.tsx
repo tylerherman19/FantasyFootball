@@ -2,8 +2,6 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
-import { tradeFilterHref } from '@/lib/trade-filters';
-
 const OBJECTIVES = [
   { key: 'balanced', label: 'Balanced', hint: 'Rank on title odds and starter points' },
   { key: 'winNow', label: 'Win now', hint: "Prefer this season's points and title odds" },
@@ -36,7 +34,11 @@ export const TradeObjectiveBar = ({ players }: { readonly players: readonly Targ
       else next.set(key, value);
     });
 
-    router.push(tradeFilterHref(pathname, next));
+    if (changes.pos !== undefined && changes.pos !== '') next.delete('target');
+    if (changes.target !== undefined && changes.target !== '') next.delete('pos');
+
+    const query = next.toString();
+    router.push(query === '' ? pathname : pathname + '?' + query);
   };
 
   return (

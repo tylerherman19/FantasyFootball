@@ -32,7 +32,10 @@ interface Entry<T> {
  */
 const REGISTRY = Symbol.for('ffe.cache.registry');
 
-type Registry = Map<string, { entries: Map<string, unknown>; inFlight: Map<string, unknown> }>;
+type Registry = Map<
+  string,
+  { entries: Map<string, unknown>; inFlight: Map<string, unknown>; generation: number }
+>;
 
 const registry = (): Registry => {
   const host = globalThis as { [REGISTRY]?: Registry };
@@ -44,10 +47,14 @@ const storesFor = <T>(name: string) => {
   const all = registry();
   let store = all.get(name);
   if (store === undefined) {
-    store = { entries: new Map(), inFlight: new Map() };
+    store = { entries: new Map(), inFlight: new Map(), generation: 0 };
     all.set(name, store);
   }
-  return store as { entries: Map<string, Entry<T>>; inFlight: Map<string, Promise<T>> };
+  return store as {
+    entries: Map<string, Entry<T>>;
+    inFlight: Map<string, Promise<T>>;
+    generation: number;
+  };
 };
 
 /**
@@ -62,10 +69,11 @@ const storesFor = <T>(name: string) => {
  */
 export const invalidateAll = (): void => {
   for (const store of registry().values()) {
+    store.generation += 1;
     store.entries.clear();
-    // In-flight work is deliberately left alone: it was started before the
-    // refresh and its result is about to be discarded by the next read anyway.
-    // Clearing it would only orphan callers already awaiting a promise.
+    // Existing callers retain their Promise, but new callers must start a
+    // post-refresh request. Generation guards prevent old work from caching.
+    store.inFlight.clear();
   }
 };
 
@@ -82,7 +90,8 @@ export const ttlCache = <Args extends readonly unknown[], T>(
   { maxEntries = 64, name }: { maxEntries?: number; name?: string } = {},
 ): TtlCache<Args, T> => {
   // Named so the store survives this module being evaluated more than once.
-  const { entries, inFlight } = storesFor<T>(name ?? compute.name);
+  const store = storesFor<T>(name ?? compute.name);
+  const { entries, inFlight } = store;
 
   const cached = async (...args: Args): Promise<T> => {
     const key = keyOf(...args);
@@ -94,8 +103,12 @@ export const ttlCache = <Args extends readonly unknown[], T>(
     const running = inFlight.get(key);
     if (running !== undefined) return running;
 
+    const generation = store.generation;
     const promise = compute(...args)
       .then((value) => {
+        // Do not let work started before a force-refresh repopulate cache.
+        if (store.generation !== generation) return value;
+
         entries.set(key, { at: Date.now(), value });
 
         // Bounded so a long-lived process serving many leagues cannot grow
@@ -108,7 +121,7 @@ export const ttlCache = <Args extends readonly unknown[], T>(
         return value;
       })
       .finally(() => {
-        inFlight.delete(key);
+        if (inFlight.get(key) === promise) inFlight.delete(key);
       });
 
     inFlight.set(key, promise);
@@ -116,8 +129,14 @@ export const ttlCache = <Args extends readonly unknown[], T>(
   };
 
   cached.invalidate = (key?: string): void => {
-    if (key === undefined) entries.clear();
-    else entries.delete(key);
+    store.generation += 1;
+    if (key === undefined) {
+      entries.clear();
+      inFlight.clear();
+    } else {
+      entries.delete(key);
+      inFlight.delete(key);
+    }
   };
 
   return cached as TtlCache<Args, T>;

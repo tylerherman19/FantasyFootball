@@ -41,6 +41,12 @@ interface CacheEntry {
   readonly value: unknown;
 }
 
+interface SleeperCacheRegistry {
+  readonly responses: Map<string, CacheEntry>;
+  readonly pending: Map<string, Promise<unknown>>;
+  generation: number;
+}
+
 /**
  * Response cache, shared by every client instance in the process.
  *
@@ -49,11 +55,21 @@ interface CacheEntry {
  * cache across instances is deliberate: the app constructs adapters freely, and
  * a cache that only helped within one instance would help almost never.
  */
-const responses = new Map<string, CacheEntry>();
-const pending = new Map<string, Promise<unknown>>();
+const CACHE_REGISTRY = Symbol.for('ffe.sleeper.cache');
+
+const cacheRegistry = (): SleeperCacheRegistry => {
+  const host = globalThis as { [CACHE_REGISTRY]?: SleeperCacheRegistry };
+  host[CACHE_REGISTRY] ??= {
+    responses: new Map(),
+    pending: new Map(),
+    generation: 0,
+  };
+  return host[CACHE_REGISTRY];
+};
 
 /** Drop expired entries so a long-lived server doesn't accumulate dead weeks. */
 const evictExpired = (now: number): void => {
+  const { responses } = cacheRegistry();
   for (const [key, entry] of responses) {
     if (now - entry.at >= entry.ttl) responses.delete(key);
   }
@@ -61,8 +77,10 @@ const evictExpired = (now: number): void => {
 
 /** Forget everything cached. Exposed for tests and for a manual refresh. */
 export const clearSleeperCache = (): void => {
-  responses.clear();
-  pending.clear();
+  const cache = cacheRegistry();
+  cache.generation += 1;
+  cache.responses.clear();
+  cache.pending.clear();
 };
 
 /**
@@ -104,6 +122,8 @@ export class SleeperClient {
     const ttl = this.#cacheEnabled ? (opts.cacheMs ?? 0) : 0;
 
     if (ttl > 0) {
+      const cache = cacheRegistry();
+      const { responses, pending } = cache;
       const now = Date.now();
       const hit = responses.get(url);
       if (hit !== undefined && now - hit.at < hit.ttl) return hit.value as T | null;
@@ -112,14 +132,20 @@ export class SleeperClient {
       const inFlight = pending.get(url);
       if (inFlight !== undefined) return (await inFlight) as T | null;
 
+      const generation = cache.generation;
       const request = this.#fetch<T>(url, opts)
         .then((value) => {
-          responses.set(url, { at: Date.now(), ttl, value });
-          if (responses.size > 512) evictExpired(Date.now());
+          // A force-refresh may happen while this request is in flight. Its
+          // caller may still use the result, but it must not repopulate the
+          // newly-cleared cache with pre-refresh state.
+          if (cache.generation === generation) {
+            responses.set(url, { at: Date.now(), ttl, value });
+            if (responses.size > 512) evictExpired(Date.now());
+          }
           return value;
         })
         .finally(() => {
-          pending.delete(url);
+          if (pending.get(url) === request) pending.delete(url);
         });
 
       pending.set(url, request);
@@ -155,6 +181,9 @@ export class SleeperClient {
           return (await res.json()) as T;
         } catch (err) {
           lastError = err;
+          // Retrying a valid 4xx response cannot make it succeed. Only network
+          // failures, rate limits and server errors are transient.
+          if (err instanceof AdapterError) break;
           if (attempt === retries) break;
           await new Promise((r) => setTimeout(r, 2 ** attempt * 250));
         }

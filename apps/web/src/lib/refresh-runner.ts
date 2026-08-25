@@ -1,6 +1,7 @@
 import { fetchAllValueConfigurations, refreshStoreFromEnv, withRefreshTracking } from '@ffe/ingest';
 import type { RefreshCounts, RefreshTrigger, SourceFreshness } from '@ffe/ingest';
 import { PostgrestSnapshotStore } from '@ffe/ingest';
+import { clearSleeperCache } from '@ffe/adapters';
 import { invalidateAll } from './cache';
 
 /**
@@ -63,6 +64,7 @@ const refreshValues = async (): Promise<RefreshCounts> => {
  */
 const refreshSleeper = async (): Promise<RefreshCounts> => {
   invalidateAll();
+  clearSleeperCache();
   return { processed: 0 };
 };
 

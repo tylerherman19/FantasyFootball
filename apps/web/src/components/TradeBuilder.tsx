@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback, useMemo, useState, useTransition } from 'react';
 import { evaluateTradeClient, type TradeGrade } from '@/lib/client-sim';
 import type { WireLeague } from '@/lib/serialize';
 
@@ -36,7 +36,7 @@ export const TradeBuilder = ({ league, myTeamId }: { league: WireLeague; myTeamI
   const [pending, startTransition] = useTransition();
 
   /** Players and picks together — both are assets a manager trades. */
-  const assetsFor = (teamId: string) => {
+  const assetsFor = useCallback((teamId: string) => {
     const team = league.teams.find((t) => t.teamId === teamId);
 
     const players = (team?.playerIds ?? [])
@@ -67,10 +67,10 @@ export const TradeBuilder = ({ league, myTeamId }: { league: WireLeague; myTeamI
       }));
 
     return [...players, ...picks];
-  };
+  }, [league]);
 
-  const myPlayers = useMemo(() => assetsFor(myTeamId), [league, myTeamId]);
-  const theirPlayers = useMemo(() => assetsFor(partnerId), [league, partnerId]);
+  const myPlayers = useMemo(() => assetsFor(myTeamId), [assetsFor, myTeamId]);
+  const theirPlayers = useMemo(() => assetsFor(partnerId), [assetsFor, partnerId]);
 
   const toggle = (list: string[], setList: (next: string[]) => void, id: string) => {
     const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];

@@ -81,7 +81,7 @@ export const Freshness = ({
   const modelAge =
     modelGeneratedAt === null
       ? null
-      : Math.round((Date.now() - Date.parse(modelGeneratedAt)) / 60_000);
+      : (sources.find((source) => source.source === 'projections')?.ageMinutes ?? null);
 
   return (
     <details className="group text-xs" style={{ color: 'var(--ink-muted)' }}>

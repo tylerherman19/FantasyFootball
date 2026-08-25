@@ -10,7 +10,7 @@ import { SchemeLine } from '@/components/SchemeLine';
 import { loadDefenses, opponentFrom } from '@/lib/defense';
 import { loadSchemeFinding } from '@/lib/scheme-impact';
 import { distributionOf } from '@/lib/distribution';
-import { PositionChip, RangeBar } from '@/components/charts/primitives';
+import { PositionChip } from '@/components/charts/primitives';
 import {
   careerPhase,
   loadAgeCurves,

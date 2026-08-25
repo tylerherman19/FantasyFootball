@@ -27,8 +27,7 @@ import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { OddsField } from '@/components/charts/OddsField';
 import { buildInsights } from '@/lib/insights';
 import { analysePortfolio, loadCorrelations, type PortfolioPlayer } from '@/lib/portfolio';
-import { loadAvailability } from '@/lib/availability';
-import { loadArtifact, loadLatestArtifact, scoreFor } from '@/lib/projections';
+import { loadArtifact, scoreFor } from '@/lib/projections';
 import { loadMarketValues } from '@/lib/values';
 import { readFreshness } from '@/lib/refresh-runner';
 import { analyzeRoster } from '@/lib/roster-analysis';
@@ -82,11 +81,10 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
    * lookup is defensive: a missing artifact should cost one insight, never the
    * whole page.
    */
-  const [homeArtifact, homeValues, homeAvailability, homeFreshness, rosterAnalysis, homeCorrelations] =
+  const [homeArtifact, homeValues, homeFreshness, rosterAnalysis, homeCorrelations] =
     await Promise.all([
       loadArtifact(snapshot.league.season, snapshot.asOfWeek).catch(() => null),
       loadMarketValues(snapshot.league.format, snapshot.league.superFlex).catch(() => new Map()),
-      loadAvailability().catch(() => ({}) as Record<string, { injuryStatus: string | null }>),
       readFreshness(null).catch(() => []),
       myTeamId === null || notDrafted
         ? Promise.resolve(null)
@@ -147,9 +145,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
     portfolio: homePortfolio,
     freshness: homeFreshness,
     modelAgeMinutes:
-      homeArtifact === null
-        ? null
-        : Math.round((Date.now() - Date.parse(homeArtifact.generatedAt)) / 60_000),
+      homeFreshness.find((source) => source.source === 'projections')?.ageMinutes ?? null,
     injuredStarters: (rosterAnalysis?.players ?? [])
       .filter((p) => p.starting && p.injuryStatus !== null && p.injuryStatus !== '')
       .map((p) => ({ name: p.name, status: p.injuryStatus as string })),

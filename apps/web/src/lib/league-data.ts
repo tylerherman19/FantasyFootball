@@ -39,17 +39,14 @@ const adapter = new SleeperAdapter();
  *
  * The whole cold-start cost of a league is here: the Sleeper round trips are
  * under 300ms and the artifact parse is cached, so the simulation is the wait.
- * Halving it from four thousand takes roughly a second and a half off the first
- * view of a league, which is the one a person actually notices.
- *
- * What it costs is resolution. A season simulated n times resolves probability
- * no finer than about 2/sqrt(n), so this moves the floor from 3.2 to 4.5
- * percentage points. That is a real loss, and it is why the header states the
- * count and the decision pages name their own resolution rather than printing a
- * precision they do not have. Anything a manager acts on — a trade in the
- * calculator, a waiver claim — is re-simulated at full count in the browser.
+ * Ten thousand is the product's normal-analysis floor. It gives a probability
+ * resolution of roughly two percentage points (2/sqrt(n)); lower-count coarse
+ * screens are still allowed inside trade and waiver candidate searches, but a
+ * number presented as the league outlook comes from the full run. The result is
+ * cached across routes and server instances, so this cost is paid once for each
+ * roster/model version rather than on every navigation.
  */
-const PAGE_ITERATIONS = 2_000;
+const PAGE_ITERATIONS = 10_000;
 
 /**
  * How long a loaded league stays fresh.

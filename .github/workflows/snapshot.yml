@@ -1,5 +1,12 @@
 name: Weekly snapshot
 
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-football-data
+  cancel-in-progress: false
+
 # Tuesday noon ET — after Monday Night Football closes the previous week and
 # well before Thursday's kickoff opens the next one.
 #
@@ -69,30 +76,47 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
-  # Rebuilding projections needs the Python pipeline, which does not run on
-  # Vercel and is not meant to. Kept here, kept explicit, and kept honest about
-  # the fact that its output has to be committed by a person: the alternative is
-  # a bot that rewrites `main` weekly, which is what was just removed.
-  #
-  # Run `model/export_projections.py` locally after an nflverse sync and commit
-  # the artifact. `/api/data-status` reports its age, so a stale one is visible
-  # in the product rather than only in a log nobody opens.
+  # Rebuild every serve-time football artifact from source, including offensive
+  # and defensive scheme. Artifacts are committed because Vercel serves them
+  # from the immutable deployment filesystem; this commit is therefore both the
+  # versioned model record and the deployment trigger. No generated number is
+  # synthesized in the web app.
   rebuild-projections:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
-      - name: Sync nflverse and rebuild projections
+      - name: Sync nflverse and rebuild integrated model artifacts
         run: |
           uv run --project model python model/ingest/nflverse.py data/lake
           uv run --project model python model/ingest/crosswalk.py
+          uv run --project model python model/export_byes.py
+          uv run --project model python model/export_availability.py
+          uv run --project model python model/export_game_loading.py
           uv run --project model python model/export_projections.py
+          uv run --project model python model/export_offense.py
+          uv run --project model python model/export_defense.py
+          uv run --project model python model/export_pressure.py
+          uv run --project model python model/export_coverage.py
+          uv run --project model python model/export_player_history.py
         env:
           PYTHONPATH: .
-      - name: Publish the rebuilt artifacts for download
+      - name: Publish rebuilt artifacts for audit/download
         uses: actions/upload-artifact@v4
         with:
-          name: projection-artifacts
+          name: football-model-artifacts
           path: model/artifacts
           retention-days: 14
+      - name: Version artifacts and trigger production deployment
+        run: |
+          git config user.name "fantasy-edge-data-bot"
+          git config user.email "fantasy-edge-data-bot@users.noreply.github.com"
+          git add model/artifacts
+          if git diff --cached --quiet; then
+            echo "No artifact changes"
+          else
+            git commit -m "Refresh football model artifacts"
+            git push origin HEAD:main
+          fi

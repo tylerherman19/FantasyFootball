@@ -62,7 +62,7 @@ export const WaiverBoard = ({ league, myTeamId }: { league: WireLeague; myTeamId
    * upgrade and the wire reported that nothing helps, most weeks.
    */
   const ranked = [...(results ?? [])].sort((a, b) => b.titleDelta - a.titleDelta);
-  const RESOLUTION = 2 / Math.sqrt(2_000);
+  const RESOLUTION = 2 / Math.sqrt(10_000);
   const anyDecisive = ranked.some((r) => r.titleDelta > RESOLUTION);
   const isFaab = league.waiverType === 'faab';
 

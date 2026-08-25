@@ -68,6 +68,8 @@ export const ContextBar = () => {
   // are present on the first pass — no need to poll for late arrivals.
   useEffect(() => {
     const found = readSections();
+    // DOM discovery is the external system this component synchronizes with.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSections(found);
     setActiveId(found[0]?.id ?? '');
   }, []);

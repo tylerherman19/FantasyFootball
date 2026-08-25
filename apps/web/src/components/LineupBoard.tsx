@@ -63,8 +63,17 @@ export const LineupBoard = ({
   };
 
   return (
+    /*
+     * `min-w-0` on both columns, which is the fix for a problem CSS grid has by
+     * default: a grid track is `auto`, and `auto` means "at least min-content".
+     * One wide row inside a column therefore widens the column, the column
+     * widens the grid, and the grid widens the page — on a phone this list was
+     * pushing the whole document a hundred pixels sideways. `min-w-0` lets the
+     * track shrink below its content, so the wide thing scrolls in its own box
+     * instead of taking the page with it.
+     */
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-      <div>
+      <div className="min-w-0">
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
           Optimal lineup — tap a slot to test alternatives
         </h2>
@@ -108,7 +117,7 @@ export const LineupBoard = ({
         </ul>
       </div>
 
-      <div>
+      <div className="min-w-0">
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--ink-faint)' }}>
           {active === null ? 'Alternatives' : `Instead of ${active.name}`}
         </h2>

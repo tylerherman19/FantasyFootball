@@ -84,10 +84,6 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
   const all = Object.values(defenses.teams);
   const byShell = [...all].sort((a, b) => b.shellIndex - a.shellIndex);
 
-  const myRoster = new Set(
-    snapshot.rosters.find((roster) => roster.teamId === view.myTeamId)?.playerIds.map(String) ?? [],
-  );
-
   /*
    * Your roster, in starting-lineup order.
    *

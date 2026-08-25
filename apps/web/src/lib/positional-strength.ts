@@ -40,7 +40,7 @@ export interface TeamStrength {
  * another store here would buy nothing.
  */
 export const positionalStrength = (view: LeagueView): TeamStrength[] => {
-  const { snapshot, context } = view;
+  const { context } = view;
   const week = context.weeks[0];
   const weekly = week === undefined ? undefined : context.pool.get(week);
 
@@ -105,4 +105,3 @@ export const positionalStrength = (view: LeagueView): TeamStrength[] => {
     }),
   }));
 };
-

@@ -258,7 +258,10 @@ export const buildDynastyView = async (
   const [profiles, artifact, values, identities, history] = await Promise.all([
     buildTeamProfiles(view),
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
+      teamCount: snapshot.league.teamCount,
+      ppr: snapshot.league.scoring.rec,
+    }),
     loadIdentities(),
     loadHistory(),
   ]);

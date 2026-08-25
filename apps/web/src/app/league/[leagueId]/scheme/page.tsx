@@ -176,8 +176,8 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
                 ? `Scheme changes none of your ${starters.length} lineup calls this week.`
                 : `Scheme could change ${closeCalls} of your ${starters.length} lineup calls.`
             }
-            source="nflverse play-by-play · scheme read displayed, never applied to the projection"
-            note="Scheme describes the matchup. Your projection still decides the start."
+            source="nflverse play-by-play · defensive matchup context"
+            note="Offensive scheme is built into player opportunity; this page isolates the defensive matchup read."
           >
             <div className="scheme-thesis">
               <div>

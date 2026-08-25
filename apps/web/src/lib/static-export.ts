@@ -50,7 +50,10 @@ export const buildStaticSite = async (leagueId: string, username: string): Promi
     buildTeamProfiles(view),
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadDefenses(),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
+      teamCount: snapshot.league.teamCount,
+      ppr: snapshot.league.scoring.rec,
+    }),
   ]);
 
   const allDefenses = defenses === null ? [] : Object.values(defenses.teams);

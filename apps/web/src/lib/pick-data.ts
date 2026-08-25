@@ -25,7 +25,10 @@ export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
     return [];
   }
 
-  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex);
+  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex, {
+    teamCount: snapshot.league.teamCount,
+    ppr: snapshot.league.scoring.rec,
+  });
   if (market.picks.size === 0) return [];
 
   const seasons = Array.from({ length: SEASONS_AHEAD }, (_, i) => snapshot.league.season + 1 + i);

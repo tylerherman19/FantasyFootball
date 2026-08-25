@@ -33,6 +33,10 @@ export {
   type AvailabilityAdjustment,
   type InjuryStatus,
 } from './projections/availability.js';
+export {
+  predictionQuantiles,
+  type PredictionQuantiles,
+} from './projections/quantiles.js';
 
 // valuation
 export {
@@ -42,6 +46,12 @@ export {
   type PickValueSource,
   type ValuedPick,
 } from './valuation/picks.js';
+export {
+  evaluatePlayer,
+  type EvaluationObjective,
+  type PlayerEvaluation,
+  type PlayerEvaluationInput,
+} from './valuation/player-evaluation.js';
 
 // metrics
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
@@ -85,6 +95,8 @@ export {
   type TradeAsset,
   type TradeEvaluation,
   type TradeFinderInput,
+  type TradeIntelligenceOptions,
+  type TradeRosterProfile,
   type TradeSide,
 } from './decisions/trades.js';
 export {
@@ -93,3 +105,10 @@ export {
   type StartSitOption,
   type StartSitVerdict,
 } from './decisions/start-sit.js';
+export {
+  schemeSignal,
+  type DefensiveSchemeProfile,
+  type OffensiveSchemeProfile,
+  type PlayerSchemeContext,
+  type SchemeSignal,
+} from './decisions/scheme.js';

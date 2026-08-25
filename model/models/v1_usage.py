@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +40,7 @@ import polars as pl
 from model.backtest.harness import SKILL_POSITIONS, Prediction
 from model.features.scoring import score_expression
 from model.features.store import AsOf, FeatureStore
+from model.features.team_context import team_tendencies
 
 #: Volume stats, modelled per game.
 VOLUME_STATS: tuple[str, ...] = ("attempts", "carries", "targets")
@@ -194,12 +196,75 @@ class Explanation:
 
     position: str
     prior: dict[str, float]
+    #: Player volume before the offensive-context adjustment.
+    base_opportunity: dict[str, float]
     opportunity: dict[str, float]
     final: dict[str, float]
     #: Recency-weighted games observed. Drives the confidence read.
     effective_games: float
     #: Raw per-game volume, unshrunk — what he has actually been doing lately.
     observed: dict[str, float]
+    #: Bounded offensive scheme multipliers that changed the opportunity line.
+    scheme: dict[str, float | str]
+
+
+def _scheme_context(
+    store: FeatureStore,
+    as_of: AsOf,
+) -> dict[str, dict[str, float]]:
+    """Return conservative offensive-context multipliers by team.
+
+    Pace and neutral pass identity are upstream opportunity features. They are
+    deliberately bounded to six percent so scheme can improve role allocation
+    without overpowering player history or double-counting a defensive matchup.
+    """
+    try:
+        tendencies = team_tendencies(store, as_of, seasons_back=1)
+    except Exception:
+        # Scheme is an enhancement, not a reason to lose the entire weekly
+        # artifact when a play-by-play feed is absent or its schema drifts.
+        # The player-level usage model remains the safe fallback.
+        return {}
+    latest: dict[str, object] = {}
+    for tendency in sorted(tendencies, key=lambda item: item.season):
+        latest[str(tendency.team)] = tendency
+    if not latest:
+        return {}
+
+    mean_plays = sum(t.plays_per_game for t in latest.values()) / len(latest)
+    mean_neutral_pass = sum(t.neutral_pass_rate for t in latest.values()) / len(latest)
+    mean_proe = sum(t.proe for t in latest.values()) / len(latest)
+
+    out: dict[str, dict[str, float]] = {}
+    for team, tendency in latest.items():
+        pace = float(np.clip(tendency.plays_per_game / max(mean_plays, 1.0), 0.94, 1.06))
+        pass_shape = float(
+            np.clip(
+                1.0
+                + 1.25 * (tendency.neutral_pass_rate - mean_neutral_pass)
+                + 0.50 * (tendency.proe - mean_proe),
+                0.94,
+                1.06,
+            )
+        )
+        run_shape = float(
+            np.clip(
+                1.0
+                - 1.25 * (tendency.neutral_pass_rate - mean_neutral_pass)
+                - 0.50 * (tendency.proe - mean_proe),
+                0.94,
+                1.06,
+            )
+        )
+        out[team] = {
+            "attempts": pace * pass_shape,
+            "targets": pace * pass_shape,
+            "carries": pace * run_shape,
+            "pace": pace,
+            "passShape": pass_shape,
+            "runShape": run_shape,
+        }
+    return out
 
 
 def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, float]]:
@@ -215,7 +280,9 @@ def project_stat_lines(store: FeatureStore, as_of: AsOf) -> dict[str, dict[str, 
 
 
 def project_with_explanations(
-    store: FeatureStore, as_of: AsOf
+    store: FeatureStore,
+    as_of: AsOf,
+    team_by_player: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, dict[str, float]], dict[str, Explanation]]:
     """The projection, plus the decomposition that produced it.
 
@@ -232,6 +299,8 @@ def project_with_explanations(
         for c in {*VOLUME_STATS, *(s for s, _ in RATE_STATS), *(d for _, d in RATE_STATS)}
         if c in history.columns
     ]
+    if "team" in history.columns:
+        columns.append("team")
 
     frame = (
         history.filter(pl.col("position").is_in(SKILL_POSITIONS))
@@ -264,6 +333,7 @@ def project_with_explanations(
 
     out: dict[str, dict[str, float]] = {}
     explained: dict[str, Explanation] = {}
+    scheme_by_team = _scheme_context(store, as_of)
 
     for (player_id,), group in frame.group_by(["player_id"], maintain_order=True):
         recent = group.tail(LOOKBACK_GAMES)
@@ -318,16 +388,59 @@ def project_with_explanations(
             if opportunity_total > 0:
                 observed[stat] = stat_total / opportunity_total
 
+        # Offensive identity is applied after the player-level usage/rate
+        # estimate. This keeps the model's most stable evidence (the player's
+        # own role) intact while accounting for the environment that supplies
+        # the opportunities. Every dependent stat uses the same denominator
+        # multiplier, so a team cannot create yards without also creating the
+        # attempts/carries/targets that produce them.
+        historical_teams = []
+        if "team" in recent.columns:
+            historical_teams = [
+                str(value)
+                for value in recent["team"].to_list()
+                if value is not None and str(value) != ""
+            ]
+        team = (
+            str(team_by_player.get(str(player_id)))
+            if team_by_player is not None and team_by_player.get(str(player_id))
+            else (historical_teams[-1] if historical_teams else "")
+        )
+        scheme = scheme_by_team.get(team)
+        base_opportunity = dict(opportunity)
+        scheme_explanation: dict[str, float | str] = {"team": team}
+        if scheme is not None and position in SKILL_POSITIONS:
+            for volume in VOLUME_STATS:
+                factor = scheme[volume]
+                if volume in line:
+                    line[volume] *= factor
+                    opportunity[volume] = line[volume]
+                for stat, denominator in RATE_STATS:
+                    if denominator == volume and stat in line:
+                        line[stat] *= factor
+                        opportunity[stat] = opportunity.get(stat, 0.0) * factor
+            scheme_explanation.update(
+                {
+                    "paceMultiplier": scheme["pace"],
+                    "passShape": scheme["passShape"],
+                    "runShape": scheme["runShape"],
+                }
+            )
+        else:
+            scheme_explanation.update({"paceMultiplier": 1.0, "passShape": 1.0, "runShape": 1.0})
+
         line["_position"] = 0.0  # placeholder keeps the dict homogeneous
         clean = {k: v for k, v in line.items() if not k.startswith("_")}
         out[str(player_id)] = clean
         explained[str(player_id)] = Explanation(
             position=position,
             prior={k: round(v, 4) for k, v in prior.items()},
+            base_opportunity={k: round(v, 4) for k, v in base_opportunity.items()},
             opportunity={k: round(v, 4) for k, v in opportunity.items()},
             final=clean,
             effective_games=round(effective_games, 2),
             observed={k: round(v, 4) for k, v in observed.items()},
+            scheme=scheme_explanation,
         )
 
     return out, explained

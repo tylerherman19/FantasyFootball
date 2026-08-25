@@ -26,7 +26,7 @@ from model.export_byes import bye_weeks
 from model.features.store import AsOf, FeatureStore
 from model.models import rookie_prior, v1_positional, v1_usage
 
-MODEL_VERSION = "v1-usage+positional"
+MODEL_VERSION = "v1-usage+offense+positional"
 
 #: Share of a player's weekly variance explained by the game environment.
 #:
@@ -179,7 +179,6 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
     with FeatureStore(lake) as store:
         as_of = AsOf(season, week)
 
-        skill_lines, explanations = v1_usage.project_with_explanations(store, as_of)
         kicker_lines = v1_positional.kicker_stat_lines(store, as_of)
         idp_lines = v1_positional.idp_stat_lines(store, as_of)
         defense_lines = v1_positional.team_defense_stat_lines(store, as_of)
@@ -220,7 +219,13 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
                 .group_by("gsis_id")
                 .agg(*roster_values)
             )
-            team_by_gsis = dict(zip(latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True))
+            team_by_gsis = {
+                str(player_id): canonical_team(team)
+                for player_id, team in zip(
+                    latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True
+                )
+                if team is not None
+            }
             if "status" in latest.columns:
                 status_by_gsis = dict(
                     zip(latest["gsis_id"].to_list(), latest["status"].to_list(), strict=True)
@@ -231,6 +236,14 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             for player_id, rank in depth_by_gsis.items()
             if rank == 1 and team_by_gsis.get(player_id)
         }
+
+        # The model is the engine: offensive pace and pass/run identity are
+        # applied inside the stat-line projection, using the player's current
+        # rostered team when available. The serving layer only scores those
+        # stat lines under the league's rules; it does not invent scheme points.
+        skill_lines, explanations = v1_usage.project_with_explanations(
+            store, as_of, team_by_player=team_by_gsis
+        )
 
     # Byes come from the full season schedule, not from the exported week.
     #
@@ -281,6 +294,17 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             team_has_qb1=team in qb1_teams,
         )
 
+        # A QB2 is not a weekly fantasy scorer while the QB1 is healthy, but
+        # zeroing him permanently makes the model blind to the most important
+        # role substitution in football: QB1 ruled out -> QB2 starts. Preserve
+        # the player's own starting baseline as a contingency line; the serving
+        # layer activates it only when the team's primary quarterback is ruled
+        # out. It never counts both quarterbacks in the same game.
+        backup_qb = position == "QB" and (
+            (depth_by_gsis.get(source_id) is not None and depth_by_gsis[source_id] > 1)
+            or (depth_by_gsis.get(source_id) is None and team in qb1_teams)
+        )
+
         players[sleeper_id] = {
             "playerId": sleeper_id,
             "name": name,
@@ -300,6 +324,15 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             # serve time, both of which vary by week and neither of which
             # belongs in a flag baked once per artifact.
             "active": active,
+            "depthRank": depth_by_gsis.get(source_id),
+            **(
+                {
+                    "contingencyStats": {k: round(v, 4) for k, v in stats.items()},
+                    "contingencySd": round(spreads.get(source_id, 6.0), 3),
+                }
+                if backup_qb
+                else {}
+            ),
             # Carried so the UI can say where the number came from. A rookie's
             # line is a draft-capital prior, not an observed history, and a
             # product that shows the two identically is lying by omission.
@@ -317,9 +350,11 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         if explanation is not None:
             why[sleeper_id] = {
                 "prior": explanation.prior,
+                "baseOpportunity": explanation.base_opportunity,
                 "opportunity": explanation.opportunity,
                 "effectiveGames": explanation.effective_games,
                 "observed": explanation.observed,
+                "scheme": explanation.scheme,
             }
         elif is_rookie:
             # A rookie has no history to decompose. Saying so is the honest

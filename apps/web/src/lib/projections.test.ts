@@ -36,6 +36,7 @@ const artifactOf = (...players: ArtifactPlayer[]): ProjectionArtifact => ({
 });
 
 const RULES = { rush_yd: 0.1, rush_td: 6 };
+const QB_RULES = { pass_yd: 0.04, pass_td: 4 };
 
 describe('buildPool bye handling', () => {
   it('zeroes a player only in his own bye week', () => {
@@ -97,6 +98,58 @@ describe('buildPool bye handling', () => {
     const pool = buildPool(artifactOf(player({ playerId: 'a', byeWeek: 6 })), weeks, RULES);
 
     expect([...pool.keys()]).toEqual(weeks);
+  });
+});
+
+describe('backup quarterback role handling', () => {
+  const qb1 = player({
+    playerId: 'qb1',
+    position: 'QB',
+    stats: { passing_yards: 250, passing_tds: 2 },
+    depthRank: 1,
+  });
+  const qb2 = player({
+    playerId: 'qb2',
+    position: 'QB',
+    active: false,
+    stats: { passing_yards: 0, passing_tds: 0 },
+    sd: 0,
+    depthRank: 2,
+    contingencyStats: { passing_yards: 230, passing_tds: 1.5 },
+    contingencySd: 8,
+  });
+
+  it('does not count QB2 while QB1 is healthy', () => {
+    const pool = buildPool(artifactOf(qb1, qb2), [1], QB_RULES);
+
+    expect(pool.get(1)?.get('qb1' as never)?.mean).toBeGreaterThan(0);
+    expect(pool.get(1)?.get('qb2' as never)?.mean).toBe(0);
+    expect(pool.get(1)?.get('qb2' as never)?.active).toBe(false);
+  });
+
+  it('activates exactly one contingency QB when QB1 is ruled out', () => {
+    const pool = buildPool(artifactOf(qb1, qb2), [1, 2], QB_RULES, {
+      qb1: { injuryStatus: 'Out' },
+    });
+
+    expect(pool.get(1)?.get('qb1' as never)?.mean).toBe(0);
+    expect(pool.get(1)?.get('qb2' as never)?.mean).toBeGreaterThan(0);
+    // The injury is a current-week fact; the future baseline does not carry it.
+    expect(pool.get(2)?.get('qb1' as never)?.mean).toBeGreaterThan(0);
+    expect(pool.get(2)?.get('qb2' as never)?.mean).toBe(0);
+  });
+
+  it('splits expected QB volume when QB1 is questionable', () => {
+    const pool = buildPool(artifactOf(qb1, qb2), [1], QB_RULES, {
+      qb1: { injuryStatus: 'Questionable' },
+    });
+
+    const starter = pool.get(1)?.get('qb1' as never)?.mean ?? 0;
+    const backup = pool.get(1)?.get('qb2' as never)?.mean ?? 0;
+
+    expect(starter).toBeGreaterThan(0);
+    expect(backup).toBeGreaterThan(0);
+    expect(backup).toBeLessThan(starter);
   });
 });
 

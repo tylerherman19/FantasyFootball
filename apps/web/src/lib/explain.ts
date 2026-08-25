@@ -33,6 +33,12 @@ export interface Explanation {
   readonly isPrior: boolean;
   readonly confidence: number;
   readonly confidenceReasons: readonly string[];
+  readonly scheme?: {
+    readonly team?: string;
+    readonly paceMultiplier?: number;
+    readonly passShape?: number;
+    readonly runShape?: number;
+  };
 }
 
 /**
@@ -72,6 +78,13 @@ const confidenceOf = (
   return { confidence: Math.max(0.05, Math.min(0.95, confidence)), reasons };
 };
 
+/** Confidence for decision code that does not need the full waterfall. */
+export const projectionConfidence = (
+  effectiveGames: number,
+  isPrior: boolean,
+  injuryStatus: string | null = null,
+): number => confidenceOf(effectiveGames, isPrior, injuryStatus).confidence;
+
 export const explain = (
   player: ArtifactPlayer,
   rules: Readonly<Record<string, number>>,
@@ -106,37 +119,55 @@ export const explain = (
       isPrior: true,
       confidence,
       confidenceReasons: reasons,
+      ...(why?.scheme === undefined ? {} : { scheme: why.scheme }),
     };
   }
 
   const prior = Math.max(0, scoreStatLine(why.prior ?? {}, rules));
+  const baseOpportunity = Math.max(
+    0,
+    scoreStatLine(why.baseOpportunity ?? why.opportunity ?? {}, rules),
+  );
   const opportunity = Math.max(0, scoreStatLine(why.opportunity ?? {}, rules));
+  const schemeDelta = opportunity - baseOpportunity;
+
+  const steps = [
+    {
+      label: `Average ${player.position}`,
+      value: prior,
+      note: 'What the model says about a player it knows nothing about beyond his position',
+    },
+    {
+      label: 'Player opportunity',
+      value: baseOpportunity - prior,
+      note: 'His projected targets, carries and attempts before team scheme context',
+    },
+    ...(why.baseOpportunity === undefined
+      ? []
+      : [
+          {
+            label: 'Offensive scheme',
+            value: schemeDelta,
+            note: 'Bounded pace and pass/run identity from the offense he currently plays in',
+          },
+        ]),
+    {
+      // Named for what it is. Efficiency is the noisy half and is regressed
+      // hard, so a large bar here is unusual and worth distrusting slightly.
+      label: 'Efficiency',
+      value: total - opportunity,
+      note: 'What he does per opportunity — heavily regressed, because efficiency repeats poorly',
+    },
+  ];
 
   return {
-    steps: [
-      {
-        label: `Average ${player.position}`,
-        value: prior,
-        note: 'What the model says about a player it knows nothing about beyond his position',
-      },
-      {
-        label: 'Opportunity',
-        value: opportunity - prior,
-        note: 'His projected targets, carries and attempts, against the positional average',
-      },
-      {
-        // Named for what it is. Efficiency is the noisy half and is regressed
-        // hard, so a large bar here is unusual and worth distrusting slightly.
-        label: 'Efficiency',
-        value: total - opportunity,
-        note: 'What he does per opportunity — heavily regressed, because efficiency repeats poorly',
-      },
-    ],
+    steps,
     total,
     effectiveGames,
     isPrior: false,
     confidence,
     confidenceReasons: reasons,
+    ...(why.scheme === undefined ? {} : { scheme: why.scheme }),
   };
 };
 

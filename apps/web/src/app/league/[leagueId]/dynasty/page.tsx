@@ -57,7 +57,10 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
    */
   const [portfolioArtifact, portfolioValues, correlations] = await Promise.all([
     loadArtifact(view.snapshot.league.season, view.snapshot.asOfWeek),
-    loadMarketValues(view.snapshot.league.format, view.snapshot.league.superFlex),
+    loadMarketValues(view.snapshot.league.format, view.snapshot.league.superFlex, {
+      teamCount: view.snapshot.league.teamCount,
+      ppr: view.snapshot.league.scoring.rec,
+    }),
     loadCorrelations().catch(() => null),
   ]);
   const myRoster = view.snapshot.rosters.find((r) => r.teamId === myTeamId);

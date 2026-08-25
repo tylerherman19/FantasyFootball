@@ -8,8 +8,11 @@ import {
   type Position,
 } from '../domain/index.js';
 import type { PlayerProjection, TeamContext } from '../sim/roster-projection.js';
+import { predictionQuantiles } from '../projections/quantiles.js';
+import { evaluatePlayer } from '../valuation/player-evaluation.js';
 import { oddsDelta, type SimContext } from './odds.js';
 import { fairnessGap, findTrades, evaluateTrade, type TradeAsset } from './trades.js';
+import { schemeSignal } from './scheme.js';
 import { rankWaivers, suggestBid } from './waivers.js';
 
 const TEAM_IDS = ['1', '2', '3', '4'];
@@ -260,5 +263,105 @@ describe('trades', () => {
     // accepted, so it must not be proposed.
     const found = findTrades({ context, myTeamId: '1', assetsByTeam, needs: ['RB'], surplus: ['WR'] });
     expect(found).toHaveLength(0);
+  });
+
+  it('scores partner fit from replacement value, not just market fairness', () => {
+    const { context } = buildContext();
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      [
+        '1',
+        [
+          { ...asset('wr1', 'WR', 1000), projectedPoints: 18 },
+          { ...asset('rb1', 'RB', 1000), projectedPoints: 12 },
+        ],
+      ],
+      ['2', [{ ...asset('rb2', 'RB', 1000), projectedPoints: 18 }]],
+    ]);
+    const profiles = new Map([
+      [
+        '1',
+        {
+          marginalByPlayer: new Map([
+            ['wr1', 0],
+            ['rb1', 12],
+          ]),
+          exposureByPosition: new Map<Position, number>([
+            ['RB', 10],
+            ['WR', 2],
+          ]),
+        },
+      ],
+      [
+        '2',
+        {
+          marginalByPlayer: new Map([['rb2', 12]]),
+          exposureByPosition: new Map<Position, number>([['WR', 18]]),
+        },
+      ],
+    ]);
+
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: ['RB'],
+      surplus: ['WR'],
+      rosterProfiles: profiles,
+      finalists: 1,
+    });
+
+    expect(found).toHaveLength(1);
+    expect(found[0]!.fitScore).toBeGreaterThan(0.5);
+    expect(found[0]!.acceptanceScore).toBeGreaterThan(0.5);
+    expect(found[0]!.rationale.length).toBe(4);
+    expect(found[0]!.evidenceScore).toBeGreaterThan(0);
+  });
+});
+
+describe('player evaluation', () => {
+  it('shrinks uncertain production toward this roster\'s replacement level', () => {
+    const reliable = evaluatePlayer({
+      projectedPoints: 18,
+      replacementPoints: 10,
+      sd: 6,
+      confidence: 0.9,
+    });
+    const fragile = evaluatePlayer({
+      projectedPoints: 18,
+      replacementPoints: 10,
+      sd: 6,
+      confidence: 0.25,
+    });
+
+    expect(reliable.evidenceAdjustedPoints).toBeGreaterThan(fragile.evidenceAdjustedPoints);
+    expect(fragile.evidenceAdjustedPoints).toBeGreaterThanOrEqual(10);
+    expect(fragile.uncertaintyPenalty).toBeGreaterThan(0);
+  });
+
+  it('selects p25 for win-now and p75 for rebuild decisions', () => {
+    const quantiles = predictionQuantiles(18, 6);
+    expect(
+      evaluatePlayer({ projectedPoints: 18, sd: 6, confidence: 1, quantiles, objective: 'winNow' })
+        .scenarioPoints,
+    ).toBeCloseTo(quantiles.p25, 6);
+    expect(
+      evaluatePlayer({ projectedPoints: 18, sd: 6, confidence: 1, quantiles, objective: 'rebuild' })
+        .scenarioPoints,
+    ).toBeCloseTo(quantiles.p75, 6);
+  });
+});
+
+describe('scheme signal', () => {
+  it('treats volume and a light box as a small running-back edge', () => {
+    const signal = schemeSignal({
+      position: 'RB',
+      carryShare: 0.65,
+      offense: { team: 'R', passRate: 0.44, playsPerGame: 68 },
+      defense: { team: 'D', shellIndex: 0.7, pressureIndex: 0, rushEpaAdjusted: 0.06 },
+    });
+
+    expect(signal.score).toBeGreaterThan(0);
+    expect(signal.decisionWeight).toBeLessThan(0.08);
+    expect(signal.reasons).toContain('light-box tendency');
   });
 });

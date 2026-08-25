@@ -1,6 +1,8 @@
 import {
   analyzeRosters,
   asPlayerId,
+  evaluatePlayer,
+  predictionQuantiles,
   type DepthAssessment,
   type LineupCandidate,
   type Position,
@@ -9,6 +11,8 @@ import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, scoreFor } from './projections';
+import { loadExplanation } from './projections';
+import { projectionConfidence } from './explain';
 import { loadMarketValues } from './values';
 
 /**
@@ -27,6 +31,12 @@ export interface RosterPlayer {
   readonly age: number | null;
   readonly projected: number;
   readonly sd: number;
+  readonly p25: number;
+  readonly p50: number;
+  readonly p75: number;
+  readonly modelConfidence: number;
+  /** Evidence- and risk-adjusted points used for decision ranking. */
+  readonly decisionPoints: number;
   /** Points the optimal lineup loses without this player. */
   readonly marginal: number;
   readonly starting: boolean;
@@ -68,7 +78,10 @@ export const analyzeRoster = async (
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
+      teamCount: snapshot.league.teamCount,
+      ppr: snapshot.league.scoring.rec,
+    }),
     loadIdentities(),
     loadAvailability(),
   ]);
@@ -101,11 +114,44 @@ export const analyzeRoster = async (
   const analysis = analyses.get(teamId);
   if (analysis === undefined) return null;
 
+  const explanationEntries = await Promise.all(
+    roster.playerIds.map(
+      async (id) => [
+        String(id),
+        await loadExplanation(snapshot.league.season, snapshot.asOfWeek, String(id)),
+      ] as const,
+    ),
+  );
+  const explanations = new Map(explanationEntries);
+
   const players: RosterPlayer[] = analysis.marginal.map((entry) => {
     const id = String(entry.playerId);
     const projection = artifact.players[id];
     const identity = identities[id];
     const marketValue = values.get(id)?.value ?? 0;
+    const weekly = view.context.pool.get(snapshot.asOfWeek)?.get(asPlayerId(id));
+    const quantiles =
+      weekly?.p25 === undefined || weekly.p50 === undefined || weekly.p75 === undefined
+        ? predictionQuantiles(entry.projected, projection?.sd ?? 0)
+        : { p25: weekly.p25, p50: weekly.p50, p75: weekly.p75 };
+    const why = explanations.get(id);
+    const modelConfidence =
+      why === undefined
+        ? projection?.basis === 'rookie-prior'
+          ? 0.25
+          : 0.5
+        : projectionConfidence(
+            why.effectiveGames,
+            projection?.basis === 'rookie-prior' || why.prior === undefined,
+          );
+    const decision = evaluatePlayer({
+      projectedPoints: entry.projected,
+      sd: projection?.sd ?? 0,
+      confidence: modelConfidence,
+      quantiles,
+      replacementPoints: entry.replacedBy,
+      objective: 'balanced',
+    });
 
     // Age comes from the crosswalk's birthdate, the only place it reliably
     // exists for every rostered player.
@@ -123,6 +169,9 @@ export const analyzeRoster = async (
       age: age === null || !Number.isFinite(age) ? null : age,
       projected: entry.projected,
       sd: projection?.sd ?? 0,
+      ...quantiles,
+      modelConfidence,
+      decisionPoints: decision.evidenceAdjustedPoints,
       marginal: entry.marginal,
       starting: entry.starting,
       marketValue,

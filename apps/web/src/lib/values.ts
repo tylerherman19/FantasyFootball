@@ -43,6 +43,13 @@ export interface MarketData {
   readonly picks: Map<string, number>;
 }
 
+export interface MarketQueryOptions {
+  /** Number of teams in the actual league, not a hard-coded 12-team default. */
+  readonly teamCount?: number;
+  /** League reception scoring: 0, 0.5, or 1 in the common formats. */
+  readonly ppr?: number;
+}
+
 /**
  * Cached for an hour: the market moves, but not minute to minute.
  *
@@ -56,15 +63,18 @@ const CACHE_MS = 60 * 60 * 1000;
 export const loadMarketData = async (
   format: LeagueFormat,
   superFlex: boolean,
+  options: MarketQueryOptions = {},
 ): Promise<MarketData> => {
   const isDynasty = format === 'dynasty' || format === 'keeper';
   const numQbs = superFlex ? 2 : 1;
-  const key = `${isDynasty}-${numQbs}`;
+  const numTeams = Math.max(2, Math.min(32, Math.round(options.teamCount ?? 12)));
+  const ppr = Math.max(0, Math.min(1, options.ppr ?? 1));
+  const key = `${isDynasty}-${numQbs}-${numTeams}-${ppr}`;
 
   const hit = cache.get(key);
   if (hit !== undefined && Date.now() - hit.at < CACHE_MS) return hit.data;
 
-  const url = `${API}?isDynasty=${isDynasty}&numQbs=${numQbs}&numTeams=12&ppr=1`;
+  const url = `${API}?isDynasty=${isDynasty}&numQbs=${numQbs}&numTeams=${numTeams}&ppr=${ppr}`;
   const response = await fetch(url, { headers: { accept: 'application/json' } }).catch(() => null);
 
   if (response === null || !response.ok) {
@@ -109,4 +119,5 @@ export const loadMarketData = async (
 export const loadMarketValues = async (
   format: LeagueFormat,
   superFlex: boolean,
-): Promise<Map<string, MarketValue>> => (await loadMarketData(format, superFlex)).players;
+  options: MarketQueryOptions = {},
+): Promise<Map<string, MarketValue>> => (await loadMarketData(format, superFlex, options)).players;

@@ -133,6 +133,7 @@ def apply_weekly_role_gate(
     has_team: bool,
     roster_status: str | None,
     depth_rank: int | None,
+    team_has_qb1: bool = False,
 ) -> tuple[dict[str, float], float, bool]:
     """Remove workload the current NFL role says a player cannot have.
 
@@ -142,7 +143,10 @@ def apply_weekly_role_gate(
     Missing source data is not treated as proof of inactivity.
     """
     inactive_roster = roster_status is not None and roster_status.upper() != "ACT"
-    backup_qb = position.upper() == "QB" and depth_rank is not None and depth_rank > 1
+    backup_qb = position.upper() == "QB" and (
+        (depth_rank is not None and depth_rank > 1)
+        or (depth_rank is None and team_has_qb1)
+    )
     active = has_team and not inactive_roster and not backup_qb
     if active:
         return dict(stats), sd, True
@@ -222,6 +226,11 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
                     zip(latest["gsis_id"].to_list(), latest["status"].to_list(), strict=True)
                 )
         depth_by_gsis = rookie_prior._current_depth_ranks(store, as_of)
+        qb1_teams = {
+            canonical_team(team_by_gsis.get(player_id))
+            for player_id, rank in depth_by_gsis.items()
+            if rank == 1 and team_by_gsis.get(player_id)
+        }
 
     # Byes come from the full season schedule, not from the exported week.
     #
@@ -266,9 +275,10 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             position,
             stats,
             spreads.get(source_id, 6.0),
-            has_team=bool(team),
+            has_team=bool(team and team != "FA"),
             roster_status=None if is_team_defense else status_by_gsis.get(source_id),
             depth_rank=None if is_team_defense else depth_by_gsis.get(source_id),
+            team_has_qb1=team in qb1_teams,
         )
 
         players[sleeper_id] = {

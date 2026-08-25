@@ -47,3 +47,14 @@ def test_missing_depth_data_does_not_invent_a_backup_designation():
     assert stats == {"pass_yd": 245.0}
     assert sd == 7.9
     assert active is True
+
+
+def test_unranked_qb_is_suppressed_when_his_team_has_an_explicit_qb1():
+    stats, sd, active = apply_weekly_role_gate(
+        "QB", {"pass_yd": 245.0}, 7.9,
+        has_team=True, roster_status="ACT", depth_rank=None, team_has_qb1=True,
+    )
+
+    assert stats == {"pass_yd": 0.0}
+    assert sd == 0.0
+    assert active is False

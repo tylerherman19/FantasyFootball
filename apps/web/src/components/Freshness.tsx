@@ -1,4 +1,8 @@
+'use client';
+
 import type { SourceFreshness } from '@ffe/ingest';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 /**
  * How old the numbers are, on screen, always.
@@ -75,6 +79,9 @@ export const Freshness = ({
   readonly sources: readonly SourceFreshness[];
   readonly modelGeneratedAt: string | null;
 }) => {
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const overall = worstOf(sources);
   const tone = TONE[overall] ?? TONE.unknown!;
 
@@ -82,6 +89,28 @@ export const Freshness = ({
     modelGeneratedAt === null
       ? null
       : (sources.find((source) => source.source === 'projections')?.ageMinutes ?? null);
+
+  const forceReload = async (): Promise<void> => {
+    setRefreshing(true);
+    setRefreshMessage(null);
+
+    try {
+      const response = await fetch('/api/reload', { method: 'POST' });
+      const body = (await response.json()) as {
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) throw new Error(body.error ?? 'Refresh failed');
+
+      setRefreshMessage(body.message ?? 'League data reloaded.');
+      router.refresh();
+    } catch (cause) {
+      setRefreshMessage(cause instanceof Error ? cause.message : 'Refresh failed');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <details className="group text-xs" style={{ color: 'var(--ink-muted)' }}>
@@ -149,6 +178,23 @@ export const Freshness = ({
             </tbody>
           </table>
         )}
+
+        <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2" style={{ borderColor: 'var(--rule)' }}>
+          <button
+            type="button"
+            onClick={forceReload}
+            disabled={refreshing}
+            className="text-[11px] font-semibold disabled:opacity-50"
+            style={{ color: 'var(--accent)' }}
+          >
+            {refreshing ? 'Reloading…' : 'Force reload'}
+          </button>
+          {refreshMessage !== null && (
+            <span className="text-right text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+              {refreshMessage}
+            </span>
+          )}
+        </div>
 
         {/* What to actually do about anything stale. A command beats a red dot. */}
         {sources.some((s) => s.health === 'stale' && s.rebuildCommand !== null) && (

@@ -1,4 +1,4 @@
-name: Weekly snapshot
+name: Football data refresh and weekly snapshot
 
 permissions:
   contents: write
@@ -15,6 +15,9 @@ concurrency:
 # data and quietly contaminate the accuracy record.
 on:
   schedule:
+    # Daily source/model rebuild keeps injuries inside their 24-hour cadence.
+    - cron: '0 10 * * *'
+    # Tuesday's fixed pre-kickoff capture remains the accuracy record.
     - cron: '0 16 * * 2'
   workflow_dispatch:
     inputs:
@@ -47,6 +50,7 @@ on:
 
 jobs:
   snapshot:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 16 * * 2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +71,7 @@ jobs:
   # versioned model record and the deployment trigger. No generated number is
   # synthesized in the web app.
   rebuild-projections:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 10 * * *'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

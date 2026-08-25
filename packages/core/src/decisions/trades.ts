@@ -369,9 +369,20 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
     }
   }
 
-  const ranked = candidates
+  // The raw search is ordered by a cheap lineup/fit proxy, but a single
+  // partner can generate many equally fair packages. Keep the screen broad
+  // and reserve room for multiple opposing rosters.
+  const topCandidates = candidates
     .sort((a, b) => b.proxyScore - a.proxyScore)
-    .slice(0, finalists)
+    .reduce((selected, candidate) => {
+      if (selected.length >= finalists) return selected;
+      const partnerCount = selected.filter((item) => item.partnerId === candidate.partnerId).length;
+      if (partnerCount >= 3) return selected;
+      selected.push(candidate);
+      return selected;
+    }, [] as Candidate[]);
+
+  const ranked = topCandidates
     .map((candidate) => {
       const intelligence: TradeIntelligenceOptions = {
         ...(input.rosterProfiles === undefined ? {} : { rosterProfiles: input.rosterProfiles }),
@@ -432,14 +443,14 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
       (a, b) => b.recommendationScore - a.recommendationScore || youthGain(b) - youthGain(a),
     );
     const gains = byValue.filter((evaluation) => (evaluation.valueDelta.get(myTeamId) ?? 0) > 0);
-    return gains.length > 0 ? gains : byValue.slice(0, 3);
+    return gains.length > 0 ? gains : byValue.slice(0, finalists);
   }
 
   const helpful = ranked.filter(
     (evaluation) => (evaluation.odds.get(myTeamId)?.titleDelta ?? 0) > floor,
   );
 
-  return helpful.length > 0 ? helpful : ranked.slice(0, 3);
+  return helpful.length > 0 ? helpful : ranked.slice(0, finalists);
 };
 
 const hasDuplicatePosition = (assets: readonly TradeAsset[]): boolean =>

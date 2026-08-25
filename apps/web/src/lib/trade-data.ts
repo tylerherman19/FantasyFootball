@@ -46,7 +46,9 @@ import { loadOffense } from './offense';
  */
 const SCREEN_ITERATIONS = 300;
 const FINALIST_ITERATIONS = 1_200;
-const FINALIST_COUNT = 3;
+const SCREEN_FINALIST_COUNT = 36;
+const FINALIST_COUNT = 18;
+const MAX_FINALISTS_PER_PARTNER = 3;
 
 /**
  * Positions worth trading.
@@ -493,12 +495,24 @@ const buildTrades = async (
     assetsByTeam,
     needs,
     surplus,
-    finalists: 6,
+    finalists: SCREEN_FINALIST_COUNT,
     ...targeting,
   });
 
-  const evaluations = screened
-    .slice(0, FINALIST_COUNT)
+  // Keep the list broad enough to be useful without letting one roster consume
+  // every slot. The engine has already ranked these by the selected objective;
+  // this pass preserves that order while guaranteeing partner diversity.
+  const finalistCandidates: TradeEvaluation[] = [];
+  const finalistsByPartner = new Map<string, number>();
+  for (const candidate of screened) {
+    if (finalistCandidates.length >= FINALIST_COUNT) break;
+    const count = finalistsByPartner.get(candidate.sideB.teamId) ?? 0;
+    if (count >= MAX_FINALISTS_PER_PARTNER) continue;
+    finalistCandidates.push(candidate);
+    finalistsByPartner.set(candidate.sideB.teamId, count + 1);
+  }
+
+  const evaluations = finalistCandidates
     .map((candidate) =>
       findTrades({
         context: { ...context, iterations: FINALIST_ITERATIONS },

@@ -1,5 +1,5 @@
 import { LeagueNav } from '@/components/LeagueNav';
-import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { RailLayout } from '@/components/design/DrillRail';
 import { LeagueRail } from '@/components/design/LeagueRail';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
@@ -166,16 +166,8 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
       {nav}
 
         <RailLayout
-        rail={
-          <LeagueRail view={view}>
-            <RailBlock title="What this page answers">
-              What each defense is trying to take away from your players this week — and, per
-              player and in points, how much that is worth. Three measured attempts to turn the
-              matchup into a number all failed, so scheme lives beside a projection rather than
-              inside it, and the page says so rather than implying otherwise with a colour.
-            </RailBlock>
-          </LeagueRail>
-        }
+        contextBar={false}
+        rail={<LeagueRail view={view} />}
       >
         {/* ---- your week, leading ----------------------------------------- */}
         {decisions.length > 0 && (
@@ -186,14 +178,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
                 : `Scheme could change ${closeCalls} of your ${starters.length} lineup calls.`
             }
             source="nflverse play-by-play · scheme read displayed, never applied to the projection"
-            note={
-              <>
-                Matchups describe the shape of a player&rsquo;s week. Your lineup margin decides
-                whether that description should change an action. Here, every starter&rsquo;s advantage
-                over his best eligible bench alternative is wider than the largest scheme effect{' '}
-                {finding === null ? 'measured by the model' : `detected across ${finding.n.toLocaleString()} player-weeks`}.
-              </>
-            }
+            note="Scheme describes the matchup. Your projection still decides the start."
           >
             <div className="scheme-thesis">
               <div>

@@ -64,9 +64,7 @@ export const Distribution = ({
               opacity={band.opacity}
               rx={2}
             >
-              <title>
-                {band.label}: {from.value.toFixed(1)} – {to.value.toFixed(1)}
-              </title>
+              <title>{`${band.label}: ${from.value.toFixed(1)} – ${to.value.toFixed(1)}`}</title>
             </rect>
           );
         })}

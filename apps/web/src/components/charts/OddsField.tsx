@@ -110,10 +110,7 @@ export const OddsField = ({
               stroke={team.isMine ? 'var(--ground)' : 'none'}
               strokeWidth={2}
             >
-              <title>
-                {team.name} — {(team.titlePct * 100).toFixed(1)}% to win,{' '}
-                {(team.playoffPct * 100).toFixed(0)}% to reach the playoffs
-              </title>
+              <title>{`${team.name} — ${(team.titlePct * 100).toFixed(1)}% to win, ${(team.playoffPct * 100).toFixed(0)}% to reach the playoffs`}</title>
             </circle>
           </g>
         );

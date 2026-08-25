@@ -50,7 +50,10 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
     await Promise.all([
       myTeamId === null ? Promise.resolve(null) : analyzeRoster(view, myTeamId),
       buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-      loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+      loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
+        teamCount: snapshot.league.teamCount,
+        ppr: snapshot.league.scoring.rec,
+      }),
       loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
       loadDefenses().catch(() => null),
       loadSchemeFinding().catch(() => null),

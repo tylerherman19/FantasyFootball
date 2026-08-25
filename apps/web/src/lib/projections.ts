@@ -1,6 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { applyAvailability, asPlayerId, scoreStatLine, type PlayerId, type Position } from '@ffe/core';
+import {
+  applyAvailability,
+  asPlayerId,
+  playProbability,
+  scoreStatLine,
+  type PlayerId,
+  type Position,
+} from '@ffe/core';
 import type { PlayerProjection, ProjectionPool } from '@ffe/core';
 
 /**
@@ -29,6 +36,11 @@ export interface ArtifactPlayer {
   readonly byeWeek: number | null;
   /** True when the player is on an NFL roster. Not a statement about any week. */
   readonly active: boolean;
+  /** NFL depth-chart rank when known. */
+  readonly depthRank?: number | null;
+  /** Starting baseline retained for a backup QB's contingency scenario. */
+  readonly contingencyStats?: Readonly<Record<string, number>>;
+  readonly contingencySd?: number;
   /**
    * Where the projection came from. `rookie-prior` is a draft-capital estimate
    * for a player who has never taken an NFL snap, and the UI should say so
@@ -182,11 +194,15 @@ const toProjection = (
   rules: Readonly<Record<string, number>>,
   injuryStatus: string | null = null,
   week: number | null = null,
+  useContingency = false,
+  roleProbability = 1,
 ): PlayerProjection | null => {
   if (!SKILL.includes(player.position)) return null;
   const position = player.position as Position;
 
-  const scored = Math.max(0, scoreStatLine(player.stats ?? {}, rules));
+  const sourceStats = useContingency ? (player.contingencyStats ?? player.stats) : player.stats;
+  const sourceSd = useContingency ? (player.contingencySd ?? player.sd) : player.sd;
+  const scored = Math.max(0, scoreStatLine(sourceStats ?? {}, rules));
 
   /*
    * A bye belongs to a week, not to a player.
@@ -203,7 +219,15 @@ const toProjection = (
 
   // Availability is applied here rather than in the model, because injuries
   // change daily and the artifact is rebuilt weekly.
-  const adjusted = applyAvailability(scored, player.sd, injuryStatus, onBye);
+  // A backup QB's line is a mixture: zero if QB1 plays, his contingency line
+  // if QB1 does not. This preserves both the expected mean and the wider
+  // uncertainty instead of pretending the backup is either fully active or
+  // irrelevant.
+  const roleMean = scored * roleProbability;
+  const roleVariance =
+    roleProbability * (sourceSd * sourceSd + scored * scored) - roleMean * roleMean;
+  const roleSd = Math.sqrt(Math.max(roleVariance, 0));
+  const adjusted = applyAvailability(roleMean, roleSd, injuryStatus, onBye);
 
   return {
     playerId: asPlayerId(player.playerId),
@@ -216,7 +240,7 @@ const toProjection = (
     gameId: onBye || player.gameId === '' ? `bye-${player.playerId}` : player.gameId,
     gameLoading: player.gameLoading,
     // A ruled-out player must never reach the lineup solver.
-    active: player.active && adjusted.playProbability > 0,
+    active: (player.active || useContingency) && adjusted.playProbability > 0,
   };
 };
 
@@ -251,18 +275,74 @@ export const buildPool = (
   const byeByWeek = new Map<number, PlayerId[]>();
   const onBye = new Map<PlayerId, PlayerProjection>();
 
+  /*
+   * The artifact deliberately removes QB2 volume from the normal forecast.
+   * Before building each pool, identify the first contingency quarterback for
+   * every team. This is a mutually exclusive role gate: the healthy QB1 keeps
+   * his line and the backup stays at zero; when QB1 is out, exactly one backup
+   * receives his contingency line.
+   */
+  const contingencyQbByTeam = new Map<string, ArtifactPlayer>();
+  const qbsByTeam = new Map<string, ArtifactPlayer[]>();
+  for (const player of players) {
+    if (player.position !== 'QB' || player.team === '' || player.team === 'FA') continue;
+    const list = qbsByTeam.get(player.team) ?? [];
+    list.push(player);
+    qbsByTeam.set(player.team, list);
+  }
+  for (const [team, qbs] of qbsByTeam) {
+    const backup = qbs
+      .filter((player) => player.contingencyStats !== undefined)
+      .sort((a, b) => (a.depthRank ?? 99) - (b.depthRank ?? 99))[0];
+    if (backup !== undefined) contingencyQbByTeam.set(team, backup);
+  }
+
+  const primaryFor = (team: string): ArtifactPlayer | undefined =>
+    qbsByTeam.get(team)?.find(
+      (candidate) => candidate.active && (candidate.depthRank === 1 || candidate.depthRank == null),
+    );
+
+  const roleProbabilityFor = (player: ArtifactPlayer, includeCurrentAvailability = true): number => {
+    if (player.position !== 'QB' || player.contingencyStats === undefined) return 1;
+    const primary = primaryFor(player.team);
+    if (primary === undefined) return 1;
+    return includeCurrentAvailability
+      ? 1 - playProbability(availability[primary.playerId]?.injuryStatus ?? null)
+      : 0;
+  };
+
+  const useContingencyFor = (player: ArtifactPlayer, includeCurrentAvailability = true): boolean => {
+    if (player.contingencyStats === undefined) return false;
+    return roleProbabilityFor(player, includeCurrentAvailability) > 0 &&
+      contingencyQbByTeam.get(player.team)?.playerId === player.playerId;
+  };
+
   for (const player of players) {
     const status = availability[player.playerId]?.injuryStatus ?? null;
 
     if (first !== undefined) {
-      const now = toProjection(player, rules, status, first);
+      const now = toProjection(
+        player,
+        rules,
+        status,
+        first,
+        useContingencyFor(player),
+        roleProbabilityFor(player),
+      );
       if (now !== null) currentWeek.set(now.playerId, now);
     }
 
     // Injuries are applied to this week only. A player out on Sunday is
     // usually back later in the season, and carrying today's designation
     // across fourteen weeks would write off half the league by November.
-    const later = toProjection(player, rules, null, null);
+    const later = toProjection(
+      player,
+      rules,
+      null,
+      null,
+      useContingencyFor(player, false),
+      roleProbabilityFor(player, false),
+    );
     if (later === null) continue;
     baseline.set(later.playerId, later);
 

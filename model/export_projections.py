@@ -281,6 +281,17 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             team_has_qb1=team in qb1_teams,
         )
 
+        # A QB2 is not a weekly fantasy scorer while the QB1 is healthy, but
+        # zeroing him permanently makes the model blind to the most important
+        # role substitution in football: QB1 ruled out -> QB2 starts. Preserve
+        # the player's own starting baseline as a contingency line; the serving
+        # layer activates it only when the team's primary quarterback is ruled
+        # out. It never counts both quarterbacks in the same game.
+        backup_qb = position == "QB" and (
+            (depth_by_gsis.get(source_id) is not None and depth_by_gsis[source_id] > 1)
+            or (depth_by_gsis.get(source_id) is None and team in qb1_teams)
+        )
+
         players[sleeper_id] = {
             "playerId": sleeper_id,
             "name": name,
@@ -300,6 +311,15 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             # serve time, both of which vary by week and neither of which
             # belongs in a flag baked once per artifact.
             "active": active,
+            "depthRank": depth_by_gsis.get(source_id),
+            **(
+                {
+                    "contingencyStats": {k: round(v, 4) for k, v in stats.items()},
+                    "contingencySd": round(spreads.get(source_id, 6.0), 3),
+                }
+                if backup_qb
+                else {}
+            ),
             # Carried so the UI can say where the number came from. A rookie's
             # line is a draft-capital prior, not an observed history, and a
             # product that shows the two identically is lying by omission.

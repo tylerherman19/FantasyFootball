@@ -59,7 +59,10 @@ export default async function TradesPage({
 
   const [trades, values, players, picks] = await Promise.all([
     loadTrades(view, myTeamId, tradeQuery),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex),
+    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
+      teamCount: snapshot.league.teamCount,
+      ppr: snapshot.league.scoring.rec,
+    }),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadPicks(view),
   ]);
@@ -516,8 +519,41 @@ export default async function TradesPage({
                       </div>
                     </div>
 
+                    <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3">
+                      <div>
+                        <div className="axis-label">Partner fit</div>
+                        <CellBar
+                          value={evaluation.acceptanceScore}
+                          max={1}
+                          width={90}
+                          color="var(--p-mid)"
+                          label={`${Math.round(evaluation.acceptanceScore * 100)}%`}
+                        />
+                      </div>
+                      <div>
+                        <div className="axis-label">Your lineup fit</div>
+                        <CellBar
+                          value={evaluation.fitScore}
+                          max={1}
+                          width={90}
+                          color="var(--good)"
+                          label={`${Math.round(evaluation.fitScore * 100)}%`}
+                        />
+                      </div>
+                      <div>
+                        <div className="axis-label">Recommendation</div>
+                        <CellBar
+                          value={evaluation.recommendationScore}
+                          max={100}
+                          width={90}
+                          color="var(--accent)"
+                          label={`${Math.round(evaluation.recommendationScore)}/100`}
+                        />
+                      </div>
+                    </div>
+
                     <p className="mt-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                      {evaluation.verdict}
+                      {evaluation.verdict} {evaluation.rationale.join(' · ')}
                     </p>
                   </article>
                 );

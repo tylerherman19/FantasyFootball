@@ -85,6 +85,8 @@ export {
   type TradeAsset,
   type TradeEvaluation,
   type TradeFinderInput,
+  type TradeIntelligenceOptions,
+  type TradeRosterProfile,
   type TradeSide,
 } from './decisions/trades.js';
 export {
@@ -93,3 +95,10 @@ export {
   type StartSitOption,
   type StartSitVerdict,
 } from './decisions/start-sit.js';
+export {
+  schemeSignal,
+  type DefensiveSchemeProfile,
+  type OffensiveSchemeProfile,
+  type PlayerSchemeContext,
+  type SchemeSignal,
+} from './decisions/scheme.js';

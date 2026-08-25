@@ -19,6 +19,12 @@ export interface TradeAsset {
   readonly position: Position;
   /** Market value from the configured source. */
   readonly value: number;
+  /** Current-season projection used for replacement-aware screening. */
+  readonly projectedPoints?: number;
+  /** Age in years; absent means unknown, never youth by assumption. */
+  readonly age?: number;
+  /** Bounded current scheme signal. It is intentionally a tie-breaker only. */
+  readonly schemeFit?: number;
 }
 
 export interface TradeSide {
@@ -34,6 +40,16 @@ export interface TradeEvaluation {
   readonly valueDelta: ReadonlyMap<string, number>;
   /** How lopsided in market terms, 0 = even. */
   readonly fairness: number;
+  /** Estimated probability that the partner sees a usable trade, 0 to 1. */
+  readonly acceptanceScore: number;
+  /** Replacement-aware fit for the requesting team, 0 to 1. */
+  readonly fitScore: number;
+  /** Difference in current scheme signal, positive favours the receiving side. */
+  readonly schemeDelta: number;
+  /** Composite ranking score used by the finder, 0 to 100. */
+  readonly recommendationScore: number;
+  /** Short, inspectable reasons behind the ranking. */
+  readonly rationale: readonly string[];
   readonly verdict: string;
 }
 
@@ -51,6 +67,48 @@ export const fairnessGap = (valueA: number, valueB: number): number => {
   return larger <= 0 ? 0 : Math.abs(valueA - valueB) / larger;
 };
 
+export interface TradeRosterProfile {
+  /** What the team's optimal lineup loses if a player leaves. */
+  readonly marginalByPlayer: ReadonlyMap<string, number>;
+  /** How exposed the team is at each position. */
+  readonly exposureByPosition: ReadonlyMap<Position, number>;
+}
+
+export interface TradeIntelligenceOptions {
+  readonly rosterProfiles?: ReadonlyMap<string, TradeRosterProfile>;
+  readonly objective?: TradeObjective;
+}
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+const averageScheme = (assets: readonly TradeAsset[]): number => {
+  const known = assets
+    .map((asset) => asset.schemeFit)
+    .filter((value): value is number => value !== undefined);
+  return known.length === 0 ? 0 : known.reduce((sum, value) => sum + value, 0) / known.length;
+};
+
+const lineupHelp = (profile: TradeRosterProfile | undefined, asset: TradeAsset): number => {
+  if (profile === undefined) return 0;
+  const exposure = profile.exposureByPosition.get(asset.position) ?? 0;
+  return Math.min(asset.projectedPoints ?? 0, Math.max(0, exposure));
+};
+
+const outgoingCost = (profile: TradeRosterProfile | undefined, assets: readonly TradeAsset[]): number =>
+  assets.reduce(
+    (sum, asset) => sum + (profile?.marginalByPlayer.get(String(asset.playerId)) ?? 0),
+    0,
+  );
+
+const youthYears = (sends: readonly TradeAsset[], gets: readonly TradeAsset[]): number => {
+  const known = (assets: readonly TradeAsset[]): number[] =>
+    assets.map((asset) => asset.age).filter((age): age is number => age !== undefined);
+  const sent = known(sends);
+  const received = known(gets);
+  if (sent.length === 0 || received.length === 0) return 0;
+  return sent.reduce((a, b) => a + b, 0) / sent.length - received.reduce((a, b) => a + b, 0) / received.length;
+};
+
 const describeVerdict = (myTitleDelta: number, theirTitleDelta: number, gap: number): string => {
   if (myTitleDelta <= 0) return 'declines your odds — pass';
   if (gap > 0.25) return 'helps you, but lopsided enough that they will likely refuse';
@@ -62,6 +120,7 @@ export const evaluateTrade = (
   context: SimContext,
   sideA: TradeSide,
   sideB: TradeSide,
+  intelligence: TradeIntelligenceOptions = {},
 ): TradeEvaluation => {
   const beforeA = currentOdds(context, sideA.teamId);
   const beforeB = currentOdds(context, sideB.teamId);
@@ -84,6 +143,45 @@ export const evaluateTrade = (
 
   const valueA = sumValue(sideA.sends);
   const valueB = sumValue(sideB.sends);
+  const profileA = intelligence.rosterProfiles?.get(sideA.teamId);
+  const profileB = intelligence.rosterProfiles?.get(sideB.teamId);
+  const helpA = sideB.sends.reduce((sum, asset) => sum + lineupHelp(profileA, asset), 0);
+  const helpB = sideA.sends.reduce((sum, asset) => sum + lineupHelp(profileB, asset), 0);
+  const costA = outgoingCost(profileA, sideA.sends);
+  const costB = outgoingCost(profileB, sideB.sends);
+  const netA = helpA - costA;
+  const netB = helpB - costB;
+  const schemeDelta = averageScheme(sideB.sends) - averageScheme(sideA.sends);
+  const fairness = fairnessGap(valueA, valueB);
+  const marketBalance = 1 - fairness;
+  const acceptanceScore = clamp01(
+    0.5 * marketBalance + 0.5 * (1 / (1 + Math.exp(-netB / 6))),
+  );
+  const fitScore = clamp01(0.5 + netA / 20);
+  const titleSignal = clamp01(0.5 + deltaA.titleDelta / 0.04);
+  const futureSignal = clamp01(
+    0.5 + ((valueB - valueA) / Math.max(valueA, 1)) * 0.75 + youthYears(sideA.sends, sideB.sends) * 0.02,
+  );
+  const schemeSignal = clamp01(0.5 + schemeDelta);
+  const objective = intelligence.objective ?? 'balanced';
+  const recommendationScore =
+    100 *
+    (objective === 'winNow'
+      ? 0.55 * titleSignal + 0.25 * acceptanceScore + 0.15 * fitScore + 0.05 * schemeSignal
+      : objective === 'rebuild'
+        ? 0.2 * titleSignal + 0.3 * acceptanceScore + 0.3 * futureSignal + 0.15 * fitScore + 0.05 * schemeSignal
+        : 0.4 * titleSignal + 0.3 * acceptanceScore + 0.25 * fitScore + 0.05 * schemeSignal);
+  const rationale = [
+    acceptanceScore >= 0.65
+      ? 'market-balanced and useful to the other roster'
+      : 'acceptance depends on the partner valuing the fit',
+    fitScore >= 0.6 ? 'fills a replacement-level hole on your roster' : 'limited immediate lineup gain',
+    Math.abs(schemeDelta) >= 0.15
+      ? schemeDelta > 0
+        ? 'scheme context favours what you receive'
+        : 'scheme context favours what you send'
+      : 'scheme is close to neutral',
+  ];
 
   return {
     sideA,
@@ -96,8 +194,13 @@ export const evaluateTrade = (
       [sideA.teamId, valueB - valueA],
       [sideB.teamId, valueA - valueB],
     ]),
-    fairness: fairnessGap(valueA, valueB),
-    verdict: describeVerdict(deltaA.titleDelta, deltaB.titleDelta, fairnessGap(valueA, valueB)),
+    fairness,
+    acceptanceScore,
+    fitScore,
+    schemeDelta,
+    recommendationScore,
+    rationale,
+    verdict: describeVerdict(deltaA.titleDelta, deltaB.titleDelta, fairness),
   };
 };
 
@@ -129,6 +232,8 @@ export interface TradeFinderInput {
   readonly targetPositions?: readonly Position[];
   /** Player ages, for objectives that care. Unknown ages count as prime. */
   readonly ages?: ReadonlyMap<string, number>;
+  /** Replacement-aware roster context, keyed by team id. */
+  readonly rosterProfiles?: ReadonlyMap<string, TradeRosterProfile>;
 }
 
 export type TradeObjective = 'winNow' | 'balanced' | 'rebuild';
@@ -197,12 +302,12 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
     for (const target of theirTargets) {
       for (const offer of myTradeable) {
         // 1-for-1
-        pushIfFair(candidates, partnerId, [offer], [target], band);
+        pushIfFair(candidates, partnerId, [offer], [target], band, input);
 
         // 2-for-1: sweeten with a second piece when the target is worth more.
         for (const sweetener of myTradeable) {
           if (sweetener.playerId === offer.playerId) continue;
-          pushIfFair(candidates, partnerId, [offer, sweetener], [target], band);
+          pushIfFair(candidates, partnerId, [offer, sweetener], [target], band, input);
         }
       }
 
@@ -210,7 +315,7 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
       for (const offer of myTradeable) {
         for (const extra of theirTargets) {
           if (extra.playerId === target.playerId) continue;
-          pushIfFair(candidates, partnerId, [offer], [target, extra], band);
+          pushIfFair(candidates, partnerId, [offer], [target, extra], band, input);
         }
       }
     }
@@ -224,10 +329,12 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
         context,
         { teamId: myTeamId, sends: candidate.iSend },
         { teamId: candidate.partnerId, sends: candidate.iGet },
+        { rosterProfiles: input.rosterProfiles, objective: input.objective },
       ),
     )
     .sort(
       (a, b) =>
+        b.recommendationScore - a.recommendationScore ||
         (b.odds.get(myTeamId)?.titleDelta ?? 0) - (a.odds.get(myTeamId)?.titleDelta ?? 0),
     );
 
@@ -270,9 +377,7 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
    */
   if (objective === 'rebuild') {
     const byValue = [...ranked].sort(
-      (a, b) =>
-        (b.valueDelta.get(myTeamId) ?? 0) - (a.valueDelta.get(myTeamId) ?? 0) ||
-        youthGain(b) - youthGain(a),
+      (a, b) => b.recommendationScore - a.recommendationScore || youthGain(b) - youthGain(a),
     );
     const gains = byValue.filter((evaluation) => (evaluation.valueDelta.get(myTeamId) ?? 0) > 0);
     return gains.length > 0 ? gains : byValue.slice(0, 3);
@@ -291,12 +396,26 @@ const pushIfFair = (
   iSend: readonly TradeAsset[],
   iGet: readonly TradeAsset[],
   band: number,
+  input: TradeFinderInput,
 ): void => {
   const sendValue = sumValue(iSend);
   const getValue = sumValue(iGet);
   if (fairnessGap(sendValue, getValue) > band) return;
 
-  // Cheap proxy: value gained, net of what I give up. Correlates well enough
-  // with the simulated result to rank candidates, and costs nothing.
-  into.push({ partnerId, iSend, iGet, proxyScore: getValue - sendValue });
+  const mine = input.rosterProfiles?.get(input.myTeamId);
+  const partner = input.rosterProfiles?.get(partnerId);
+  const myHelp = iGet.reduce((sum, asset) => sum + lineupHelp(mine, asset), 0);
+  const partnerHelp = iSend.reduce((sum, asset) => sum + lineupHelp(partner, asset), 0);
+  const myCost = outgoingCost(mine, iSend);
+  const scheme = averageScheme(iGet) - averageScheme(iSend);
+
+  // Cheap screen: prioritize actual lineup help and partner fit, then use
+  // market value as a guardrail/tie-breaker. Full simulation still decides the
+  // final order, so the screen cannot turn a proxy into a recommendation.
+  into.push({
+    partnerId,
+    iSend,
+    iGet,
+    proxyScore: myHelp - myCost + partnerHelp * 0.35 + scheme + (getValue - sendValue) * 0.001,
+  });
 };

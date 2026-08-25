@@ -6,18 +6,23 @@ import {
   marginalValues,
   offerCandidates,
   rankPartners,
+  schemeSignal,
   type FitScore,
   type DepthAssessment,
   type LineupCandidate,
   type Position,
   type TradeAsset,
   type TradeEvaluation,
+  type TradeRosterProfile,
 } from '@ffe/core';
 import { unstable_cache } from 'next/cache';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadMarketData } from './values';
+import { buildUsage } from './usage';
+import { loadDefenses, opponentFrom } from './defense';
+import { loadOffense } from './offense';
 
 /**
  * Trade suggestions for one team.
@@ -146,6 +151,11 @@ interface CachedTrades {
     readonly odds: readonly (readonly [string, TradeEvaluation['odds'] extends ReadonlyMap<string, infer V> ? V : never])[];
     readonly valueDelta: readonly (readonly [string, number])[];
     readonly fairness: number;
+    readonly acceptanceScore: number;
+    readonly fitScore: number;
+    readonly schemeDelta: number;
+    readonly recommendationScore: number;
+    readonly rationale: readonly string[];
     readonly verdict: string;
   }[];
   readonly needs: TradeView['needs'];
@@ -164,6 +174,11 @@ const toCacheable = (view: TradeView): CachedTrades => ({
     odds: [...evaluation.odds.entries()],
     valueDelta: [...evaluation.valueDelta.entries()],
     fairness: evaluation.fairness,
+    acceptanceScore: evaluation.acceptanceScore,
+    fitScore: evaluation.fitScore,
+    schemeDelta: evaluation.schemeDelta,
+    recommendationScore: evaluation.recommendationScore,
+    rationale: evaluation.rationale,
     verdict: evaluation.verdict,
   })),
 });
@@ -192,7 +207,7 @@ export const loadTrades = async (
       return result === null ? null : toCacheable(result);
     },
     [
-      'trade-search',
+      'trade-search-v2',
       view.snapshot.league.id,
       String(view.snapshot.asOfWeek),
       teamId,
@@ -217,19 +232,79 @@ const buildTrades = async (
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return null;
 
-  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex);
+  const [{ players: usagePlayers, offenses }, defenses, market, identities, offenseArtifact] = await Promise.all([
+    buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
+    loadDefenses(),
+    loadMarketData(snapshot.league.format, snapshot.league.superFlex, {
+      teamCount: snapshot.league.teamCount,
+      ppr: snapshot.league.scoring.rec,
+    }),
+    loadIdentities(),
+    loadOffense(),
+  ]);
   const values = market.players;
+
+  const ages = new Map<string, number>();
+  for (const [id, identity] of Object.entries(identities)) {
+    if (identity.birthdate === null) continue;
+    const born = Date.parse(identity.birthdate);
+    if (Number.isNaN(born)) continue;
+    ages.set(id, (Date.now() - born) / (365.25 * 24 * 60 * 60 * 1000));
+  }
+
+  const usageById = new Map(usagePlayers.map((player) => [player.playerId, player]));
+  const offenseByTeam = new Map(offenses.map((offense) => [offense.team, offense]));
+  const skillPosition = (position: string): position is 'QB' | 'RB' | 'WR' | 'TE' =>
+    position === 'QB' || position === 'RB' || position === 'WR' || position === 'TE';
+
+  const schemeFitFor = (playerId: string, position: string): number | undefined => {
+    if (!skillPosition(position)) return undefined;
+    const usage = usageById.get(playerId);
+    if (usage === undefined) return undefined;
+    const usageOffense = offenseByTeam.get(usage.team);
+    const offense = offenseArtifact?.teams[usage.team];
+    const opponent = opponentFrom(usage.gameId, usage.team);
+    const defense = opponent === null ? undefined : defenses?.teams[opponent];
+    if (usageOffense === undefined && offense === undefined) return undefined;
+    const signal = schemeSignal({
+      position,
+      targetShare: usage.targetShare,
+      carryShare: usage.carryShare,
+      offense: {
+        team: usage.team,
+        passRate: offense?.passRate ?? usageOffense?.passRate ?? 0.6,
+        neutralPassRate: offense?.neutralPassRate ?? usageOffense?.passRate ?? 0.6,
+        ...(offense?.proe === undefined ? {} : { proe: offense.proe }),
+        ...(offense?.playsPerGame === undefined ? {} : { playsPerGame: offense.playsPerGame }),
+      },
+      ...(defense === undefined ? {} : { defense }),
+    });
+    return signal.score;
+  };
 
   const assetFor = (playerId: string): TradeAsset | null => {
     const projection = artifact.players[playerId];
     const market = values.get(playerId);
     if (projection === undefined || market === undefined) return null;
+    const age = ages.get(playerId);
+    const schemeFit = schemeFitFor(playerId, projection.position);
 
     return {
       playerId: asPlayerId(playerId),
       name: projection.name || market.name,
       position: projection.position as Position,
       value: market.value,
+      // Market value can still exist for a dynasty backup, but he is not an
+      // immediate lineup asset while the starter is healthy. Keep those two
+      // currencies separate so a QB2 cannot look like a weekly starter in the
+      // trade finder.
+      projectedPoints:
+        context.pool.get(snapshot.asOfWeek)?.get(asPlayerId(playerId))?.mean ??
+        (isPlayingIn(projection, snapshot.asOfWeek)
+          ? scoreFor(projection, snapshot.league.scoring.raw, null, snapshot.asOfWeek)
+          : 0),
+      ...(age === undefined ? {} : { age }),
+      ...(schemeFit === undefined ? {} : { schemeFit }),
     };
   };
 
@@ -316,6 +391,20 @@ const buildTrades = async (
     asks: offerCandidates(analyses, fit.partnerTeamId, teamId).slice(0, 4).map(named),
   }));
 
+  const rosterProfiles = new Map<string, TradeRosterProfile>(
+    [...analyses.entries()].map(([id, analysis]) => [
+      id,
+      {
+        marginalByPlayer: new Map(
+          analysis.marginal.map((entry) => [String(entry.playerId), entry.marginal]),
+        ),
+        exposureByPosition: new Map(
+          analysis.depth.map((entry) => [entry.position as Position, entry.exposureToTopLoss]),
+        ),
+      },
+    ]),
+  );
+
   const marginalDetail = marginal
     .map((entry) => {
       const id = String(entry.playerId);
@@ -354,20 +443,6 @@ const buildTrades = async (
 
   // Screen cheaply, then re-simulate the survivors precisely — the same
   // two-stage shape the waiver page uses.
-  /*
-   * Ages, so a rebuild can tell a 22-year-old from a 30-year-old. Derived from
-   * the crosswalk's birthdates; a player without one is treated as prime rather
-   * than guessed at, so a missing date cannot pass for youth.
-   */
-  const identities = await loadIdentities();
-  const ages = new Map<string, number>();
-  for (const [id, identity] of Object.entries(identities)) {
-    if (identity.birthdate === null) continue;
-    const born = Date.parse(identity.birthdate);
-    if (Number.isNaN(born)) continue;
-    ages.set(id, (Date.now() - born) / (365.25 * 24 * 60 * 60 * 1000));
-  }
-
   const targeting = {
     ...(query.objective !== undefined ? { objective: query.objective } : {}),
     ...(query.targetPlayerId != null
@@ -377,6 +452,7 @@ const buildTrades = async (
       ? { targetPositions: [query.targetPosition as Position] }
       : {}),
     ages,
+    rosterProfiles,
   };
 
   const screened = findTrades({

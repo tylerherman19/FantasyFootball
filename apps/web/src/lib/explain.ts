@@ -119,7 +119,7 @@ export const explain = (
       isPrior: true,
       confidence,
       confidenceReasons: reasons,
-      ...(why.scheme === undefined ? {} : { scheme: why.scheme }),
+      ...(why?.scheme === undefined ? {} : { scheme: why.scheme }),
     };
   }
 

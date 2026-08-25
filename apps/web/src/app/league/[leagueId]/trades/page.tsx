@@ -3,30 +3,21 @@ import { RailBlock, RailLayout } from '@/components/design/DrillRail';
 import { LeagueRail } from '@/components/design/LeagueRail';
 import { TradeObjectiveBar } from '@/components/TradeObjectiveBar';
 import { Section } from '@/components/Section';
-import { TradeBuilder } from '@/components/TradeBuilder';
 import {
   CellBar,
   DivergingBar,
   Legend,
   PositionChip,
-  StackedBar,
   formatPct,
 } from '@/components/charts/primitives';
 import { requireSession } from '@/lib/session';
 import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
-import { serializeLeague } from '@/lib/serialize';
 import { loadTrades } from '@/lib/trade-data';
-import { loadPicks } from '@/lib/pick-data';
-import { loadMarketValues } from '@/lib/values';
 
-const pct = (value: number) => `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
+const pct = (value: number) => (value >= 0 ? '+' : '') + (value * 100).toFixed(1) + '%';
 
-const VERDICT_COLOR: Record<string, string> = {
-  thin: 'var(--bad)',
-  balanced: 'var(--ink-muted)',
-  surplus: 'var(--good)',
-};
+const money = (value: number) => (value > 0 ? value.toLocaleString() : '—');
 
 export default async function TradesPage({
   params,
@@ -41,12 +32,12 @@ export default async function TradesPage({
   const one = (value: string | string[] | undefined): string | null =>
     typeof value === 'string' && value !== '' ? value : null;
 
-  const objective = one(search.objective);
-  const tradeQuery = {
-    objective: objective === 'winNow' || objective === 'rebuild' ? objective : 'balanced',
-    targetPlayerId: one(search.target),
-    targetPosition: one(search.pos),
-  } as const;
+  const objectiveParam = one(search.objective);
+  const targetPlayerId = one(search.target);
+  const targetPosition = one(search.pos);
+  const objective =
+    objectiveParam === 'winNow' || objectiveParam === 'rebuild' ? objectiveParam : 'balanced';
+
   const session = await requireSession();
   const view = await loadLeague(leagueId, session.username);
 
@@ -57,25 +48,15 @@ export default async function TradesPage({
   const myTeamId = view.myTeamId;
   const { snapshot } = view;
 
-  const [trades, values, players, picks] = await Promise.all([
-    loadTrades(view, myTeamId, tradeQuery),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
+  const [trades, players] = await Promise.all([
+    loadTrades(view, myTeamId, {
+      objective,
+      targetPlayerId,
+      targetPosition,
     }),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-    loadPicks(view),
   ]);
 
-  const wire = serializeLeague(view, values, players, picks);
-
-  /*
-   * Everyone else's players, as things to go and get.
-   *
-   * Own players are excluded — "trade for a player you already have" is not a
-   * request — and the list is ordered by market value so the names a manager is
-   * most likely to want are reachable without scrolling.
-   */
   const targetable = snapshot.rosters
     .filter((roster) => roster.teamId !== myTeamId)
     .flatMap((roster) =>
@@ -86,13 +67,39 @@ export default async function TradesPage({
           name: player?.name ?? String(id),
           position: player?.position ?? '?',
           teamName: view.teamNames.get(roster.teamId) ?? roster.teamId,
-          value: values.get(String(id))?.value ?? 0,
         };
       }),
     )
     .filter((player) => player.name !== player.id)
-    .sort((a, b) => b.value - a.value)
+    .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 300);
+
+  const selectedPlayer = targetPlayerId === null
+    ? undefined
+    : targetable.find((player) => player.id === targetPlayerId);
+
+  const requestLabel = selectedPlayer !== undefined
+    ? selectedPlayer.name
+    : targetPosition !== null
+      ? targetPosition + 's'
+      : 'a player';
+
+  const proposalScale =
+    trades === null
+      ? 0.005
+      : Math.max(
+          ...trades.evaluations.flatMap((evaluation) => [
+            Math.abs(evaluation.odds.get(myTeamId)?.titleDelta ?? 0),
+            Math.abs(evaluation.odds.get(evaluation.sideB.teamId)?.titleDelta ?? 0),
+          ]),
+          0.005,
+        );
+
+  const isRequestedAsset = (playerId: string, position: string): boolean => {
+    if (targetPlayerId !== null) return playerId === targetPlayerId;
+    if (targetPosition !== null) return position === targetPosition;
+    return false;
+  };
 
   return (
     <>
@@ -108,407 +115,229 @@ export default async function TradesPage({
       <RailLayout
         rail={
           <LeagueRail view={view}>
-            <RailBlock title="What this page answers">
-              A trade is a portfolio change. Both sides are re-simulated before and after, and fairness is answered separately from whether it helps you.
+            <RailBlock title="How to use the finder">
+              Start with what you want to acquire. The engine searches the league for that player
+              or position, then shows the package you should offer for it. The offer side is
+              replacement-aware: it avoids treating a backup quarterback as a weekly starter.
             </RailBlock>
           </LeagueRail>
         }
       >
-        {/*
-         * The finding, before the machinery.
-         *
-         * This page previously opened with a calculator and left the reader to
-         * work out whether any of it mattered. Saying what the search actually
-         * found — and saying plainly when it found nothing that clears the
-         * simulation's resolution — is the difference between a tool that
-         * advises and one that merely computes.
-         */}
-        {trades !== null && (
-          <div
-            className="mb-5 border-l-2 px-4 py-3 text-sm leading-relaxed"
-            style={{ borderColor: 'var(--accent)', background: 'var(--surface-sunk)' }}
-          >
-            {trades.evaluations.length === 0 ? (
-              <>
-                <strong>No package cleared the fairness band.</strong>{' '}
-                <span style={{ color: 'var(--ink-muted)' }}>
-                  Every trade the search built was too lopsided for the other manager to accept.
-                  Widening what you will send — or naming a target above — is the way through.
-                </span>
-              </>
-            ) : (
-              (() => {
-                const best = trades.evaluations[0]!;
-                const delta = best.odds.get(myTeamId)?.titleDelta ?? 0;
-                const floor = 2 / Math.sqrt(1_200);
-                const partner =
-                  view.teamNames.get(best.sideB.teamId) ?? best.sideB.teamId;
-                const gets = best.sideB.sends.map((asset) => asset.name).join(' and ');
-                const sends = best.sideA.sends.map((asset) => asset.name).join(' and ');
-
-                return (
-                  <>
-                    <strong>
-                      {trades.evaluations.length}{' '}
-                      {trades.evaluations.length === 1 ? 'package' : 'packages'} worth proposing.
-                      The best is {sends} to {partner} for {gets}.
-                    </strong>{' '}
-                    <span style={{ color: 'var(--ink-muted)' }}>
-                      {Math.abs(delta) > floor ? (
-                        <>
-                          It moves your title odds {delta > 0 ? 'up' : 'down'}{' '}
-                          {Math.abs(delta * 100).toFixed(1)} points, which is larger than this
-                          simulation&apos;s ±{(floor * 100).toFixed(1)}pp resolution — a real
-                          difference rather than noise.
-                        </>
-                      ) : (
-                        <>
-                          Its effect on your title odds is inside the ±{(floor * 100).toFixed(1)}pp
-                          this simulation can resolve, so treat the ordering below as a shortlist
-                          to judge rather than a ranking to trust to the decimal.
-                        </>
-                      )}
-                    </span>
-                  </>
-                )
-              })()
-            )}
-          </div>
-        )}
+        <header className="mb-8">
+          <div className="eyebrow mb-2">Trade finder</div>
+          <h1 className="max-w-3xl text-3xl font-semibold tracking-tight sm:text-4xl">
+            Get {requestLabel}. See exactly what to offer.
+          </h1>
+          <p className="deck mt-3 max-w-2xl">
+            The model starts from your desired acquisition, not from a list of players you could
+            theoretically move. Each recommendation pairs a target with a concrete offer, then
+            checks lineup impact, partner fit, market balance, and evidence quality.
+          </p>
+        </header>
 
         <TradeObjectiveBar players={targetable} />
 
+        <div
+          className="mb-8 grid gap-px border sm:grid-cols-3"
+          style={{ borderColor: 'var(--rule)', background: 'var(--rule)' }}
+        >
+          <div className="bg-[var(--surface)] p-4">
+            <div className="eyebrow mb-1">Request</div>
+            <div className="text-lg font-semibold">{requestLabel}</div>
+            <div className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              {targetPlayerId !== null || targetPosition !== null
+                ? 'The acquisition side is locked to your selection.'
+                : 'Choose a position or player above to narrow the search.'}
+            </div>
+          </div>
+          <div className="bg-[var(--surface)] p-4">
+            <div className="eyebrow mb-1">Search result</div>
+            <div className="text-lg font-semibold">
+              {trades === null ? 'Unavailable' : trades.evaluations.length + ' proposals'}
+            </div>
+            <div className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Ranked by the engine for your selected objective.
+            </div>
+          </div>
+          <div className="bg-[var(--surface)] p-4">
+            <div className="eyebrow mb-1">Roster context</div>
+            <div className="text-lg font-semibold">
+              {trades === null || trades.needs.length === 0
+                ? 'Balanced'
+                : 'Needs ' + trades.needs.join(' · ')}
+            </div>
+            <div className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Depth changes the offer; it does not override your target.
+            </div>
+          </div>
+        </div>
+
         <Section
-          title="Trade calculator"
-            source="2,000 season simulations · model v1-usage+positional"
+          title="What you should offer"
+          source="1,200 season simulations · market values · replacement-aware lineup analysis · v1-usage+offense+positional"
           note={
             <>
-              Pick players from either side. Each change re-simulates the rest of the season in your
-              browser: market value for whether they&apos;d accept, championship odds for whether you
-              should want it.
+              These are target-first proposals. The right column is what you asked for; the left
+              column is the package the model thinks you should offer. A proposal can be close in
+              market value and still be poor for your roster, so the ranking also prices title odds,
+              lineup contribution, partner acceptance, and evidence confidence.
             </>
           }
+          aside={
+            <Legend
+              items={[
+                { label: 'you offer', color: 'var(--bad)' },
+                { label: 'you get', color: 'var(--good)' },
+              ]}
+            />
+          }
         >
-          <TradeBuilder league={wire} myTeamId={myTeamId} />
-        </Section>
-
-        {trades !== null && trades.partners.length > 0 && (
-          <Section
-            title="Who to call"
-            note={
-              <>
-                Every roster in the league analysed the same way as yours. A trade happens when the
-                piece you are offering is worth more to them than what they give up — so fit is
-                scored in both directions, and the bar is how well the two rosters complement each
-                other.
-              </>
-            }
-          >
-            <div className="space-y-2">
-              {trades.partners.map((partner) => (
-                <article key={partner.partnerTeamId} className="panel p-3.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">
-                      {view.teamNames.get(partner.partnerTeamId) ?? partner.partnerTeamId}
-                    </span>
-                    <CellBar
-                      value={partner.mutualFit}
-                      max={Math.max(...trades.partners.map((other) => other.mutualFit), 1)}
-                      width={110}
-                      color="var(--p-high)"
-                      label={`fit ${partner.mutualFit.toFixed(1)}`}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                    {partner.reason}
-                  </p>
-
-                  {/*
-                    * Both halves of the trade.
-                    *
-                    * This listed only what to send, which is not a proposal —
-                    * "offer them Justice Hill" says nothing about what Justice
-                    * Hill is meant to bring home. Send and ask side by side, each
-                    * measured against the hole it fills on the other roster.
-                    */}
-                  {/*
-                    * `asks` is read defensively because the cached TradeView
-                    * outlives a deploy: a shape added in one release meets
-                    * objects serialised by the previous one, and the field is
-                    * simply absent for the life of that cache entry. TypeScript
-                    * cannot see that — the type is right, the runtime value is
-                    * older than the type.
-                    */}
-                  {(partner.offers.length > 0 || (partner.asks ?? []).length > 0) && (
-                    <div
-                      className="mt-3 grid gap-x-6 gap-y-3 border-t pt-2 sm:grid-cols-2"
-                      style={{ borderColor: 'var(--rule)' }}
-                    >
-                      {([
-                        {
-                          key: 'send',
-                          label: 'You send',
-                          rows: partner.offers,
-                          colour: 'var(--bad)',
-                          suffix: 'to them',
-                          hint: 'Spare in your lineup, and fills a position they are thin at.',
-                        },
-                        {
-                          key: 'get',
-                          label: 'You ask for',
-                          rows: partner.asks ?? [],
-                          colour: 'var(--good)',
-                          suffix: 'to you',
-                          hint: 'Spare in their lineup, and fills a position you are thin at.',
-                        },
-                      ] as const).map((side) => (
-                        <div key={side.key}>
-                          <div
-                            className="mb-1 text-[10px] font-semibold uppercase tracking-widest"
-                            style={{ color: 'var(--ink-faint)' }}
-                            title={side.hint}
-                          >
-                            {side.label}
-                          </div>
-                          {side.rows.length === 0 ? (
-                            <p className="text-xs" style={{ color: 'var(--ink-faint)' }}>
-                              Nothing of theirs is both spare and useful to you — which is why this
-                              partner is lower down the list.
-                            </p>
-                          ) : (
-                            <ul className="text-sm">
-                              {side.rows.map((row) => (
-                                <li
-                                  key={row.playerId}
-                                  className="flex items-center gap-2 py-0.5"
-                                  title={`${row.name} (${row.position}) — projects ${row.projected.toFixed(1)} a week, worth about ${row.helpsThemBy.toFixed(1)} ${side.suffix}`}
-                                >
-                                  <PositionChip position={row.position} />
-                                  <span className="min-w-0 flex-1 truncate text-xs">{row.name}</span>
-                                  <CellBar
-                                    value={row.helpsThemBy}
-                                    max={Math.max(
-                                      ...trades.partners.flatMap((other) =>
-                                        [...other.offers, ...(other.asks ?? [])].map(
-                                          (e) => e.helpsThemBy,
-                                        ),
-                                      ),
-                                      1,
-                                    )}
-                                    width={64}
-                                    color={side.colour}
-                                    label={`+${row.helpsThemBy.toFixed(1)} ${side.suffix}`}
-                                  />
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                </article>
-              ))}
+          {trades === null ? (
+            <div className="panel p-5 text-sm" style={{ color: 'var(--ink-muted)' }}>
+              The trade engine could not load this league&apos;s current projection set.
             </div>
-          </Section>
-        )}
-
-        {trades !== null && trades.depth.length > 0 && (
-          <Section
-            title="What you can actually spare"
-            source="model v1-usage+positional · projections rebuilt weekly"
-            note={
-              <>
-                Measured by consequence, not headcount: what your best lineup loses without each
-                player. A backup behind an elite starter reads as spare; a mediocre starter at a thin
-                spot does not.
-              </>
-            }
-          >
-
-            <div className="panel mb-5 divide-y" style={{ borderColor: 'var(--rule)' }}>
-              {[...trades.depth]
-                .sort((a, b) => b.totalMarginal - a.totalMarginal)
-                .map((assessment) => (
-                  <div key={assessment.position} className="flex items-center gap-3 px-3 py-2">
-                    <span className="w-9 shrink-0">
-                      <PositionChip position={assessment.position} />
-                    </span>
-                    <span
-                      className="w-16 shrink-0 text-[11px] font-medium"
-                      style={{ color: VERDICT_COLOR[assessment.verdict] }}
-                    >
-                      {assessment.verdict}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <StackedBar
-                        max={Math.max(...trades.depth.map((entry) => entry.totalMarginal), 1)}
-                        width={300}
-                        height={13}
-                        showLabels={false}
-                        segments={[
-                          { key: 'exposed', value: assessment.exposureToTopLoss, color: 'var(--bad)' },
-                          {
-                            key: 'rest',
-                            value: Math.max(0, assessment.totalMarginal - assessment.exposureToTopLoss),
-                            color: 'var(--p-high)',
-                          },
-                        ]}
-                      />
-                    </span>
-                    <span className="tabular w-12 shrink-0 text-right text-xs">
-                      {assessment.totalMarginal.toFixed(1)}
-                    </span>
-                    <span className="tabular w-12 shrink-0 text-right text-xs" style={{ color: 'var(--bad)' }}>
-                      −{assessment.exposureToTopLoss.toFixed(1)}
-                    </span>
-                  </div>
-                ))}
+          ) : trades.evaluations.length === 0 ? (
+            <div className="panel p-5">
+              <h3 className="text-lg font-semibold">
+                No {requestLabel} package cleared the search.
+              </h3>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                There is no market-balanced package for this target in the current data. Try a
+                specific player, switch from win now to balanced or rebuild, or choose another
+                position. The page will never fill this section with unrelated players just to make
+                the list look busy.
+              </p>
             </div>
-
-            <h3 className="eyebrow mb-2">Most movable players</h3>
-            <div className="panel scroll-x">
-              <table className="data-table" style={{ minWidth: '34rem' }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: '2rem' }} />
-                    <th style={{ minWidth: '10rem' }}>Player</th>
-                    <th style={{ width: '7rem' }}>Projects</th>
-                    <th style={{ width: '7rem' }}>Lineup loses</th>
-                    <th style={{ width: '7rem' }}>Market value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trades.marginal.slice(0, 12).map((entry) => (
-                    <tr key={entry.playerId}>
-                      <td>
-                        <PositionChip position={entry.position} />
-                      </td>
-                      <td className="max-w-[13rem] truncate font-medium">{entry.name}</td>
-                      <td>
-                        <CellBar
-                          value={entry.projected}
-                          max={Math.max(...trades.marginal.map((other) => other.projected), 1)}
-                          width={50}
-                          color="var(--p-low)"
-                          label={entry.projected.toFixed(1)}
-                        />
-                      </td>
-                      <td>
-                        <CellBar
-                          value={entry.marginal}
-                          max={Math.max(...trades.marginal.map((other) => other.marginal), 1)}
-                          width={50}
-                          color={entry.marginal < 1 ? 'var(--good)' : 'var(--p-high)'}
-                          label={entry.marginal.toFixed(1)}
-                        />
-                      </td>
-                      <td>
-                        <CellBar
-                          value={entry.value}
-                          max={Math.max(...trades.marginal.map((other) => other.value), 1)}
-                          width={50}
-                          color="var(--pos-qb)"
-                          label={entry.value > 0 ? entry.value.toLocaleString() : '—'}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              A player whose market bar is long and whose &ldquo;lineup loses&rdquo; bar is short is
-              the ideal chip: you are selling something the market prices and your roster does not
-              use.
-            </p>
-          </Section>
-        )}
-
-        {trades !== null && trades.evaluations.length > 0 && (
-          <Section
-            title="Proposals worth making"
-            note="Scanned across the league, filtered to packages a real manager might accept, then simulated. Player rows show p25 / p50 / p75 weekly points; the bars are the change in each side's title probability."
-            aside={
-              <Legend
-                items={[
-                  { label: 'helps', color: 'var(--good)' },
-                  { label: 'hurts', color: 'var(--bad)' },
-                ]}
-              />
-            }
-          >
-            <div className="space-y-3">
+          ) : (
+            <div className="space-y-5">
               {trades.evaluations.map((evaluation, index) => {
                 const mine = evaluation.odds.get(myTeamId);
                 const theirs = evaluation.odds.get(evaluation.sideB.teamId);
-                const partner = view.teamNames.get(evaluation.sideB.teamId) ?? evaluation.sideB.teamId;
-
-                // A common scale across every proposal, so the bars compare.
-                const widest = Math.max(
-                  ...trades.evaluations.flatMap((other) => [
-                    Math.abs(other.odds.get(myTeamId)?.titleDelta ?? 0),
-                    Math.abs(other.odds.get(other.sideB.teamId)?.titleDelta ?? 0),
-                  ]),
-                  0.005,
-                );
+                const partner =
+                  view.teamNames.get(evaluation.sideB.teamId) ?? evaluation.sideB.teamId;
 
                 return (
-                  <article key={index} className="panel p-4">
-                    <div className="eyebrow mb-3">with {partner}</div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
+                  <article key={index} className="panel overflow-hidden">
+                    <div
+                      className="flex flex-wrap items-start justify-between gap-4 border-b p-4"
+                      style={{ borderColor: 'var(--rule)' }}
+                    >
                       <div>
-                        <div className="axis-label mb-1 uppercase tracking-wider">You send</div>
-                        {evaluation.sideA.sends.map((asset) => (
-                          <div key={String(asset.playerId)} className="flex items-center gap-1.5 py-0.5">
-                            <PositionChip position={asset.position} />
-                            <span className="truncate text-sm font-medium">{asset.name}</span>
-                            <span className="tabular ml-auto text-[10px]" style={{ color: 'var(--ink-faint)' }}>
-                              {asset.quantiles === undefined
-                                ? asset.value.toLocaleString()
-                                : `${asset.quantiles.p25.toFixed(1)} / ${asset.quantiles.p50.toFixed(1)} / ${asset.quantiles.p75.toFixed(1)}`}
-                            </span>
-                          </div>
-                        ))}
+                        <div className="eyebrow mb-1">Proposal {index + 1}</div>
+                        <h3 className="text-xl font-semibold">Offer to {partner}</h3>
+                        <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                          This partner owns the {requestLabel} you selected.
+                        </p>
                       </div>
-                      <div>
-                        <div className="axis-label mb-1 uppercase tracking-wider">You get</div>
-                        {evaluation.sideB.sends.map((asset) => (
-                          <div key={String(asset.playerId)} className="flex items-center gap-1.5 py-0.5">
-                            <PositionChip position={asset.position} />
-                            <span className="truncate text-sm font-medium">{asset.name}</span>
-                            <span className="tabular ml-auto text-[10px]" style={{ color: 'var(--ink-faint)' }}>
-                              {asset.quantiles === undefined
-                                ? asset.value.toLocaleString()
-                                : `${asset.quantiles.p25.toFixed(1)} / ${asset.quantiles.p50.toFixed(1)} / ${asset.quantiles.p75.toFixed(1)}`}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="text-right">
+                        <div className="eyebrow mb-1">Recommendation</div>
+                        <div className="figure text-2xl font-semibold" style={{ color: 'var(--accent)' }}>
+                          {Math.round(evaluation.recommendationScore)}/100
+                        </div>
                       </div>
                     </div>
 
-                    <div
-                      className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3"
-                      style={{ borderColor: 'var(--rule)' }}
-                    >
+                    <div className="grid gap-0 md:grid-cols-2">
+                      <div
+                        className="border-b-2 p-4 md:border-b-0 md:border-r"
+                        style={{ borderColor: 'var(--bad)', background: 'color-mix(in srgb, var(--bad) 5%, var(--surface))' }}
+                      >
+                        <div className="eyebrow mb-1">What you should offer</div>
+                        <p className="mb-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                          Players the model can remove with the least damage to your optimal lineup.
+                        </p>
+                        <div className="space-y-2">
+                          {evaluation.sideA.sends.map((asset) => (
+                            <div
+                              key={String(asset.playerId)}
+                              className="flex items-center gap-2 border-t pt-2"
+                              style={{ borderColor: 'var(--rule)' }}
+                            >
+                              <PositionChip position={asset.position} />
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                {asset.name}
+                              </span>
+                              <span className="tabular text-xs" style={{ color: 'var(--ink-muted)' }}>
+                                {asset.quantiles === undefined
+                                  ? money(asset.value)
+                                  : asset.quantiles.p25.toFixed(1) + ' / ' + asset.quantiles.p50.toFixed(1) + ' / ' + asset.quantiles.p75.toFixed(1)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 border-t pt-3 text-xs" style={{ borderColor: 'var(--rule)' }}>
+                          <span style={{ color: 'var(--ink-muted)' }}>Offer value </span>
+                          <strong>
+                            {evaluation.sideA.sends.reduce((sum, asset) => sum + asset.value, 0).toLocaleString()}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-4"
+                        style={{ background: 'color-mix(in srgb, var(--good) 5%, var(--surface))' }}
+                      >
+                        <div className="eyebrow mb-1">What you get</div>
+                        <p className="mb-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                          The requested target is highlighted. No unrelated player is substituted.
+                        </p>
+                        <div className="space-y-2">
+                          {evaluation.sideB.sends.map((asset) => {
+                            const requested = isRequestedAsset(String(asset.playerId), asset.position);
+                            return (
+                              <div
+                                key={String(asset.playerId)}
+                                className="flex items-center gap-2 border-t pt-2"
+                                style={{ borderColor: requested ? 'var(--good)' : 'var(--rule)' }}
+                              >
+                                <PositionChip position={asset.position} />
+                                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                  {asset.name}
+                                </span>
+                                {requested && (
+                                  <span
+                                    className="shrink-0 text-[10px] font-semibold uppercase tracking-widest"
+                                    style={{ color: 'var(--good)' }}
+                                  >
+                                    target
+                                  </span>
+                                )}
+                                <span className="tabular text-xs" style={{ color: 'var(--ink-muted)' }}>
+                                  {asset.quantiles === undefined
+                                    ? money(asset.value)
+                                    : asset.quantiles.p25.toFixed(1) + ' / ' + asset.quantiles.p50.toFixed(1) + ' / ' + asset.quantiles.p75.toFixed(1)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-3 border-t pt-3 text-xs" style={{ borderColor: 'var(--rule)' }}>
+                          <span style={{ color: 'var(--ink-muted)' }}>Return value </span>
+                          <strong>
+                            {evaluation.sideB.sends.reduce((sum, asset) => sum + asset.value, 0).toLocaleString()}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 border-t p-4 sm:grid-cols-4" style={{ borderColor: 'var(--rule)' }}>
                       <div>
                         <div className="axis-label">Your title odds</div>
                         <DivergingBar
                           value={mine?.titleDelta ?? 0}
-                          max={widest}
-                          width={140}
+                          max={proposalScale}
+                          width={150}
                           label={pct(mine?.titleDelta ?? 0)}
                         />
                       </div>
                       <div>
-                        <div className="axis-label">Their title odds</div>
-                        <DivergingBar
-                          value={theirs?.titleDelta ?? 0}
-                          max={widest}
-                          width={140}
-                          label={pct(theirs?.titleDelta ?? 0)}
+                        <div className="axis-label">Partner acceptance</div>
+                        <CellBar
+                          value={evaluation.acceptanceScore}
+                          max={1}
+                          width={110}
+                          color="var(--p-mid)"
+                          label={Math.round(evaluation.acceptanceScore * 100) + '%'}
                         />
                       </div>
                       <div>
@@ -516,68 +345,83 @@ export default async function TradesPage({
                         <CellBar
                           value={evaluation.fairness}
                           max={0.3}
-                          width={90}
+                          width={110}
                           color={evaluation.fairness > 0.2 ? 'var(--warn)' : 'var(--p-mid)'}
                           label={formatPct(evaluation.fairness)}
                         />
                       </div>
-                    </div>
-
-                    <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-4">
                       <div>
-                        <div className="axis-label">Partner fit</div>
-                        <CellBar
-                          value={evaluation.acceptanceScore}
-                          max={1}
-                          width={90}
-                          color="var(--p-mid)"
-                          label={`${Math.round(evaluation.acceptanceScore * 100)}%`}
-                        />
-                      </div>
-                      <div>
-                        <div className="axis-label">Your lineup fit</div>
-                        <CellBar
-                          value={evaluation.fitScore}
-                          max={1}
-                          width={90}
-                          color="var(--good)"
-                          label={`${Math.round(evaluation.fitScore * 100)}%`}
-                        />
-                      </div>
-                      <div>
-                        <div className="axis-label" title="Confidence in the model evidence behind both sides">
-                          Evidence
-                        </div>
+                        <div className="axis-label">Evidence</div>
                         <CellBar
                           value={evaluation.evidenceScore}
                           max={1}
-                          width={90}
+                          width={110}
                           color="var(--p-low)"
-                          label={`${Math.round(evaluation.evidenceScore * 100)}%`}
-                        />
-                      </div>
-                      <div>
-                        <div className="axis-label">Recommendation</div>
-                        <CellBar
-                          value={evaluation.recommendationScore}
-                          max={100}
-                          width={90}
-                          color="var(--accent)"
-                          label={`${Math.round(evaluation.recommendationScore)}/100`}
+                          label={Math.round(evaluation.evidenceScore * 100) + '%'}
                         />
                       </div>
                     </div>
 
-                    <p className="mt-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                      {evaluation.verdict} {evaluation.rationale.join(' · ')}
-                    </p>
+                    <div className="grid gap-4 border-t p-4 sm:grid-cols-3" style={{ borderColor: 'var(--rule)' }}>
+                      <div>
+                        <div className="axis-label">Partner title odds</div>
+                        <DivergingBar
+                          value={theirs?.titleDelta ?? 0}
+                          max={proposalScale}
+                          width={150}
+                          label={pct(theirs?.titleDelta ?? 0)}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <div className="axis-label mb-1">Why this package</div>
+                        <ul className="space-y-1 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                          {evaluation.rationale.map((reason) => (
+                            <li key={reason}>• {reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="border-t px-4 py-3 text-sm font-medium" style={{ borderColor: 'var(--rule)' }}>
+                      {evaluation.verdict}
+                    </div>
                   </article>
                 );
               })}
             </div>
-          </Section>
-        )}
+          )}
+        </Section>
 
+        {trades !== null && (
+          <details className="mb-10 border-t pt-4" style={{ borderColor: 'var(--rule)' }}>
+            <summary className="cursor-pointer text-sm font-semibold">
+              How the finder decides what to show
+            </summary>
+            <div className="mt-3 grid gap-4 text-xs leading-relaxed sm:grid-cols-3" style={{ color: 'var(--ink-muted)' }}>
+              <div>
+                <strong className="text-[var(--ink)]">1. Start with your target.</strong>
+                <p className="mt-1">
+                  A position or player filter applies to the acquisition side. If you choose RB,
+                  every package shown here acquires an RB.
+                </p>
+              </div>
+              <div>
+                <strong className="text-[var(--ink)]">2. Find a credible offer.</strong>
+                <p className="mt-1">
+                  The engine tests what you can send against the partner&apos;s roster and market
+                  value. It does not show a generic list of movable players as the answer.
+                </p>
+              </div>
+              <div>
+                <strong className="text-[var(--ink)]">3. Rank the package.</strong>
+                <p className="mt-1">
+                  Title odds, replacement-aware lineup value, partner fit, scheme context, and
+                  evidence confidence determine the order.
+                </p>
+              </div>
+            </div>
+          </details>
+        )}
       </RailLayout>
     </>
   );

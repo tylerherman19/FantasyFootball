@@ -1,6 +1,6 @@
 import type { PlayerId, Position } from '../domain/index.js';
 import { currentOdds, oddsDelta, type OddsDelta, type SimContext } from './odds.js';
-import { evaluatePlayer } from '../valuation/player-evaluation.js';
+import { evaluatePlayer, type PlayerEvaluationInput } from '../valuation/player-evaluation.js';
 
 /**
  * Trades, priced in both currencies at once.
@@ -109,17 +109,18 @@ const lineupHelp = (
   if (profile === undefined) return 0;
   const exposure = profile.exposureByPosition.get(asset.position) ?? 0;
   const projected = asset.projectedPoints ?? 0;
-  const evaluation = evaluatePlayer({
+  const evaluationInput: PlayerEvaluationInput = {
     projectedPoints: projected,
-    sd: asset.sd,
-    confidence: asset.modelConfidence,
-    quantiles: asset.quantiles,
     // The team's current hole is the relevant replacement level. This keeps a
     // high raw projection from being counted as full value when the roster
     // only has a small starting slot for it.
     replacementPoints: Math.max(0, projected - Math.max(0, exposure)),
     objective,
-  });
+    ...(asset.sd === undefined ? {} : { sd: asset.sd }),
+    ...(asset.modelConfidence === undefined ? {} : { confidence: asset.modelConfidence }),
+    ...(asset.quantiles === undefined ? {} : { quantiles: asset.quantiles }),
+  };
+  const evaluation = evaluatePlayer(evaluationInput);
   return Math.min(evaluation.evidenceAdjustedPoints, Math.max(0, exposure));
 };
 

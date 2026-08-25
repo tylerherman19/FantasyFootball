@@ -180,56 +180,44 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
         {/* ---- your week, leading ----------------------------------------- */}
         {decisions.length > 0 && (
           <Section
-            title={`Your week ${snapshot.asOfWeek} roster, against ${new Set(decisions.map((d) => d.opponent)).size} defenses`}
+            title={
+              closeCalls === 0
+                ? `Scheme changes none of your ${starters.length} lineup calls this week.`
+                : `Scheme could change ${closeCalls} of your ${starters.length} lineup calls.`
+            }
             source="nflverse play-by-play · scheme read displayed, never applied to the projection"
             note={
               <>
-                Your roster in starting-lineup order — this league&rsquo;s own slots, filled
-                optimally, bench underneath — with the defense each man faces and{' '}
-                <strong>whether the matchup can change the call</strong>. That last part is what was
-                missing: a hostile read next to a player whose replacement is four points worse is a
-                fact about the defense, not a fact about your lineup.
-                <br />
-                <span style={{ color: 'var(--ink-faint)' }}>
-                  Each margin is against the best benched player eligible for that exact slot, flex
-                  rules included — the same number the{' '}
-                  <a href={`/league/${leagueId}/lineup`} className="underline">
-                    lineup page
-                  </a>{' '}
-                  quotes, from the same function.
-                </span>
-                <br />
-                <span style={{ color: 'var(--ink-faint)' }}>
-                  The bound comes from the variance study below — the largest movement scheme could
-                  produce for that player without {finding === null ? 'the study' : `${finding.n.toLocaleString()} player-weeks`}{' '}
-                  having detected it.
-                </span>
+                Matchups describe the shape of a player&rsquo;s week. Your lineup margin decides
+                whether that description should change an action. Here, every starter&rsquo;s advantage
+                over his best eligible bench alternative is wider than the largest scheme effect{' '}
+                {finding === null ? 'measured by the model' : `detected across ${finding.n.toLocaleString()} player-weeks`}.
               </>
             }
           >
-            <StatRow columns={3}>
-              <StatTile
-                label="Starts scheme could reach"
-                value={`${closeCalls} of ${starters.length}`}
-                sub={
-                  closeCalls === 0
-                    ? 'every start/sit margin is wider than the matchup is worth'
-                    : 'margins narrow enough that the read is not irrelevant'
-                }
-              />
-              <StatTile
-                label="Widest bound on your roster"
-                value={`±${Math.max(0, ...decisions.map((d) => d.verdict.bound)).toFixed(2)} pts`}
-                sub="most scheme could move any one of your players"
-              />
-              <StatTile
-                label="Toughest read"
-                value={[...starters].sort((a, b) => a.effect.score - b.effect.score)[0]?.name ?? '—'}
-                sub={[...starters].sort((a, b) => a.effect.score - b.effect.score)[0]?.effect.headline ?? ''}
-              />
-            </StatRow>
+            <div className="scheme-thesis">
+              <div>
+                <span className="scheme-thesis-number">{closeCalls}</span>
+                <span className="scheme-thesis-denominator">/{starters.length}</span>
+              </div>
+              <p>
+                <strong>starts within scheme&rsquo;s reach</strong>
+                <span>
+                  Widest measured effect: ±{Math.max(0, ...decisions.map((d) => d.verdict.bound)).toFixed(2)} points.
+                  Toughest read: {[...starters].sort((a, b) => a.effect.score - b.effect.score)[0]?.name ?? '—'}.
+                </span>
+              </p>
+              <a href={`/league/${leagueId}/lineup`} className="scheme-lineup-link">
+                Open lineup analysis →
+              </a>
+            </div>
 
-            <div className="mt-3 grid gap-2">
+            <div className="scheme-roster">
+              <div className="scheme-roster-head" aria-hidden="true">
+                <span>Slot / player</span>
+                <span>Decision</span>
+                <span>Matchup read</span>
+              </div>
               {decisions.map((entry, index) => {
                 const { row, name, team, opponent, defense, effect, verdict } = entry;
                 /*
@@ -242,41 +230,55 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
                 return (
                   <div key={row.playerId}>
                     {firstBench && (
-                      <div
-                        className="mt-4 mb-2 flex items-baseline gap-3 border-t pt-2"
-                        style={{ borderColor: 'var(--rule)' }}
-                      >
-                        <span className="eyebrow" style={{ color: 'var(--ink-faint)' }}>
-                          Bench
-                        </span>
-                        <span className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                          nobody is being started over them, so the matchup has nothing to change
-                        </span>
+                      <div className="scheme-bench-rule">
+                        <span>Bench</span>
+                        <span>Context only—these players are not being started over anyone.</span>
                       </div>
                     )}
 
                     <article
-                      className="panel p-3"
-                      style={
-                        verdict.couldFlip ? { borderColor: 'var(--accent)', borderWidth: 1 } : undefined
-                      }
+                      className="scheme-player-row"
+                      data-flippable={verdict.couldFlip}
                     >
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="scheme-player-identity">
                         <span
-                          className="tabular w-11 shrink-0 text-[10px] font-bold uppercase tracking-wider"
+                          className="scheme-slot"
                           style={{ color: row.starting ? 'var(--accent)' : 'var(--ink-faint)' }}
                           title={row.starting ? `Starting at ${row.slotLabel}` : 'On your bench'}
                         >
                           {row.slotLabel}
                         </span>
-                        <PositionChip position={row.position} />
-                        <span className="text-sm font-semibold">{name}</span>
-                        <span className="text-xs" style={{ color: 'var(--ink-faint)' }}>
-                          {team} vs {opponent}
-                        </span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <PositionChip position={row.position} />
+                            <span className="text-sm font-semibold">{name}</span>
+                          </div>
+                          <span className="scheme-opponent">{team} vs {opponent}</span>
+                        </div>
+                      </div>
+
+                      <div className="scheme-decision">
+                        {row.starting ? (
+                          <>
+                            <strong>{verdict.couldFlip ? 'Review this call' : 'Hold the start'}</strong>
+                            <span>
+                              {verdict.alternative === null
+                                ? 'No eligible bench alternative.'
+                                : `${verdict.margin < 0.1 ? verdict.margin.toFixed(2) : verdict.margin.toFixed(1)} pts over ${verdict.alternative}; scheme ceiling ±${verdict.bound.toFixed(2)}.`}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <strong>Bench context</strong>
+                            <span>{row.projected.toFixed(1)} projected points.</span>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="scheme-matchup">
                         <span
-                          className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                          style={{ background: 'var(--surface-sunk)', color: scoreColor(effect.score) }}
+                          className="scheme-matchup-label"
+                          style={{ color: scoreColor(effect.score) }}
                           title={`Scheme read: ${effect.headline}. Displayed only — never applied to the projection.`}
                         >
                           {effect.headline}
@@ -284,46 +286,20 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
                         <DivergingBar value={effect.score} max={1} width={90} height={9} />
                       </div>
 
-                      {/*
-                        * The decision sentence sits above the description, not
-                        * below it. A reader who stops after one line should stop
-                        * having learned whether to act, not having learned a
-                        * coverage statistic.
-                        */}
-                      {row.starting && (
-                        <p
-                          className="mt-1.5 text-xs font-semibold leading-relaxed"
-                          style={{ color: verdict.couldFlip ? 'var(--accent)' : 'var(--ink)' }}
-                        >
-                          {verdict.sentence}
-                        </p>
-                      )}
-
-                      <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                      <p className="scheme-evidence">
                         {effect.detail}
                       </p>
 
-                      <div
-                        className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]"
-                        style={{ color: 'var(--ink-faint)' }}
-                      >
+                      <div className="scheme-row-meta">
                         <span>
                           {opponent} shell{' '}
-                          <strong style={{ color: 'var(--ink-muted)' }}>
-                            {shellLabel(defense.shellIndex)}
-                          </strong>
+                          <strong>{shellLabel(defense.shellIndex)}</strong>
                         </span>
                         <span>
-                          projected{' '}
-                          <strong style={{ color: 'var(--ink-muted)' }}>
-                            {row.projected.toFixed(1)} pts
-                          </strong>
+                          projection <strong>{row.projected.toFixed(1)}</strong>
                         </span>
                         <span>
-                          opportunity{' '}
-                          <strong style={{ color: 'var(--ink-muted)' }}>
-                            {entry.opportunities.toFixed(1)}
-                          </strong>
+                          opportunity <strong>{entry.opportunities.toFixed(1)}</strong>
                         </span>
                       </div>
                     </article>

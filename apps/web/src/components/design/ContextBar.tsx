@@ -150,8 +150,8 @@ export const ContextBar = () => {
         background: 'color-mix(in srgb, var(--ground) 93%, transparent)',
       }}
     >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <span className="eyebrow shrink-0" style={{ color: 'var(--accent)' }}>
+      <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <span className="eyebrow min-w-0 max-w-full truncate" style={{ color: 'var(--accent)' }}>
           {active.label}
         </span>
 
@@ -166,7 +166,7 @@ export const ContextBar = () => {
 
         {active.source !== '' && (
           <span
-            className="shrink-0 truncate text-[10px] uppercase tracking-widest"
+            className="min-w-0 max-w-full truncate text-[10px] uppercase tracking-widest"
             style={{ color: 'var(--ink-faint)' }}
           >
             {active.source}

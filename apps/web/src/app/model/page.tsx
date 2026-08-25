@@ -182,6 +182,24 @@ export default function ModelPage() {
       </Section>
 
       <Section
+        title="Offensive scheme is part of the engine"
+        note="The player model owns the adjustment; the UI exposes every term that moved it."
+      >
+        <Para>
+          Player history is not projected in a vacuum. The current offense contributes a bounded
+          context adjustment through pace, neutral pass identity and PROE. That changes the
+          opportunities available to the player — attempts, carries and targets — while the
+          player-specific efficiency rates remain separately regressed.
+        </Para>
+        <Para>
+          The adjustment is capped at six percent. It can move a receiver on a fast, pass-first
+          offense or a back on a slow, run-first one, but it cannot overpower the role evidence.
+          Every player page exposes the decomposition as a drill-down: positional baseline, player
+          opportunity, offensive scheme, efficiency and the 25th / 50th / 75th outcome band.
+        </Para>
+      </Section>
+
+      <Section
         title="What it tried and threw away"
         note="The part worth reading if you only read one."
       >

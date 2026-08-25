@@ -8,6 +8,8 @@ import {
   type Position,
 } from '../domain/index.js';
 import type { PlayerProjection, TeamContext } from '../sim/roster-projection.js';
+import { predictionQuantiles } from '../projections/quantiles.js';
+import { evaluatePlayer } from '../valuation/player-evaluation.js';
 import { oddsDelta, type SimContext } from './odds.js';
 import { fairnessGap, findTrades, evaluateTrade, type TradeAsset } from './trades.js';
 import { schemeSignal } from './scheme.js';
@@ -311,7 +313,41 @@ describe('trades', () => {
     expect(found).toHaveLength(1);
     expect(found[0]!.fitScore).toBeGreaterThan(0.5);
     expect(found[0]!.acceptanceScore).toBeGreaterThan(0.5);
-    expect(found[0]!.rationale.length).toBe(3);
+    expect(found[0]!.rationale.length).toBe(4);
+    expect(found[0]!.evidenceScore).toBeGreaterThan(0);
+  });
+});
+
+describe('player evaluation', () => {
+  it('shrinks uncertain production toward this roster\'s replacement level', () => {
+    const reliable = evaluatePlayer({
+      projectedPoints: 18,
+      replacementPoints: 10,
+      sd: 6,
+      confidence: 0.9,
+    });
+    const fragile = evaluatePlayer({
+      projectedPoints: 18,
+      replacementPoints: 10,
+      sd: 6,
+      confidence: 0.25,
+    });
+
+    expect(reliable.evidenceAdjustedPoints).toBeGreaterThan(fragile.evidenceAdjustedPoints);
+    expect(fragile.evidenceAdjustedPoints).toBeGreaterThanOrEqual(10);
+    expect(fragile.uncertaintyPenalty).toBeGreaterThan(0);
+  });
+
+  it('selects p25 for win-now and p75 for rebuild decisions', () => {
+    const quantiles = predictionQuantiles(18, 6);
+    expect(
+      evaluatePlayer({ projectedPoints: 18, sd: 6, confidence: 1, quantiles, objective: 'winNow' })
+        .scenarioPoints,
+    ).toBeCloseTo(quantiles.p25, 6);
+    expect(
+      evaluatePlayer({ projectedPoints: 18, sd: 6, confidence: 1, quantiles, objective: 'rebuild' })
+        .scenarioPoints,
+    ).toBeCloseTo(quantiles.p75, 6);
   });
 });
 

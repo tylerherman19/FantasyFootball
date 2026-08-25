@@ -26,8 +26,14 @@ export const Why = ({
   // adjustment bars are comparable rather than each filling their own row.
   const scale = Math.max(total, ...steps.map((s) => Math.abs(s.value)), 1);
 
+  const hasScheme = steps.some((step) => step.label === 'Offensive scheme');
+
   return (
-    <div className={className}>
+    <details className={className} open>
+      <summary className="cursor-pointer text-sm font-medium" style={{ color: 'var(--ink-muted)' }}>
+        Model components · {isPrior ? 'draft-capital prior' : hasScheme ? 'history · opportunity · offensive scheme · efficiency' : 'history · opportunity · efficiency'}
+      </summary>
+      <div className="mt-3">
       <table className="w-full">
         <tbody>
           {steps.map((step, index) => {
@@ -109,13 +115,24 @@ export const Why = ({
         ))}
       </dl>
 
+      {explanation.scheme !== undefined && (
+        <p className="mt-3 text-xs leading-relaxed" style={{ color: 'var(--ink-faint)' }}>
+          Offensive context: <strong>{explanation.scheme.team || 'current team'}</strong> · pace{' '}
+          {(explanation.scheme.paceMultiplier ?? 1).toFixed(3)}× · pass shape{' '}
+          {(explanation.scheme.passShape ?? 1).toFixed(3)}× · run shape{' '}
+          {(explanation.scheme.runShape ?? 1).toFixed(3)}×. These bounded multipliers changed
+          opportunity; efficiency is shown separately above.
+        </p>
+      )}
+
       {!isPrior && (
         <p className="mt-2 text-xs" style={{ color: 'var(--ink-faint)' }}>
           Built from {explanation.effectiveGames.toFixed(1)} recency-weighted games. Older games
           count for less; a game ten back counts half.
         </p>
       )}
-    </div>
+      </div>
+    </details>
   );
 };
 

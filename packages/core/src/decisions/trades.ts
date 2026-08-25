@@ -1,5 +1,6 @@
 import type { PlayerId, Position } from '../domain/index.js';
 import { currentOdds, oddsDelta, type OddsDelta, type SimContext } from './odds.js';
+import { evaluatePlayer } from '../valuation/player-evaluation.js';
 
 /**
  * Trades, priced in both currencies at once.
@@ -25,6 +26,16 @@ export interface TradeAsset {
   readonly age?: number;
   /** Bounded current scheme signal. It is intentionally a tie-breaker only. */
   readonly schemeFit?: number;
+  /** Predictive standard deviation in current-season fantasy points. */
+  readonly sd?: number;
+  /** Confidence in the model evidence behind the projection, 0 to 1. */
+  readonly modelConfidence?: number;
+  /** Outcome scenarios from the same distribution as the season simulator. */
+  readonly quantiles?: {
+    readonly p25: number;
+    readonly p50: number;
+    readonly p75: number;
+  };
 }
 
 export interface TradeSide {
@@ -48,6 +59,8 @@ export interface TradeEvaluation {
   readonly schemeDelta: number;
   /** Composite ranking score used by the finder, 0 to 100. */
   readonly recommendationScore: number;
+  /** Average evidence confidence of the assets changing hands. */
+  readonly evidenceScore: number;
   /** Short, inspectable reasons behind the ranking. */
   readonly rationale: readonly string[];
   readonly verdict: string;
@@ -88,17 +101,44 @@ const averageScheme = (assets: readonly TradeAsset[]): number => {
   return known.length === 0 ? 0 : known.reduce((sum, value) => sum + value, 0) / known.length;
 };
 
-const lineupHelp = (profile: TradeRosterProfile | undefined, asset: TradeAsset): number => {
+const lineupHelp = (
+  profile: TradeRosterProfile | undefined,
+  asset: TradeAsset,
+  objective: TradeObjective = 'balanced',
+): number => {
   if (profile === undefined) return 0;
   const exposure = profile.exposureByPosition.get(asset.position) ?? 0;
-  return Math.min(asset.projectedPoints ?? 0, Math.max(0, exposure));
+  const projected = asset.projectedPoints ?? 0;
+  const evaluation = evaluatePlayer({
+    projectedPoints: projected,
+    sd: asset.sd,
+    confidence: asset.modelConfidence,
+    quantiles: asset.quantiles,
+    // The team's current hole is the relevant replacement level. This keeps a
+    // high raw projection from being counted as full value when the roster
+    // only has a small starting slot for it.
+    replacementPoints: Math.max(0, projected - Math.max(0, exposure)),
+    objective,
+  });
+  return Math.min(evaluation.evidenceAdjustedPoints, Math.max(0, exposure));
 };
 
 const outgoingCost = (profile: TradeRosterProfile | undefined, assets: readonly TradeAsset[]): number =>
   assets.reduce(
-    (sum, asset) => sum + (profile?.marginalByPlayer.get(String(asset.playerId)) ?? 0),
+    (sum, asset) => {
+      const marginal = profile?.marginalByPlayer.get(String(asset.playerId)) ?? 0;
+      // Marginal value is already replacement-aware. Confidence only softens
+      // the cost of giving up a fragile estimate; it never creates value.
+      const confidence = clamp01(asset.modelConfidence ?? 0.75);
+      return sum + marginal * (0.75 + 0.25 * confidence);
+    },
     0,
   );
+
+const averageConfidence = (assets: readonly TradeAsset[]): number => {
+  if (assets.length === 0) return 0.75;
+  return assets.reduce((sum, asset) => sum + clamp01(asset.modelConfidence ?? 0.75), 0) / assets.length;
+};
 
 const youthYears = (sends: readonly TradeAsset[], gets: readonly TradeAsset[]): number => {
   const known = (assets: readonly TradeAsset[]): number[] =>
@@ -145,8 +185,9 @@ export const evaluateTrade = (
   const valueB = sumValue(sideB.sends);
   const profileA = intelligence.rosterProfiles?.get(sideA.teamId);
   const profileB = intelligence.rosterProfiles?.get(sideB.teamId);
-  const helpA = sideB.sends.reduce((sum, asset) => sum + lineupHelp(profileA, asset), 0);
-  const helpB = sideA.sends.reduce((sum, asset) => sum + lineupHelp(profileB, asset), 0);
+  const objective = intelligence.objective ?? 'balanced';
+  const helpA = sideB.sends.reduce((sum, asset) => sum + lineupHelp(profileA, asset, objective), 0);
+  const helpB = sideA.sends.reduce((sum, asset) => sum + lineupHelp(profileB, asset, objective), 0);
   const costA = outgoingCost(profileA, sideA.sends);
   const costB = outgoingCost(profileB, sideB.sends);
   const netA = helpA - costA;
@@ -158,24 +199,29 @@ export const evaluateTrade = (
     0.5 * marketBalance + 0.5 * (1 / (1 + Math.exp(-netB / 6))),
   );
   const fitScore = clamp01(0.5 + netA / 20);
+  const evidenceScore = clamp01(
+    (averageConfidence(sideA.sends) + averageConfidence(sideB.sends)) / 2,
+  );
   const titleSignal = clamp01(0.5 + deltaA.titleDelta / 0.04);
   const futureSignal = clamp01(
     0.5 + ((valueB - valueA) / Math.max(valueA, 1)) * 0.75 + youthYears(sideA.sends, sideB.sends) * 0.02,
   );
   const schemeSignal = clamp01(0.5 + schemeDelta);
-  const objective = intelligence.objective ?? 'balanced';
   const recommendationScore =
     100 *
     (objective === 'winNow'
-      ? 0.55 * titleSignal + 0.25 * acceptanceScore + 0.15 * fitScore + 0.05 * schemeSignal
+      ? 0.50 * titleSignal + 0.25 * acceptanceScore + 0.15 * fitScore + 0.05 * evidenceScore + 0.05 * schemeSignal
       : objective === 'rebuild'
-        ? 0.2 * titleSignal + 0.3 * acceptanceScore + 0.3 * futureSignal + 0.15 * fitScore + 0.05 * schemeSignal
-        : 0.4 * titleSignal + 0.3 * acceptanceScore + 0.25 * fitScore + 0.05 * schemeSignal);
+        ? 0.15 * titleSignal + 0.25 * acceptanceScore + 0.3 * futureSignal + 0.15 * fitScore + 0.10 * evidenceScore + 0.05 * schemeSignal
+        : 0.35 * titleSignal + 0.3 * acceptanceScore + 0.25 * fitScore + 0.05 * evidenceScore + 0.05 * schemeSignal);
   const rationale = [
     acceptanceScore >= 0.65
       ? 'market-balanced and useful to the other roster'
       : 'acceptance depends on the partner valuing the fit',
     fitScore >= 0.6 ? 'fills a replacement-level hole on your roster' : 'limited immediate lineup gain',
+    evidenceScore >= 0.65
+      ? 'projection is supported by substantial recent evidence'
+      : 'projection carries meaningful evidence risk — treat the mean as a range',
     Math.abs(schemeDelta) >= 0.15
       ? schemeDelta > 0
         ? 'scheme context favours what you receive'
@@ -199,6 +245,7 @@ export const evaluateTrade = (
     fitScore,
     schemeDelta,
     recommendationScore,
+    evidenceScore,
     rationale,
     verdict: describeVerdict(deltaA.titleDelta, deltaB.titleDelta, fairness),
   };
@@ -324,14 +371,18 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   const ranked = candidates
     .sort((a, b) => b.proxyScore - a.proxyScore)
     .slice(0, finalists)
-    .map((candidate) =>
-      evaluateTrade(
+    .map((candidate) => {
+      const intelligence: TradeIntelligenceOptions = {
+        ...(input.rosterProfiles === undefined ? {} : { rosterProfiles: input.rosterProfiles }),
+        ...(input.objective === undefined ? {} : { objective: input.objective }),
+      };
+      return evaluateTrade(
         context,
         { teamId: myTeamId, sends: candidate.iSend },
         { teamId: candidate.partnerId, sends: candidate.iGet },
-        { rosterProfiles: input.rosterProfiles, objective: input.objective },
-      ),
-    )
+        intelligence,
+      );
+    })
     .sort(
       (a, b) =>
         b.recommendationScore - a.recommendationScore ||
@@ -404,8 +455,9 @@ const pushIfFair = (
 
   const mine = input.rosterProfiles?.get(input.myTeamId);
   const partner = input.rosterProfiles?.get(partnerId);
-  const myHelp = iGet.reduce((sum, asset) => sum + lineupHelp(mine, asset), 0);
-  const partnerHelp = iSend.reduce((sum, asset) => sum + lineupHelp(partner, asset), 0);
+  const objective = input.objective ?? 'balanced';
+  const myHelp = iGet.reduce((sum, asset) => sum + lineupHelp(mine, asset, objective), 0);
+  const partnerHelp = iSend.reduce((sum, asset) => sum + lineupHelp(partner, asset, objective), 0);
   const myCost = outgoingCost(mine, iSend);
   const scheme = averageScheme(iGet) - averageScheme(iSend);
 

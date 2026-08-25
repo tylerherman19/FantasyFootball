@@ -14,11 +14,13 @@ import {
   type TradeAsset,
   type TradeEvaluation,
   type TradeRosterProfile,
+  predictionQuantiles,
 } from '@ffe/core';
 import { unstable_cache } from 'next/cache';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
-import { isPlayingIn, loadArtifact, scoreFor } from './projections';
+import { isPlayingIn, loadArtifact, loadExplanation, scoreFor } from './projections';
+import { projectionConfidence } from './explain';
 import { loadMarketData } from './values';
 import { buildUsage } from './usage';
 import { loadDefenses, opponentFrom } from './defense';
@@ -155,6 +157,7 @@ interface CachedTrades {
     readonly fitScore: number;
     readonly schemeDelta: number;
     readonly recommendationScore: number;
+    readonly evidenceScore: number;
     readonly rationale: readonly string[];
     readonly verdict: string;
   }[];
@@ -178,6 +181,7 @@ const toCacheable = (view: TradeView): CachedTrades => ({
     fitScore: evaluation.fitScore,
     schemeDelta: evaluation.schemeDelta,
     recommendationScore: evaluation.recommendationScore,
+    evidenceScore: evaluation.evidenceScore,
     rationale: evaluation.rationale,
     verdict: evaluation.verdict,
   })),
@@ -244,6 +248,16 @@ const buildTrades = async (
   ]);
   const values = market.players;
 
+  // Evidence lives in a separate, lazy artifact so ordinary projection pages
+  // do not pay for it. Trade evaluation needs it for every asset: a 20-point
+  // rookie prior and a 20-point veteran estimate are not equally trustworthy.
+  const explanationEntries = await Promise.all(
+    [...new Set(snapshot.rosters.flatMap((roster) => roster.playerIds.map(String)))].map(
+      async (playerId) => [playerId, await loadExplanation(snapshot.league.season, snapshot.asOfWeek, playerId)] as const,
+    ),
+  );
+  const explanations = new Map(explanationEntries);
+
   const ages = new Map<string, number>();
   for (const [id, identity] of Object.entries(identities)) {
     if (identity.birthdate === null) continue;
@@ -288,6 +302,25 @@ const buildTrades = async (
     if (projection === undefined || market === undefined) return null;
     const age = ages.get(playerId);
     const schemeFit = schemeFitFor(playerId, projection.position);
+    const weeklyProjection = context.pool
+      .get(snapshot.asOfWeek)
+      ?.get(asPlayerId(playerId));
+    const projectedPoints =
+      weeklyProjection?.mean ??
+      (isPlayingIn(projection, snapshot.asOfWeek)
+        ? scoreFor(projection, snapshot.league.scoring.raw, null, snapshot.asOfWeek)
+        : 0);
+    const quantiles = predictionQuantiles(projectedPoints, weeklyProjection?.sd ?? projection.sd);
+    const why = explanations.get(playerId);
+    const modelConfidence =
+      why === undefined
+        ? projection.basis === 'rookie-prior'
+          ? 0.25
+          : 0.5
+        : projectionConfidence(
+            why.effectiveGames,
+            projection.basis === 'rookie-prior' || why.prior === undefined,
+          );
 
     return {
       playerId: asPlayerId(playerId),
@@ -298,11 +331,10 @@ const buildTrades = async (
       // immediate lineup asset while the starter is healthy. Keep those two
       // currencies separate so a QB2 cannot look like a weekly starter in the
       // trade finder.
-      projectedPoints:
-        context.pool.get(snapshot.asOfWeek)?.get(asPlayerId(playerId))?.mean ??
-        (isPlayingIn(projection, snapshot.asOfWeek)
-          ? scoreFor(projection, snapshot.league.scoring.raw, null, snapshot.asOfWeek)
-          : 0),
+      projectedPoints,
+      sd: weeklyProjection?.sd ?? projection.sd,
+      modelConfidence,
+      quantiles,
       ...(age === undefined ? {} : { age }),
       ...(schemeFit === undefined ? {} : { schemeFit }),
     };

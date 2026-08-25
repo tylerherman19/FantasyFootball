@@ -212,7 +212,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                       {/* Who each man plays, on the page listing all of them. */}
                       <th style={{ minWidth: '9rem' }}>Defense faced</th>
                       <th style={{ width: '7rem' }}>Lineup loses</th>
-                      <th style={{ width: '7rem' }}>Projects</th>
+                      <th style={{ width: '9rem' }} title="25th / 50th / 75th weekly outcome points">p25 / p50 / p75</th>
                       <th className="text-right" title="Carries plus targets">
                         Opp
                       </th>
@@ -276,13 +276,18 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                             />
                           </td>
                           <td>
-                            <CellBar
-                              value={player.projected}
-                              max={maxProjected}
-                              width={52}
-                              color="var(--p-low)"
-                              label={player.projected.toFixed(1)}
-                            />
+                            <div title="25th / 50th / 75th weekly outcome points">
+                              <CellBar
+                                value={player.p50}
+                                max={maxProjected}
+                                width={52}
+                                color="var(--p-low)"
+                                label={player.p50.toFixed(1)}
+                              />
+                              <div className="tabular mt-0.5 text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+                                {player.p25.toFixed(1)} / {player.p75.toFixed(1)}
+                              </div>
+                            </div>
                           </td>
                           <td className="tabular text-right" style={{ color: 'var(--ink-muted)' }}>
                             {usage === undefined || usage.opportunities === 0

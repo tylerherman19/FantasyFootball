@@ -429,7 +429,7 @@ export default async function TradesPage({
         {trades !== null && trades.evaluations.length > 0 && (
           <Section
             title="Proposals worth making"
-            note="Scanned across the league, filtered to packages a real manager might accept, then simulated. The bars are the change in each side's title probability — a proposal where both bars point right is the rare genuinely mutual trade."
+            note="Scanned across the league, filtered to packages a real manager might accept, then simulated. Player rows show p25 / p50 / p75 weekly points; the bars are the change in each side's title probability."
             aside={
               <Legend
                 items={[
@@ -465,8 +465,10 @@ export default async function TradesPage({
                           <div key={String(asset.playerId)} className="flex items-center gap-1.5 py-0.5">
                             <PositionChip position={asset.position} />
                             <span className="truncate text-sm font-medium">{asset.name}</span>
-                            <span className="tabular ml-auto text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                              {asset.value.toLocaleString()}
+                            <span className="tabular ml-auto text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+                              {asset.quantiles === undefined
+                                ? asset.value.toLocaleString()
+                                : `${asset.quantiles.p25.toFixed(1)} / ${asset.quantiles.p50.toFixed(1)} / ${asset.quantiles.p75.toFixed(1)}`}
                             </span>
                           </div>
                         ))}
@@ -477,8 +479,10 @@ export default async function TradesPage({
                           <div key={String(asset.playerId)} className="flex items-center gap-1.5 py-0.5">
                             <PositionChip position={asset.position} />
                             <span className="truncate text-sm font-medium">{asset.name}</span>
-                            <span className="tabular ml-auto text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                              {asset.value.toLocaleString()}
+                            <span className="tabular ml-auto text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+                              {asset.quantiles === undefined
+                                ? asset.value.toLocaleString()
+                                : `${asset.quantiles.p25.toFixed(1)} / ${asset.quantiles.p50.toFixed(1)} / ${asset.quantiles.p75.toFixed(1)}`}
                             </span>
                           </div>
                         ))}
@@ -519,7 +523,7 @@ export default async function TradesPage({
                       </div>
                     </div>
 
-                    <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-3">
+                    <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-4">
                       <div>
                         <div className="axis-label">Partner fit</div>
                         <CellBar
@@ -538,6 +542,18 @@ export default async function TradesPage({
                           width={90}
                           color="var(--good)"
                           label={`${Math.round(evaluation.fitScore * 100)}%`}
+                        />
+                      </div>
+                      <div>
+                        <div className="axis-label" title="Confidence in the model evidence behind both sides">
+                          Evidence
+                        </div>
+                        <CellBar
+                          value={evaluation.evidenceScore}
+                          max={1}
+                          width={90}
+                          color="var(--p-low)"
+                          label={`${Math.round(evaluation.evidenceScore * 100)}%`}
                         />
                       </div>
                       <div>

@@ -15,6 +15,10 @@ export interface PlayerProjection {
   readonly eligiblePositions: readonly Position[];
   readonly mean: number;
   readonly sd: number;
+  /** Non-negative 25th / 50th / 75th outcome scenarios for one week. */
+  readonly p25?: number;
+  readonly p50?: number;
+  readonly p75?: number;
   /** NFL game the player appears in, so teammates and opponents correlate. */
   readonly gameId: string;
   readonly gameLoading: number;

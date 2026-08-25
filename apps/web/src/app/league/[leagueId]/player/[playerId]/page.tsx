@@ -138,8 +138,9 @@ export default async function PlayerPage({
       ? null
       : distributionOf(explanation.total, player.sd);
 
-  const opportunity = explanation?.steps[1]?.value ?? 0;
-  const efficiency = explanation?.steps[2]?.value ?? 0;
+  const opportunity =
+    explanation?.steps.find((step) => step.label === 'Player opportunity' || step.label === 'Opportunity')?.value ?? 0;
+  const efficiency = explanation?.steps.find((step) => step.label === 'Efficiency')?.value ?? 0;
 
   const offense = offenseArtifact?.teams[team];
 

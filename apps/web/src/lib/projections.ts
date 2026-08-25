@@ -5,6 +5,7 @@ import {
   asPlayerId,
   playProbability,
   scoreStatLine,
+  predictionQuantiles,
   type PlayerId,
   type Position,
 } from '@ffe/core';
@@ -25,6 +26,10 @@ export interface ArtifactPlayer {
   /** Projected stat line. Points are derived per league, never baked in. */
   readonly stats: Readonly<Record<string, number>>;
   readonly sd: number;
+  /** League-scored 25th / 50th / 75th outcome scenarios. */
+  readonly p25?: number;
+  readonly p50?: number;
+  readonly p75?: number;
   readonly gameId: string;
   readonly gameLoading: number;
   /**
@@ -68,9 +73,16 @@ export interface ArtifactPlayer {
  */
 export interface PlayerExplanation {
   readonly prior?: Readonly<Record<string, number>>;
+  readonly baseOpportunity?: Readonly<Record<string, number>>;
   readonly opportunity?: Readonly<Record<string, number>>;
   readonly observed?: Readonly<Record<string, number>>;
   readonly effectiveGames: number;
+  readonly scheme?: {
+    readonly team?: string;
+    readonly paceMultiplier?: number;
+    readonly passShape?: number;
+    readonly runShape?: number;
+  };
 }
 
 interface ExplanationArtifact {
@@ -228,6 +240,7 @@ const toProjection = (
     roleProbability * (sourceSd * sourceSd + scored * scored) - roleMean * roleMean;
   const roleSd = Math.sqrt(Math.max(roleVariance, 0));
   const adjusted = applyAvailability(roleMean, roleSd, injuryStatus, onBye);
+  const quantiles = predictionQuantiles(adjusted.mean, adjusted.sd);
 
   return {
     playerId: asPlayerId(player.playerId),
@@ -235,6 +248,7 @@ const toProjection = (
     eligiblePositions: [position],
     mean: adjusted.mean,
     sd: adjusted.sd,
+    ...quantiles,
     // A player on bye shares no game with his team-mates, so he must not be
     // drawn from their correlated game outcome.
     gameId: onBye || player.gameId === '' ? `bye-${player.playerId}` : player.gameId,

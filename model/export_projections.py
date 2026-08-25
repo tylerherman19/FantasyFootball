@@ -26,7 +26,7 @@ from model.export_byes import bye_weeks
 from model.features.store import AsOf, FeatureStore
 from model.models import rookie_prior, v1_positional, v1_usage
 
-MODEL_VERSION = "v1-usage+positional"
+MODEL_VERSION = "v1-usage+offense+positional"
 
 #: Share of a player's weekly variance explained by the game environment.
 #:
@@ -179,7 +179,6 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
     with FeatureStore(lake) as store:
         as_of = AsOf(season, week)
 
-        skill_lines, explanations = v1_usage.project_with_explanations(store, as_of)
         kicker_lines = v1_positional.kicker_stat_lines(store, as_of)
         idp_lines = v1_positional.idp_stat_lines(store, as_of)
         defense_lines = v1_positional.team_defense_stat_lines(store, as_of)
@@ -220,7 +219,13 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
                 .group_by("gsis_id")
                 .agg(*roster_values)
             )
-            team_by_gsis = dict(zip(latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True))
+            team_by_gsis = {
+                str(player_id): canonical_team(team)
+                for player_id, team in zip(
+                    latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True
+                )
+                if team is not None
+            }
             if "status" in latest.columns:
                 status_by_gsis = dict(
                     zip(latest["gsis_id"].to_list(), latest["status"].to_list(), strict=True)
@@ -231,6 +236,14 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             for player_id, rank in depth_by_gsis.items()
             if rank == 1 and team_by_gsis.get(player_id)
         }
+
+        # The model is the engine: offensive pace and pass/run identity are
+        # applied inside the stat-line projection, using the player's current
+        # rostered team when available. The serving layer only scores those
+        # stat lines under the league's rules; it does not invent scheme points.
+        skill_lines, explanations = v1_usage.project_with_explanations(
+            store, as_of, team_by_player=team_by_gsis
+        )
 
     # Byes come from the full season schedule, not from the exported week.
     #
@@ -337,9 +350,11 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         if explanation is not None:
             why[sleeper_id] = {
                 "prior": explanation.prior,
+                "baseOpportunity": explanation.base_opportunity,
                 "opportunity": explanation.opportunity,
                 "effectiveGames": explanation.effective_games,
                 "observed": explanation.observed,
+                "scheme": explanation.scheme,
             }
         elif is_rookie:
             # A rookie has no history to decompose. Saying so is the honest

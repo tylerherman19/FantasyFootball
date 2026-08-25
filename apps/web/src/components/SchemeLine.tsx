@@ -88,7 +88,9 @@ export const SchemeLine = ({
         <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--ink-faint)' }}>
           Worth at most <strong>±{bound.toFixed(2)} pts</strong> to him. Opponent strength has been
           tested against this model three times — on points, on opportunity, and on the spread — and
-          improved it none of the three, so it is shown here and kept out of the projection.{' '}
+          improved it none of the three, so this defensive matchup read is context and stays out
+          of the projection. The player&apos;s own offensive scheme is accounted for upstream in the
+          model&apos;s opportunity line.{' '}
           <Link href={`/league/${leagueId}/scheme`} className="underline">
             The measurement
           </Link>

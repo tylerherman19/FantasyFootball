@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { tradeFilterHref } from '@/lib/trade-filters';
@@ -54,7 +53,7 @@ export const TradeObjectiveBar = ({ players }: { readonly players: readonly Targ
           {OBJECTIVES.map((option) => {
             const isActive = option.key === objective;
             return (
-              <Link
+              <a
                 key={option.key}
                 title={option.hint}
                 href={tradeFilterHref(
@@ -72,7 +71,7 @@ export const TradeObjectiveBar = ({ players }: { readonly players: readonly Targ
                 }}
               >
                 {option.label}
-              </Link>
+              </a>
             );
           })}
         </div>

@@ -16,7 +16,7 @@ import { isExpendable } from '../metrics/marginal-value.js';
  * Both sides see both numbers, which is what ends the argument.
  */
 
-export interface TradeAsset {
+interface TradeAssetBase {
   readonly playerId: PlayerId;
   readonly name: string;
   readonly position: Position;
@@ -38,11 +38,23 @@ export interface TradeAsset {
     readonly p50: number;
     readonly p75: number;
   };
-  readonly kind?: 'player' | 'pick';
   readonly weeklyPoints?: number;
+}
+
+/** A rostered player: role-aware and eligible for lineup replacement analysis. */
+export interface TradePlayerAsset extends TradeAssetBase {
+  readonly kind: 'player';
+}
+
+/** A draft pick: a trade asset, but never a lineup participant. */
+export interface TradePickAsset extends TradeAssetBase {
+  readonly kind: 'pick';
   readonly yearsOut?: number;
   readonly round?: number;
 }
+
+/** Asset types stay discriminated so player-only logic cannot swallow picks. */
+export type TradeAsset = TradePlayerAsset | TradePickAsset;
 
 export interface TradeSide {
   readonly teamId: string;

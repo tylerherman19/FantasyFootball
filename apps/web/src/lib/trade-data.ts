@@ -329,6 +329,7 @@ const buildTrades = async (
 
     return {
       playerId: asPlayerId(playerId),
+      kind: 'player',
       name: projection.name || market.name,
       position: projection.position as Position,
       value: market.value,

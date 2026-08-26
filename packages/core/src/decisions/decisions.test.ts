@@ -187,6 +187,7 @@ describe('waivers', () => {
 describe('trades', () => {
   const asset = (id: string, position: Position, value: number): TradeAsset => ({
     playerId: asPlayerId(id),
+    kind: 'player',
     name: id,
     position,
     value,

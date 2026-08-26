@@ -7,13 +7,9 @@
  * are not the same player if one ranges 9–19 and the other 2–31, and the whole
  * argument for start/sit priced in title odds is that the shape matters.
  *
- * **Gaussian, truncated at zero, and deliberately the same one the simulator
- * uses.** Not because fantasy scoring is normal — it is right-skewed and
- * bounded below — but because a page that quotes a different distribution from
- * the one behind the championship odds is quoting a number the rest of the
- * product will contradict. The spread is calibrated against real forecast error
- * (`model/backtest/run_calibration.py`), which is what makes the interval mean
- * what it says.
+ * `distributionOf` remains the calibrated Gaussian fallback for legacy or
+ * unprojected inputs. Shipping skill-player views use `distributionFromSamples`,
+ * which summarizes the same stat-line scenarios as the season simulator.
  *
  * The truncation is where the honesty lives. A back projected 4.0 with a spread
  * of 6 has a Gaussian 10th percentile below zero, which is not a thing that can
@@ -140,5 +136,25 @@ export const distributionOf = (mean: number, sd: number): Distribution => {
     percentiles,
     thresholds,
     truncated: mean + normalQuantile(0.1) * spread < 0,
+  };
+};
+
+/** Distribution summary from realized stat-line scenarios. */
+export const distributionFromSamples = (input: readonly number[]): Distribution => {
+  const samples = input.length > 0 ? [...input].sort((a, b) => a - b) : [0];
+  const at = (p: number): number =>
+    samples[Math.min(samples.length - 1, Math.floor(p * (samples.length - 1)))]!;
+  const mean = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  const variance = samples.reduce((sum, value) => sum + (value - mean) ** 2, 0) / samples.length;
+
+  return {
+    mean,
+    sd: Math.sqrt(variance),
+    percentiles: LADDER.map(({ label, p }) => ({ label, p, value: at(p) })),
+    thresholds: thresholdsFor(mean).map((threshold) => ({
+      threshold,
+      probability: samples.filter((value) => value >= threshold).length / samples.length,
+    })),
+    truncated: false,
   };
 };

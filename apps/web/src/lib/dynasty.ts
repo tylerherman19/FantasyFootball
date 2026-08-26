@@ -5,6 +5,7 @@ import type { LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
 import { declineAge, loadAgeCurves } from './age-curves';
 import { loadMarketValues } from './values';
+import { fundamentalPlayerValue, type Position } from '@ffe/core';
 
 /**
  * Win now, or build. The question dynasty actually turns on.
@@ -78,6 +79,8 @@ export interface DynastyAsset {
    * selling and a rebuilding one should be buying.
    */
   readonly valuePerPoint: number | null;
+  readonly fundamentalValue: number;
+  readonly fourYearSurvival: number;
 }
 
 export interface DynastyVerdict {
@@ -108,6 +111,7 @@ export interface DynastyView {
   readonly assets: readonly DynastyAsset[];
   /** Roster market value, and how it splits by age band. */
   readonly totalValue: number;
+  readonly totalFundamentalValue: number;
   readonly valueByAge: readonly { readonly band: string; readonly value: number; readonly count: number }[];
   readonly valueByPosition: readonly { readonly position: string; readonly value: number; readonly count: number }[];
   /** Old and expensive: what a rebuild sells and a contender pays up for. */
@@ -302,6 +306,16 @@ export const buildDynastyView = async (
     const position = projection?.position ?? identity?.position ?? '?';
     const projected = projection === undefined ? 0 : scoreFor(projection, rules);
     const marketValue = values.get(id)?.value ?? 0;
+    const replacement: Readonly<Record<string, number>> = { QB: 15, RB: 7, WR: 8, TE: 6, K: 7, DEF: 7, DL: 6, LB: 7, DB: 6 };
+    const fundamental = position in replacement
+      ? fundamentalPlayerValue({
+          position: position as Position,
+          age: age ?? undefined,
+          weeklyPoints: projected,
+          replacementPoints: replacement[position] ?? 7,
+          marketValue,
+        })
+      : { total: marketValue, survival: [1, 1, 1, 1], annualSurplus: [] };
 
     // Measured first, asserted only as a fallback.
     const decline = declineAges[position] ?? DECLINE_AGE[position];
@@ -318,11 +332,14 @@ export const buildDynastyView = async (
       history: history.bySleeperId.get(id) ?? null,
       windowYears,
       valuePerPoint: marketValue > 0 && projected > 1 ? marketValue / projected : null,
+      fundamentalValue: fundamental.total,
+      fourYearSurvival: fundamental.survival.at(-1) ?? 1,
     };
   });
 
   const valued = assets.filter((asset) => asset.marketValue > 0);
   const totalValue = valued.reduce((sum, asset) => sum + asset.marketValue, 0);
+  const totalFundamentalValue = valued.reduce((sum, asset) => sum + asset.fundamentalValue, 0);
 
   const bands: { band: string; min: number; max: number }[] = [
     { band: 'Under 24', min: 0, max: 24 },
@@ -388,6 +405,7 @@ export const buildDynastyView = async (
     verdict,
     assets: assets.sort((a, b) => b.marketValue - a.marketValue),
     totalValue,
+    totalFundamentalValue,
     valueByAge,
     valueByPosition,
     sellHigh,

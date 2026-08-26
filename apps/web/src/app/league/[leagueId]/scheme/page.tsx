@@ -533,6 +533,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
                 label: `${defense.team} — ${(defense.deepRateAllowed * 100).toFixed(1)}% deep allowed, ${defense.rushEpaAdjusted >= 0 ? '+' : ''}${defense.rushEpaAdjusted.toFixed(3)} rush EPA, ${shellLabel(defense.shellIndex)}`,
                 color: defense.shellIndex > 0 ? 'var(--good)' : 'var(--bad)',
                 radius: 4.5,
+                href: `/league/${leagueId}/team/${defense.team}`,
               }))}
             />
             <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>

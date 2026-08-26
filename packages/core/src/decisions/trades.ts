@@ -1,6 +1,7 @@
 import type { PlayerId, Position } from '../domain/index.js';
 import { currentOdds, oddsDelta, type OddsDelta, type SimContext } from './odds.js';
 import { evaluatePlayer, type PlayerEvaluationInput } from '../valuation/player-evaluation.js';
+import { fundamentalPickValue, fundamentalPlayerValue } from '../valuation/fundamental.js';
 
 /**
  * Trades, priced in both currencies at once.
@@ -36,6 +37,10 @@ export interface TradeAsset {
     readonly p50: number;
     readonly p75: number;
   };
+  readonly kind?: 'player' | 'pick';
+  readonly weeklyPoints?: number;
+  readonly yearsOut?: number;
+  readonly round?: number;
 }
 
 export interface TradeSide {
@@ -64,6 +69,11 @@ export interface TradeEvaluation {
   /** Short, inspectable reasons behind the ranking. */
   readonly rationale: readonly string[];
   readonly verdict: string;
+  readonly strategy?: {
+    readonly objective: TradeObjective;
+    readonly futureValueDelta: number;
+    readonly explanation: string;
+  };
 }
 
 const sumValue = (assets: readonly TradeAsset[]): number =>
@@ -286,8 +296,44 @@ export interface TradeFinderInput {
 
 export type TradeObjective = 'winNow' | 'balanced' | 'rebuild';
 
-/** Blunt on purpose: enough to prefer youth, not an age curve. */
-const PRIME_AGE = 26;
+const rebuildMultiplier = (position: Position, age: number | undefined): number => {
+  if (age === undefined) return 1;
+  if (position === 'QB') return age <= 25 ? 1.12 : age <= 29 ? 1.05 : age <= 32 ? 0.92 : 0.75;
+  if (position === 'RB') return age <= 23 ? 1.18 : age <= 25 ? 1.08 : age <= 27 ? 0.9 : 0.65;
+  if (position === 'WR') return age <= 24 ? 1.18 : age <= 27 ? 1.06 : age <= 29 ? 0.9 : 0.68;
+  if (position === 'TE') return age <= 25 ? 1.15 : age <= 28 ? 1.05 : age <= 30 ? 0.9 : 0.7;
+  return age <= 25 ? 1.1 : age <= 28 ? 1 : 0.75;
+};
+
+const rebuildPackageValue = (
+  assets: readonly TradeAsset[],
+  ages: ReadonlyMap<string, number> | undefined,
+): number => assets.reduce((total, asset) => {
+  if (asset.kind === 'pick') return total + fundamentalPickValue(asset.value, asset.yearsOut ?? 1);
+  const age = asset.age ?? ages?.get(String(asset.playerId));
+  const replacement: Readonly<Record<Position, number>> = {
+    QB: 15, RB: 7, WR: 8, TE: 6, K: 7, DEF: 7, DL: 6, LB: 7, DB: 6,
+  };
+  const weeklyPoints = asset.weeklyPoints ?? asset.projectedPoints;
+  if (weeklyPoints !== undefined) {
+    return total + fundamentalPlayerValue({
+      position: asset.position,
+      age,
+      weeklyPoints,
+      replacementPoints: replacement[asset.position],
+      marketValue: asset.value,
+    }).total;
+  }
+  return total + asset.value * rebuildMultiplier(asset.position, age);
+}, 0);
+
+const isYoungCornerstone = (
+  asset: TradeAsset,
+  ages: ReadonlyMap<string, number> | undefined,
+): boolean => {
+  const age = asset.age ?? ages?.get(String(asset.playerId));
+  return asset.value >= 6_000 && age !== undefined && rebuildMultiplier(asset.position, age) >= 1.1;
+};
 
 interface Candidate {
   readonly partnerId: string;
@@ -343,6 +389,8 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
           )
         : input.targetPositions !== undefined && input.targetPositions.length > 0
           ? theirAssets.filter((a) => input.targetPositions!.includes(a.position))
+          : input.objective === 'rebuild'
+            ? theirAssets
           : input.needs.length > 0
             ? theirAssets.filter((a) => input.needs.includes(a.position))
             : theirAssets;
@@ -372,8 +420,22 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   // The raw search is ordered by a cheap lineup/fit proxy, but a single
   // partner can generate many equally fair packages. Keep the screen broad
   // and reserve room for multiple opposing rosters.
-  const topCandidates = candidates
-    .sort((a, b) => b.proxyScore - a.proxyScore)
+  const objective = input.objective ?? 'balanced';
+  const viableCandidates = objective === 'rebuild'
+    ? candidates.filter((candidate) => {
+        const sent = rebuildPackageValue(candidate.iSend, input.ages);
+        const received = rebuildPackageValue(candidate.iGet, input.ages);
+        const protectsCornerstone = candidate.iSend.some((asset) => isYoungCornerstone(asset, input.ages));
+        const requiredGain = protectsCornerstone ? sent * 0.05 : Math.max(50, sent * 0.01);
+        return received - sent >= requiredGain;
+      })
+    : candidates;
+
+  const topCandidates = viableCandidates
+    .sort((a, b) => objective === 'rebuild'
+      ? (rebuildPackageValue(b.iGet, input.ages) - rebuildPackageValue(b.iSend, input.ages)) -
+        (rebuildPackageValue(a.iGet, input.ages) - rebuildPackageValue(a.iSend, input.ages))
+      : b.proxyScore - a.proxyScore)
     .reduce((selected, candidate) => {
       if (selected.length >= finalists) return selected;
       const partnerCount = selected.filter((item) => item.partnerId === candidate.partnerId).length;
@@ -388,12 +450,24 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
         ...(input.rosterProfiles === undefined ? {} : { rosterProfiles: input.rosterProfiles }),
         ...(input.objective === undefined ? {} : { objective: input.objective }),
       };
-      return evaluateTrade(
+      const evaluation = evaluateTrade(
         context,
         { teamId: myTeamId, sends: candidate.iSend },
         { teamId: candidate.partnerId, sends: candidate.iGet },
         intelligence,
       );
+      if (objective !== 'rebuild') return evaluation;
+      const futureValueDelta =
+        rebuildPackageValue(candidate.iGet, input.ages) -
+        rebuildPackageValue(candidate.iSend, input.ages);
+      return {
+        ...evaluation,
+        strategy: {
+          objective,
+          futureValueDelta,
+          explanation: 'Rebuild score uses position-specific career curves and protects young, high-value cornerstones from marginal upgrades.',
+        },
+      };
     })
     .sort(
       (a, b) =>
@@ -415,23 +489,6 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
    * nothing clears the bar is a real answer; an empty page reads as broken.
    */
   const floor = 2 / Math.sqrt(context.iterations ?? 4_000);
-  const objective = input.objective ?? 'balanced';
-
-  /** Net years of youth acquired. Unknown ages count as prime, never young. */
-  const youthGain = (evaluation: TradeEvaluation): number => {
-    const ages = input.ages;
-    if (ages === undefined) return 0;
-
-    const meanAge = (assets: readonly TradeAsset[]): number => {
-      const known = assets
-        .map((asset) => ages.get(String(asset.playerId)))
-        .filter((age): age is number => age !== undefined);
-      return known.length === 0 ? PRIME_AGE : known.reduce((a, b) => a + b, 0) / known.length;
-    };
-
-    return meanAge(evaluation.sideA.sends) - meanAge(evaluation.sideB.sends);
-  };
-
   /*
    * A rebuilding team should happily accept a package that lowers its odds this
    * season — that is the trade, present production for future assets — so it
@@ -439,11 +496,9 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
    * reject every rebuild trade there is.
    */
   if (objective === 'rebuild') {
-    const byValue = [...ranked].sort(
-      (a, b) => b.recommendationScore - a.recommendationScore || youthGain(b) - youthGain(a),
+    return [...ranked].sort(
+      (a, b) => (b.strategy?.futureValueDelta ?? 0) - (a.strategy?.futureValueDelta ?? 0),
     );
-    const gains = byValue.filter((evaluation) => (evaluation.valueDelta.get(myTeamId) ?? 0) > 0);
-    return gains.length > 0 ? gains : byValue.slice(0, finalists);
   }
 
   const helpful = ranked.filter(

@@ -1,13 +1,20 @@
 {
-  "seasons": [
-    2024,
+  "trainingSeasons": [
+    2022,
     2024
   ],
-  "multipliers": {
-    "TE": 0.823,
-    "WR": 0.813,
-    "RB": 0.7643,
-    "QB": 0.8678
+  "validationSeason": 2025,
+  "validationCoverage": {
+    "0.5": 0.5763016157989228,
+    "0.8": 0.8339317773788151,
+    "0.9": 0.9091561938958708
   },
-  "note": "composed with prior calibration"
+  "validationPitDeviation": 0.03540394973070018,
+  "multipliers": {
+    "WR": 0.7922,
+    "QB": 0.82,
+    "RB": 0.7766,
+    "TE": 0.8171
+  },
+  "note": "fit on prior seasons; evaluated once on the held-out final season"
 }

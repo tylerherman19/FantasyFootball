@@ -24,9 +24,49 @@ import polars as pl
 from model.backtest.harness import default_lake
 from model.export_byes import bye_weeks
 from model.features.store import AsOf, FeatureStore
+from model.features.team_context import team_tendencies
 from model.models import rookie_prior, v1_positional, v1_usage
 
-MODEL_VERSION = "v1-usage+offense+positional"
+MODEL_VERSION = "v2-hierarchical-statline"
+
+
+def role_play_probability(
+    position: str, depth_rank: int | None, appearances: int, team_games: int
+) -> float:
+    """Empirical-Bayes probability of recording a fantasy-relevant appearance."""
+    observed = (appearances + 2.0) / max(team_games + 2.0, 2.0)
+    caps = {
+        "QB": {1: 0.995, 2: 0.08, 3: 0.03},
+        "RB": {1: 0.98, 2: 0.94, 3: 0.82, 4: 0.62},
+        "WR": {1: 0.99, 2: 0.97, 3: 0.92, 4: 0.78, 5: 0.55},
+        "TE": {1: 0.98, 2: 0.82, 3: 0.58},
+    }
+    cap = caps.get(position.upper(), {}).get(depth_rank, 0.995)
+    return round(max(0.01, min(cap, observed)), 4)
+
+
+def game_environment(row: dict) -> tuple[float, dict[str, float | str | None]]:
+    """Conservative game-total and weather adjustment, with its drivers."""
+    total = row.get("total_line")
+    wind = row.get("wind")
+    temp = row.get("temp")
+    roof = str(row.get("roof") or "").lower()
+
+    multiplier = 1.0
+    if total is not None:
+        multiplier *= 1.0 + 0.25 * (float(total) - 46.0) / 46.0
+    if "dome" not in roof and "closed" not in roof:
+        if wind is not None and float(wind) >= 20:
+            multiplier *= 0.94
+        if temp is not None and float(temp) <= 20:
+            multiplier *= 0.97
+
+    return max(0.85, min(1.15, multiplier)), {
+        "vegasTotal": float(total) if total is not None else None,
+        "windMph": float(wind) if wind is not None else None,
+        "temperatureF": float(temp) if temp is not None else None,
+        "roof": roof or None,
+    }
 
 #: Share of a player's weekly variance explained by the game environment.
 #:
@@ -175,10 +215,27 @@ def game_index(store: FeatureStore, season: int, week: int) -> dict[str, str]:
     return index
 
 
+def season_game_index(store: FeatureStore, season: int) -> dict[str, dict[str, str]]:
+    """NFL game identity for every team-week in the season."""
+    games = store.raw("schedules").pl().filter(pl.col("season") == season)
+    out: dict[str, dict[str, str]] = {}
+    for row in games.iter_rows(named=True):
+        week = str(int(row["week"]))
+        game_id = str(
+            row.get("game_id")
+            or f"{season}_{int(row['week']):02d}_{row['away_team']}_{row['home_team']}"
+        )
+        bucket = out.setdefault(week, {})
+        bucket[canonical_team(row["home_team"])] = game_id
+        bucket[canonical_team(row["away_team"])] = game_id
+    return out
+
+
 def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> dict:
     with FeatureStore(lake) as store:
         as_of = AsOf(season, week)
 
+        skill_lines, explanations = v1_usage.project_with_explanations(store, as_of)
         kicker_lines = v1_positional.kicker_stat_lines(store, as_of)
         idp_lines = v1_positional.idp_stat_lines(store, as_of)
         defense_lines = v1_positional.team_defense_stat_lines(store, as_of)
@@ -201,6 +258,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         spreads.update(rookie_spreads)
 
         games = game_index(store, season, week)
+        team_games_by_week = season_game_index(store, season)
 
         # Read forward-looking, not as-of. A roster is published before the week
         # it describes, so the completed-weeks filter would discard the entire
@@ -219,13 +277,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
                 .group_by("gsis_id")
                 .agg(*roster_values)
             )
-            team_by_gsis = {
-                str(player_id): canonical_team(team)
-                for player_id, team in zip(
-                    latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True
-                )
-                if team is not None
-            }
+            team_by_gsis = dict(zip(latest["gsis_id"].to_list(), latest["team"].to_list(), strict=True))
             if "status" in latest.columns:
                 status_by_gsis = dict(
                     zip(latest["gsis_id"].to_list(), latest["status"].to_list(), strict=True)
@@ -237,13 +289,81 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             if rank == 1 and team_by_gsis.get(player_id)
         }
 
-        # The model is the engine: offensive pace and pass/run identity are
-        # applied inside the stat-line projection, using the player's current
-        # rostered team when available. The serving layer only scores those
-        # stat lines under the league's rules; it does not invent scheme points.
-        skill_lines, explanations = v1_usage.project_with_explanations(
-            store, as_of, team_by_player=team_by_gsis
+        # Team layer: pace and pass/run intent constrain every player allocation.
+        latest_tendency: dict[str, object] = {}
+        for tendency in sorted(team_tendencies(store, as_of, seasons_back=1), key=lambda t: t.season):
+            latest_tendency[canonical_team(tendency.team)] = tendency
+
+        pbp = store.as_of("pbp", as_of, seasons_back=1).pl()
+        red_zone_rate_by_team: dict[str, float] = {}
+        if pbp.height > 0 and {"posteam", "yardline_100", "game_id"}.issubset(pbp.columns):
+            red = (
+                pbp.filter(
+                    pl.col("posteam").is_not_null()
+                    & (pl.col("yardline_100") <= 20)
+                    & pl.col("play_type").is_in(["pass", "run"])
+                )
+                .group_by("posteam")
+                .agg((pl.len() / pl.col("game_id").n_unique()).alias("rz_per_game"))
+            )
+            league_rz = float(red["rz_per_game"].mean() or 1.0) if red.height else 1.0
+            red_zone_rate_by_team = {
+                canonical_team(row["posteam"]): max(
+                    0.10, min(0.30, 0.20 * float(row["rz_per_game"]) / league_rz)
+                )
+                for row in red.to_dicts()
+            }
+
+        # Participation/DNP prior from the latest eight observed NFL weeks,
+        # shrunk by two pseudo-appearances so one absence does not erase a role.
+        history = store.as_of("player_stats", as_of, seasons_back=1).pl()
+        recent_keys = (
+            history.select(["season", "week"])
+            .unique()
+            .sort(["season", "week"])
+            .tail(8)
+            .iter_rows()
         )
+        key_set = {(int(season_key), int(week_key)) for season_key, week_key in recent_keys}
+        recent = history.filter(
+            pl.struct(["season", "week"]).map_elements(
+                lambda row: (int(row["season"]), int(row["week"])) in key_set,
+                return_dtype=pl.Boolean,
+            )
+        ) if key_set else history.head(0)
+        appearance_count = {
+            str(row["player_id"]): int(row["appearances"])
+            for row in recent.group_by("player_id").agg(
+                pl.struct(["season", "week"]).n_unique().alias("appearances")
+            ).to_dicts()
+        }
+        position_by_gsis = {
+            str(row["player_id"]): str(row["position"])
+            for row in history.select(["player_id", "position"])
+            .drop_nulls()
+            .unique(subset=["player_id"], keep="last")
+            .to_dicts()
+        }
+        role_probability = {
+            player_id: role_play_probability(
+                position_by_gsis.get(player_id, ""),
+                depth_by_gsis.get(player_id),
+                appearance_count.get(player_id, 0),
+                len(key_set),
+            )
+            for player_id in set(skill_lines) | set(rookie_lines)
+        }
+
+        # Forward-looking game environment. Missing Vegas/weather data is a
+        # neutral multiplier, never an invented edge.
+        environment_by_team: dict[str, tuple[float, dict[str, float | str | None]]] = {}
+        current_games = store.raw("schedules").pl().filter(
+            (pl.col("season") == season) & (pl.col("week") == week)
+        )
+        for game in current_games.to_dicts():
+            environment = game_environment(game)
+            environment_by_team[canonical_team(game.get("home_team"))] = environment
+            environment_by_team[canonical_team(game.get("away_team"))] = environment
 
     # Byes come from the full season schedule, not from the exported week.
     #
@@ -293,17 +413,11 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             depth_rank=None if is_team_defense else depth_by_gsis.get(source_id),
             team_has_qb1=team in qb1_teams,
         )
-
-        # A QB2 is not a weekly fantasy scorer while the QB1 is healthy, but
-        # zeroing him permanently makes the model blind to the most important
-        # role substitution in football: QB1 ruled out -> QB2 starts. Preserve
-        # the player's own starting baseline as a contingency line; the serving
-        # layer activates it only when the team's primary quarterback is ruled
-        # out. It never counts both quarterbacks in the same game.
-        backup_qb = position == "QB" and (
-            (depth_by_gsis.get(source_id) is not None and depth_by_gsis[source_id] > 1)
-            or (depth_by_gsis.get(source_id) is None and team in qb1_teams)
+        tendency = latest_tendency.get(team)
+        environment_multiplier, environment_drivers = environment_by_team.get(
+            team, (1.0, {"vegasTotal": None, "windMph": None, "temperatureF": None, "roof": None})
         )
+        play_probability = 1.0 if is_team_defense else role_probability.get(source_id, 1.0)
 
         players[sleeper_id] = {
             "playerId": sleeper_id,
@@ -324,19 +438,34 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
             # serve time, both of which vary by week and neither of which
             # belongs in a flag baked once per artifact.
             "active": active,
-            "depthRank": depth_by_gsis.get(source_id),
-            **(
-                {
-                    "contingencyStats": {k: round(v, 4) for k, v in stats.items()},
-                    "contingencySd": round(spreads.get(source_id, 6.0), 3),
-                }
-                if backup_qb
-                else {}
-            ),
             # Carried so the UI can say where the number came from. A rookie's
             # line is a draft-capital prior, not an observed history, and a
             # product that shows the two identically is lying by omission.
             "basis": "rookie-prior" if is_rookie else "history",
+            "scenario": {
+                "playProbability": play_probability if active else 0.0,
+                "teamPlays": round(float(getattr(tendency, "plays_per_game", 64.0)), 3),
+                "passRate": round(float(getattr(tendency, "neutral_pass_rate", 0.58)), 4),
+                # Team red-zone opportunity is represented explicitly in the
+                # scenario. 0.20 is the neutral prior until enough current
+                # play-by-play exists; it does not move a projection by itself.
+                "redZoneRate": round(red_zone_rate_by_team.get(team, 0.20), 4),
+                "environmentMultiplier": round(environment_multiplier, 4),
+                # The scheme variance gate is currently declined. Keeping the
+                # multipliers at one is an experimental result, not an omission.
+                "schemeVolumeMultiplier": 1.0,
+                "schemeEfficiencyMultiplier": 1.0,
+                "role": f"{position}{depth_by_gsis.get(source_id) or ''}",
+                "drivers": {
+                    **environment_drivers,
+                    "pace": round(float(getattr(tendency, "plays_per_game", 64.0)), 2),
+                    "passRate": round(float(getattr(tendency, "neutral_pass_rate", 0.58)), 4),
+                    "redZoneRate": round(red_zone_rate_by_team.get(team, 0.20), 4),
+                    "offensiveLine": "neutral — no backtest-cleared live feature",
+                    "quarterback": "represented through team pass efficiency and player allocation",
+                    "scheme": "declined by walk-forward variance gate",
+                },
+            },
         }
 
         # The decomposition goes to a *separate* artifact, not this one.
@@ -350,11 +479,9 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         if explanation is not None:
             why[sleeper_id] = {
                 "prior": explanation.prior,
-                "baseOpportunity": explanation.base_opportunity,
                 "opportunity": explanation.opportunity,
                 "effectiveGames": explanation.effective_games,
                 "observed": explanation.observed,
-                "scheme": explanation.scheme,
             }
         elif is_rookie:
             # A rookie has no history to decompose. Saying so is the honest
@@ -381,6 +508,7 @@ def build_artifact(season: int, week: int, lake: Path, crosswalk_path: Path) -> 
         "unmappedCount": unmapped,
         "rookieCount": sum(1 for p in players.values() if p.get("basis") == "rookie-prior"),
         "byeTeams": len(byes),
+        "teamGameIdsByWeek": team_games_by_week,
         "players": players,
     }, {
         "modelVersion": MODEL_VERSION,
@@ -407,9 +535,10 @@ def current_week() -> tuple[int, int]:
 
 
 if __name__ == "__main__":
-    default_season, default_week = current_week()
-    season = int(sys.argv[1]) if len(sys.argv) > 1 else default_season
-    week = int(sys.argv[2]) if len(sys.argv) > 2 else default_week
+    if len(sys.argv) > 2:
+        season, week = int(sys.argv[1]), int(sys.argv[2])
+    else:
+        season, week = current_week()
 
     artifact, explanations_artifact = build_artifact(
         season, week, default_lake(), Path("model/artifacts/crosswalk.json")

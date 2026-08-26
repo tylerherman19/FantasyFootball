@@ -72,7 +72,7 @@ describe('buildPool bye handling', () => {
   it('keeps a player on bye out of his team\'s correlated game', () => {
     const pool = buildPool(artifactOf(player({ playerId: 'a', byeWeek: 8 })), [7, 8], RULES);
 
-    expect(pool.get(7)?.get('a' as never)?.gameId).toBe('g1');
+    expect(pool.get(7)?.get('a' as never)?.gameId).toBe('week-7-ARI');
     expect(pool.get(8)?.get('a' as never)?.gameId).toBe('bye-a');
   });
 
@@ -98,6 +98,25 @@ describe('buildPool bye handling', () => {
     const pool = buildPool(artifactOf(player({ playerId: 'a', byeWeek: 6 })), weeks, RULES);
 
     expect([...pool.keys()]).toEqual(weeks);
+  });
+
+  it('uses the actual NFL game identity for every future week', () => {
+    const artifact: ProjectionArtifact = {
+      ...artifactOf(
+        player({ playerId: 'a', team: 'ARI', gameId: 'week-1-game' }),
+        player({ playerId: 'b', team: 'SEA', gameId: 'week-1-game' }),
+      ),
+      teamGameIdsByWeek: {
+        '1': { ARI: 'week-1-game', SEA: 'week-1-game' },
+        '2': { ARI: 'week-2-game', LAR: 'week-2-game', SEA: 'other-week-2-game' },
+      },
+    };
+
+    const pool = buildPool(artifact, [1, 2], RULES);
+
+    expect(pool.get(1)?.get('a' as never)?.gameId).toBe('week-1-game');
+    expect(pool.get(2)?.get('a' as never)?.gameId).toBe('week-2-game');
+    expect(pool.get(2)?.get('b' as never)?.gameId).toBe('other-week-2-game');
   });
 });
 

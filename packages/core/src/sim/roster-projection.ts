@@ -1,6 +1,8 @@
 import type { LineupSlot, PlayerId, Position } from '../domain/index.js';
 import { optimalLineup, type LineupCandidate } from './lineup.js';
 import type { CorrelatedPlayer } from './correlated.js';
+import { playerScoreSamples } from './correlated.js';
+import { seedFrom } from './random.js';
 import type { TeamWeekProjection } from './season.js';
 
 /**
@@ -25,6 +27,7 @@ export interface PlayerProjection {
   readonly residuals?: readonly number[];
   /** False when on bye or ruled out — the player contributes nothing that week. */
   readonly active: boolean;
+  readonly scenario?: import('./correlated.js').StatLineScenario;
 }
 
 /** Weekly projections for every player we know about, keyed by week then player. */
@@ -70,14 +73,27 @@ export const projectTeamWeek = (
 
   const players: CorrelatedPlayer[] = available
     .filter((p) => starters.has(p.playerId))
-    .map((p) => ({
-      playerId: p.playerId,
-      mean: p.mean,
-      sd: p.sd,
-      gameId: p.gameId,
-      gameLoading: p.gameLoading,
-      ...(p.residuals !== undefined ? { residuals: p.residuals } : {}),
-    }));
+    .map((p) => {
+      const base: CorrelatedPlayer = {
+        playerId: p.playerId,
+        mean: p.mean,
+        sd: p.sd,
+        gameId: p.gameId,
+        gameLoading: p.gameLoading,
+        ...(p.residuals !== undefined ? { residuals: p.residuals } : {}),
+        ...(p.scenario !== undefined ? { scenario: p.scenario } : {}),
+      };
+      return p.scenario === undefined
+        ? base
+        : {
+            ...base,
+            outcomes: playerScoreSamples(
+              { ...base, gameLoading: 0 },
+              192,
+              seedFrom(p.playerId, week, 'stat-lines'),
+            ),
+          };
+    });
 
   return {
     teamId: team.teamId,

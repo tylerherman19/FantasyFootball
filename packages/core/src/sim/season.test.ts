@@ -120,6 +120,23 @@ describe('simulateSeason', () => {
     expect(byTeam.get('1')!.expectedWins).toBeGreaterThan(byTeam.get('4')!.expectedWins);
   });
 
+  it('uses the projected playoff-week lineups to decide the championship', () => {
+    const regular = projections({ '1': 150, '2': 120, '3': 50, '4': 40 });
+    const playoff = projections({ '1': 0, '2': 200, '3': 0, '4': 0 }, [4]).map((team) => ({
+      ...team,
+      players: team.players.map((player) => ({ ...player, sd: 0 })),
+    }));
+
+    const result = simulateSeason({
+      snapshot: snapshot(),
+      projections: [...regular, ...playoff],
+      iterations: 500,
+      seed: 13,
+    });
+
+    expect(result.teams.find((team) => team.teamId === '2')!.titlePct).toBeGreaterThan(0.95);
+  });
+
   it('makes equal teams equal, within sampling noise', () => {
     const result = simulateSeason({
       snapshot: snapshot(),

@@ -384,6 +384,15 @@ export default async function TradesPage({
 
                     <div className="border-t px-4 py-3 text-sm font-medium" style={{ borderColor: 'var(--rule)' }}>
                       {evaluation.verdict}
+                      {evaluation.strategy?.objective === 'rebuild' && (
+                        <p className="mt-2 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+                          <strong style={{ color: 'var(--good)' }}>
+                            Rebuild value +{Math.round(evaluation.strategy.futureValueDelta).toLocaleString()}
+                          </strong>{' '}
+                          after position-specific career curves. Young cornerstones move only for a
+                          material future-value gain.
+                        </p>
+                      )}
                     </div>
                   </article>
                 );

@@ -1,14 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  applyAvailability,
-  asPlayerId,
-  playProbability,
-  scoreStatLine,
-  predictionQuantiles,
-  type PlayerId,
-  type Position,
-} from '@ffe/core';
+import { applyAvailability, asPlayerId, playProbability, predictionQuantiles, productionWhenPlaying, scoreStatLine, type PlayerId, type Position } from '@ffe/core';
 import type { PlayerProjection, ProjectionPool } from '@ffe/core';
 
 /**
@@ -26,7 +18,6 @@ export interface ArtifactPlayer {
   /** Projected stat line. Points are derived per league, never baked in. */
   readonly stats: Readonly<Record<string, number>>;
   readonly sd: number;
-  /** League-scored 25th / 50th / 75th outcome scenarios. */
   readonly p25?: number;
   readonly p50?: number;
   readonly p75?: number;
@@ -41,9 +32,7 @@ export interface ArtifactPlayer {
   readonly byeWeek: number | null;
   /** True when the player is on an NFL roster. Not a statement about any week. */
   readonly active: boolean;
-  /** NFL depth-chart rank when known. */
   readonly depthRank?: number | null;
-  /** Starting baseline retained for a backup QB's contingency scenario. */
   readonly contingencyStats?: Readonly<Record<string, number>>;
   readonly contingencySd?: number;
   /**
@@ -52,6 +41,16 @@ export interface ArtifactPlayer {
    * rather than presenting it identically to a number built from real games.
    */
   readonly basis?: 'history' | 'rookie-prior';
+  readonly scenario?: {
+    readonly playProbability: number;
+    readonly teamPlays: number;
+    readonly passRate: number;
+    readonly redZoneRate: number;
+    readonly environmentMultiplier?: number;
+    readonly schemeVolumeMultiplier?: number;
+    readonly schemeEfficiencyMultiplier?: number;
+    readonly role?: string;
+  };
   /**
    * The model's own decomposition, attached only where it has been loaded.
    *
@@ -131,6 +130,8 @@ export interface ProjectionArtifact {
   readonly generatedAt: string;
   readonly playerCount: number;
   readonly players: Record<string, ArtifactPlayer>;
+  /** NFL game identity by week and team, so future-week correlations are real. */
+  readonly teamGameIdsByWeek?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 /**
@@ -207,7 +208,8 @@ const toProjection = (
   injuryStatus: string | null = null,
   week: number | null = null,
   useContingency = false,
-  roleProbability = 1,
+  externalRoleProbability = 1,
+  gameIdOverride?: string,
 ): PlayerProjection | null => {
   if (!SKILL.includes(player.position)) return null;
   const position = player.position as Position;
@@ -231,30 +233,52 @@ const toProjection = (
 
   // Availability is applied here rather than in the model, because injuries
   // change daily and the artifact is rebuilt weekly.
-  // A backup QB's line is a mixture: zero if QB1 plays, his contingency line
-  // if QB1 does not. This preserves both the expected mean and the wider
-  // uncertainty instead of pretending the backup is either fully active or
-  // irrelevant.
-  const roleMean = scored * roleProbability;
-  const roleVariance =
-    roleProbability * (sourceSd * sourceSd + scored * scored) - roleMean * roleMean;
-  const roleSd = Math.sqrt(Math.max(roleVariance, 0));
-  const adjusted = applyAvailability(roleMean, roleSd, injuryStatus, onBye);
-  const quantiles = predictionQuantiles(adjusted.mean, adjusted.sd);
+  const adjusted = applyAvailability(scored, sourceSd, injuryStatus, onBye);
+  const roleProbability = Math.min(1, Math.max(0, player.scenario?.playProbability ?? 1)) * externalRoleProbability;
+  const mean = adjusted.mean * roleProbability;
+  const variance =
+    roleProbability * (adjusted.sd * adjusted.sd + adjusted.mean * adjusted.mean) - mean * mean;
+  const scenarioStats = Object.fromEntries(
+    Object.entries(sourceStats ?? {}).map(([stat, value]) => [
+      stat,
+      value * productionWhenPlaying(injuryStatus),
+    ]),
+  );
 
+  const quantiles = predictionQuantiles(mean, Math.sqrt(Math.max(variance, 0)));
   return {
     playerId: asPlayerId(player.playerId),
     position,
     eligiblePositions: [position],
-    mean: adjusted.mean,
-    sd: adjusted.sd,
+    mean,
+    sd: Math.sqrt(Math.max(variance, 0)),
     ...quantiles,
     // A player on bye shares no game with his team-mates, so he must not be
     // drawn from their correlated game outcome.
-    gameId: onBye || player.gameId === '' ? `bye-${player.playerId}` : player.gameId,
+    gameId:
+      onBye
+        ? `bye-${player.playerId}`
+        : gameIdOverride ?? (player.gameId === '' ? `unknown-${player.playerId}` : player.gameId),
     gameLoading: player.gameLoading,
     // A ruled-out player must never reach the lineup solver.
-    active: (player.active || useContingency) && adjusted.playProbability > 0,
+    active: (player.active || useContingency) && adjusted.playProbability * roleProbability > 0,
+    scenario: {
+      stats: scenarioStats,
+      rules,
+      playProbability: adjusted.playProbability * roleProbability,
+      teamPlays: player.scenario?.teamPlays ?? 64,
+      passRate: player.scenario?.passRate ?? 0.58,
+      redZoneRate: player.scenario?.redZoneRate ?? 0.2,
+      ...(player.scenario?.environmentMultiplier !== undefined
+        ? { environmentMultiplier: player.scenario.environmentMultiplier }
+        : {}),
+      ...(player.scenario?.schemeVolumeMultiplier !== undefined
+        ? { schemeVolumeMultiplier: player.scenario.schemeVolumeMultiplier }
+        : {}),
+      ...(player.scenario?.schemeEfficiencyMultiplier !== undefined
+        ? { schemeEfficiencyMultiplier: player.scenario.schemeEfficiencyMultiplier }
+        : {}),
+    },
   };
 };
 
@@ -277,26 +301,10 @@ export const buildPool = (
   rules: Readonly<Record<string, number>>,
   availability: Record<string, { injuryStatus: string | null }> = {},
 ): ProjectionPool => {
-  const [first, ...rest] = weeks;
+  const [first] = weeks;
   const players = Object.values(artifact.players);
+  const pool = new Map<number, Map<PlayerId, PlayerProjection>>();
 
-  const currentWeek = new Map<PlayerId, PlayerProjection>();
-  // The shared baseline for future weeks: no injury designation, not on bye.
-  const baseline = new Map<PlayerId, PlayerProjection>();
-  // Only the players whose bye falls in a given week differ from that baseline,
-  // so each future week is a small overlay rather than its own full copy of
-  // several thousand players.
-  const byeByWeek = new Map<number, PlayerId[]>();
-  const onBye = new Map<PlayerId, PlayerProjection>();
-
-  /*
-   * The artifact deliberately removes QB2 volume from the normal forecast.
-   * Before building each pool, identify the first contingency quarterback for
-   * every team. This is a mutually exclusive role gate: the healthy QB1 keeps
-   * his line and the backup stays at zero; when QB1 is out, exactly one backup
-   * receives his contingency line.
-   */
-  const contingencyQbByTeam = new Map<string, ArtifactPlayer>();
   const qbsByTeam = new Map<string, ArtifactPlayer[]>();
   for (const player of players) {
     if (player.position !== 'QB' || player.team === '' || player.team === 'FA') continue;
@@ -304,88 +312,49 @@ export const buildPool = (
     list.push(player);
     qbsByTeam.set(player.team, list);
   }
+  const contingencyQbByTeam = new Map<string, ArtifactPlayer>();
   for (const [team, qbs] of qbsByTeam) {
     const backup = qbs
       .filter((player) => player.contingencyStats !== undefined)
       .sort((a, b) => (a.depthRank ?? 99) - (b.depthRank ?? 99))[0];
     if (backup !== undefined) contingencyQbByTeam.set(team, backup);
   }
-
   const primaryFor = (team: string): ArtifactPlayer | undefined =>
-    qbsByTeam.get(team)?.find(
-      (candidate) => candidate.active && (candidate.depthRank === 1 || candidate.depthRank == null),
-    );
+    qbsByTeam.get(team)?.find((candidate) => candidate.active && (candidate.depthRank === 1 || candidate.depthRank == null));
 
-  const roleProbabilityFor = (player: ArtifactPlayer, includeCurrentAvailability = true): number => {
-    if (player.position !== 'QB' || player.contingencyStats === undefined) return 1;
-    const primary = primaryFor(player.team);
-    if (primary === undefined) return 1;
-    return includeCurrentAvailability
-      ? 1 - playProbability(availability[primary.playerId]?.injuryStatus ?? null)
-      : 0;
-  };
+  for (const week of weeks) {
+    const forWeek = new Map<PlayerId, PlayerProjection>();
+    const games = artifact.teamGameIdsByWeek?.[String(week)];
 
-  const useContingencyFor = (player: ArtifactPlayer, includeCurrentAvailability = true): boolean => {
-    if (player.contingencyStats === undefined) return false;
-    return roleProbabilityFor(player, includeCurrentAvailability) > 0 &&
-      contingencyQbByTeam.get(player.team)?.playerId === player.playerId;
-  };
-
-  for (const player of players) {
-    const status = availability[player.playerId]?.injuryStatus ?? null;
-
-    if (first !== undefined) {
-      const now = toProjection(
+    for (const player of players) {
+      // Current injury reports are not carried into future weeks.
+      const status = week === first ? availability[player.playerId]?.injuryStatus ?? null : null;
+      const primary = player.position === 'QB' && player.contingencyStats !== undefined
+        ? primaryFor(player.team)
+        : undefined;
+      const roleProbability = primary === undefined
+        ? 1
+        : week === first
+          ? 1 - playProbability(availability[primary.playerId]?.injuryStatus ?? null)
+          : 0;
+      const useContingency = player.contingencyStats !== undefined &&
+        contingencyQbByTeam.get(player.team)?.playerId === player.playerId &&
+        roleProbability > 0;
+      const gameId =
+        games?.[player.team] ??
+        (week === artifact.week && player.gameId !== ''
+          ? player.gameId
+          : `week-${week}-${player.team || player.playerId}`);
+      const projection = toProjection(
         player,
         rules,
         status,
-        first,
-        useContingencyFor(player),
-        roleProbabilityFor(player),
+        week,
+        useContingency,
+        player.contingencyStats === undefined ? 1 : roleProbability,
+        gameId,
       );
-      if (now !== null) currentWeek.set(now.playerId, now);
-    }
-
-    // Injuries are applied to this week only. A player out on Sunday is
-    // usually back later in the season, and carrying today's designation
-    // across fourteen weeks would write off half the league by November.
-    const later = toProjection(
-      player,
-      rules,
-      null,
-      null,
-      useContingencyFor(player, false),
-      roleProbabilityFor(player, false),
-    );
-    if (later === null) continue;
-    baseline.set(later.playerId, later);
-
-    const bye = player.byeWeek;
-    if (bye === null || bye === undefined) continue;
-
-    const sitting = toProjection(player, rules, null, bye);
-    if (sitting === null) continue;
-    onBye.set(sitting.playerId, sitting);
-
-    const existing = byeByWeek.get(bye);
-    if (existing === undefined) byeByWeek.set(bye, [sitting.playerId]);
-    else existing.push(sitting.playerId);
-  }
-
-  const pool = new Map<number, Map<PlayerId, PlayerProjection>>();
-  if (first !== undefined) pool.set(first, currentWeek);
-
-  for (const week of rest) {
-    const sittingThisWeek = byeByWeek.get(week);
-    if (sittingThisWeek === undefined) {
-      pool.set(week, baseline);
-      continue;
-    }
-
-    const forWeek = new Map(baseline);
-    for (const playerId of sittingThisWeek) {
-      const sitting = onBye.get(playerId);
-      if (sitting !== undefined) forWeek.set(playerId, sitting);
+      if (projection !== null) forWeek.set(projection.playerId, projection);
     }
     pool.set(week, forWeek);
   }

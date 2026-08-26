@@ -118,22 +118,6 @@ const PTS_ALLOW_TIERS: readonly (readonly [string, number, number])[] = [
 
 export type StatLine = Readonly<Record<string, number>>;
 
-/**
- * Threshold bonuses are all-or-nothing on a single game, but a projection is an
- * average. Treating "projected 95 receiving yards" as never earning the
- * 100-yard bonus understates it, and treating 105 as always earning it
- * overstates it. Both are wrong in the same way: the bonus is probabilistic.
- *
- * A logistic ramp around the threshold approximates the probability of clearing
- * it, which is closer to right than either hard answer.
- */
-const thresholdProbability = (projected: number, threshold: number): number => {
-  if (threshold <= 0) return projected > 0 ? 1 : 0;
-  // Spread scales with the threshold: 100-yard games vary more than 2-sack ones.
-  const spread = Math.max(1, threshold * 0.35);
-  return 1 / (1 + Math.exp(-(projected - threshold) / spread));
-};
-
 export const scoreStatLine = (stats: StatLine, rules: Readonly<Record<string, number>>): number => {
   let points = 0;
 
@@ -155,7 +139,7 @@ export const scoreStatLine = (stats: StatLine, rules: Readonly<Record<string, nu
     const threshold = THRESHOLD[key];
     if (threshold !== undefined) {
       const [column, limit] = threshold;
-      points += thresholdProbability(stats[column] ?? 0, limit) * weight;
+      points += (stats[column] ?? 0) >= limit ? weight : 0;
       continue;
     }
   }

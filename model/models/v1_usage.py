@@ -446,7 +446,12 @@ def project_with_explanations(
     return out, explained
 
 
-def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Prediction]:
+def build(
+    store: FeatureStore,
+    as_of: AsOf,
+    rules: dict[str, float],
+    spread_multipliers: dict[str, float] | None = None,
+) -> list[Prediction]:
     """Project stat lines, then score them under `rules`.
 
     Kept as the harness entry point so the backtest scores exactly what the app
@@ -470,7 +475,7 @@ def build(store: FeatureStore, as_of: AsOf, rules: dict[str, float]) -> list[Pre
         for row in frame.select(["player_id", "position"]).unique(subset=["player_id"]).to_dicts()
     }
 
-    multipliers = _spread_multipliers()
+    multipliers = _spread_multipliers() if spread_multipliers is None else spread_multipliers
     predictions: list[Prediction] = []
 
     for player_id, line in lines.items():

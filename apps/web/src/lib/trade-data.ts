@@ -18,6 +18,7 @@ import {
 } from '@ffe/core';
 import { unstable_cache } from 'next/cache';
 import { loadIdentities } from './crosswalk';
+import { loadPicks } from './pick-data';
 import type { LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, loadExplanation, scoreFor } from './projections';
 import { projectionConfidence } from './explain';
@@ -162,6 +163,7 @@ interface CachedTrades {
     readonly evidenceScore: number;
     readonly rationale: readonly string[];
     readonly verdict: string;
+    readonly strategy?: TradeEvaluation['strategy'];
   }[];
   readonly needs: TradeView['needs'];
   readonly surplus: TradeView['surplus'];
@@ -186,6 +188,7 @@ const toCacheable = (view: TradeView): CachedTrades => ({
     evidenceScore: evaluation.evidenceScore,
     rationale: evaluation.rationale,
     verdict: evaluation.verdict,
+    strategy: evaluation.strategy,
   })),
 });
 
@@ -334,6 +337,7 @@ const buildTrades = async (
       // currencies separate so a QB2 cannot look like a weekly starter in the
       // trade finder.
       projectedPoints,
+      weeklyPoints: projectedPoints,
       sd: weeklyProjection?.sd ?? projection.sd,
       modelConfidence,
       quantiles,
@@ -348,6 +352,21 @@ const buildTrades = async (
       .map((id) => assetFor(String(id)))
       .filter((asset): asset is TradeAsset => asset !== null);
     assetsByTeam.set(roster.teamId, assets);
+  }
+
+  const picks = await loadPicks(view);
+  for (const pick of picks) {
+    const bucket = assetsByTeam.get(pick.ownerTeamId) ?? [];
+    bucket.push({
+      playerId: asPlayerId(pick.id),
+      name: pick.description,
+      position: 'PICK' as Position,
+      value: pick.value,
+      kind: 'pick',
+      yearsOut: Math.max(1, pick.season - snapshot.league.season),
+      round: pick.round,
+    });
+    assetsByTeam.set(pick.ownerTeamId, bucket);
   }
 
   // Marginal value of every player on my roster: what the optimal lineup loses

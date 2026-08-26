@@ -232,9 +232,9 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
               sub="of roster value"
             />
             <StatTile
-              label="Starter points"
-              value={profile.starterPoints.toFixed(1)}
-              sub="per week, optimal lineup"
+              label="4-year fundamental"
+              value={Math.round(dynasty.totalFundamentalValue).toLocaleString()}
+              sub="survival-adjusted value over replacement"
             />
           </StatRow>
         </Section>
@@ -341,6 +341,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
                     label: `${asset.name} (${asset.position}) — ${(asset.age ?? 0).toFixed(1)} yrs, ${asset.marketValue.toLocaleString()} value, ${asset.projected.toFixed(1)} projected`,
                     color: positionColor(asset.position),
                     radius: 3.5 + Math.min(asset.projected, 20) * 0.22,
+                    href: `/league/${leagueId}/player/${asset.playerId}`,
                   }))}
               />
               <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
@@ -614,6 +615,8 @@ const AssetRow = ({ asset, accent }: { asset: DynastyAsset; accent: string }) =>
         </span>
       )}
       <span>{asset.projected.toFixed(1)} proj</span>
+      <span>{Math.round(asset.fundamentalValue).toLocaleString()} fundamental</span>
+      <span>{(asset.fourYearSurvival * 100).toFixed(0)}% year-4 survival</span>
       {asset.history !== null && <span>{asset.history.ppg.toFixed(1)} career PPG</span>}
     </div>
   </div>

@@ -1,18 +1,14 @@
 import { LeagueNav } from '@/components/LeagueNav';
-import { RailBlock, RailLayout } from '@/components/design/DrillRail';
-import { LeagueRail } from '@/components/design/LeagueRail';
+import { TeamPowerExplorer } from '@/components/TeamPowerExplorer';
 import { Section, StatRow, StatTile } from '@/components/Section';
 import {
   CellBar,
   HeatMap,
   Legend,
   LineChart,
-  RangeBar,
   Scatter,
-  Sparkline,
   StackedBar,
   formatPct,
-  positionColor,
   rampColor,
   rampInk,
 } from '@/components/charts/primitives';
@@ -55,8 +51,6 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
   const corePositions = positions.filter((position) => ['QB', 'RB', 'WR', 'TE'].includes(position));
 
   const ranked = [...profiles].sort((a, b) => b.starterPoints - a.starterPoints);
-  const maxStarterPoints = Math.max(...profiles.map((p) => p.starterPoints), 1);
-  const maxTotalValue = Math.max(...profiles.map((p) => p.marketValue), 1);
   const maxRoster = Math.max(...profiles.map((p) => p.totalPoints), 1);
 
   const drafted = profiles.some((profile) => profile.rosterSize > 0);
@@ -75,9 +69,6 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
   const medianAge = median(profiles.map((p) => p.averageAge).filter((age): age is number => age !== null));
   const medianStrength = median(profiles.map((p) => p.starterPoints));
 
-  const standardError = (probability: number): number =>
-    Math.sqrt(Math.max(probability * (1 - probability), 0) / Math.max(result.iterations, 1));
-
   return (
     <>
       <LeagueNav
@@ -94,15 +85,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
         ]}
       />
 
-      <RailLayout
-        rail={
-          <LeagueRail view={view}>
-            <RailBlock title="What this page answers">
-              Three rankings, deliberately. Market value, projected wins and title odds disagree, and the gaps are where the information is.
-            </RailBlock>
-          </LeagueRail>
-        }
-      >
+      <main className="mx-auto w-full max-w-[96rem] px-4 pb-12 sm:px-6 lg:pl-[4.75rem]">
         {!drafted ? (
           <div className="panel p-4 text-sm" style={{ color: 'var(--ink-muted)' }}>
             <strong style={{ color: 'var(--ink)' }}>Nothing to rank yet.</strong> Every roster is
@@ -114,7 +97,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             {/* ---- league-wide context ------------------------------------ */}
             <Section
               title="The field"
-            source="2,000 season simulations · model v1-usage+positional"
+              source={`${result.iterations.toLocaleString()} stat-line season simulations · ${view.modelVersion ?? 'model unavailable'}`}
               note="What a typical roster in this league looks like, so every number below has something to be compared against."
             >
               <StatRow columns={5}>
@@ -162,97 +145,21 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
                   decides how a single injury lands.
                 </>
               }
-              aside={<Legend items={corePositions.map((p) => ({ label: p, color: positionColor(p) }))} />}
             >
-              <div className="panel scroll-x">
-                <table className="data-table" style={{ minWidth: '58rem' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '2rem' }}>#</th>
-                      <th style={{ minWidth: '9rem' }}>Team</th>
-                      <th style={{ width: '17rem' }}>Starter points by position</th>
-                      <th className="text-right">Start</th>
-                      <th className="text-right">Bench</th>
-                      {hasMarket && <th className="text-right">Value</th>}
-                      <th className="text-right">Proj W</th>
-                      <th style={{ width: '9rem' }}>Playoffs</th>
-                      <th className="text-right">Title</th>
-                      {hasHistory && <th className="text-right">Form</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ranked.map((profile, index) => (
-                      <tr key={profile.teamId} data-mine={profile.isMine}>
-                        <td className="tabular" style={{ color: 'var(--ink-faint)' }}>
-                          {index + 1}
-                        </td>
-                        <td className="max-w-[11rem] truncate" style={{ fontWeight: profile.isMine ? 700 : 400 }}>
-                          {profile.name}
-                        </td>
-                        <td>
-                          <StackedBar
-                            max={maxStarterPoints}
-                            width={260}
-                            segments={corePositions.map((position) => {
-                              const slice = profile.byPosition.find((s) => s.position === position);
-                              return {
-                                key: position,
-                                value: slice?.starterPoints ?? 0,
-                                color: positionColor(position),
-                              };
-                            })}
-                          />
-                        </td>
-                        <td className="tabular text-right font-semibold">{profile.starterPoints.toFixed(1)}</td>
-                        <td className="tabular text-right" style={{ color: 'var(--ink-faint)' }}>
-                          {profile.benchPoints.toFixed(0)}
-                        </td>
-                        {hasMarket && (
-                          <td className="tabular text-right">
-                            <CellBar
-                              value={profile.marketValue}
-                              max={maxTotalValue}
-                              width={48}
-                              color="var(--pos-qb)"
-                              label={profile.marketValue.toLocaleString()}
-                            />
-                          </td>
-                        )}
-                        <td className="tabular text-right">{profile.expectedWins.toFixed(1)}</td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <RangeBar
-                              value={profile.playoffPct}
-                              low={Math.max(0, profile.playoffPct - 1.96 * standardError(profile.playoffPct))}
-                              high={Math.min(1, profile.playoffPct + 1.96 * standardError(profile.playoffPct))}
-                              width={72}
-                              color={profile.isMine ? 'var(--accent)' : 'var(--p-high)'}
-                            />
-                            <span className="tabular text-xs">{formatPct(profile.playoffPct)}</span>
-                          </div>
-                        </td>
-                        <td className="tabular text-right font-semibold">{formatPct(profile.titlePct, 1)}</td>
-                        {hasHistory && (
-                          <td>
-                            <div className="flex justify-end">
-                              <Sparkline
-                                values={profile.weeklyScores}
-                                color={profile.isMine ? 'var(--accent)' : 'var(--p-high)'}
-                              />
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <TeamPowerExplorer
+                leagueId={leagueId}
+                profiles={ranked}
+                positions={corePositions}
+                hasMarket={hasMarket}
+                hasHistory={hasHistory}
+                iterations={result.iterations}
+              />
             </Section>
 
             {/* ---- positional heat map ------------------------------------ */}
             <Section
               title="Positional strength"
-            source="model v1-usage+positional · projections rebuilt weekly"
+              source={`${view.modelVersion ?? 'model unavailable'} · projections rebuilt weekly`}
               note={
                 <>
                   Each team&apos;s starting points at each position, coloured against the rest of the
@@ -527,7 +434,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             )}
           </>
         )}
-      </RailLayout>
+      </main>
     </>
   );
 }

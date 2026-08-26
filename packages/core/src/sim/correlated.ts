@@ -1,5 +1,6 @@
-import { resample, standardNormal, type Rng } from './random.js';
+import { resample, seededRng, standardNormal, type Rng } from './random.js';
 import type { PlayerId } from '../domain/index.js';
+import { scoreStatLine, type StatLine } from '../projections/scoring.js';
 
 /**
  * Correlated player scoring.
@@ -33,7 +34,128 @@ export interface CorrelatedPlayer {
   readonly gameLoading: number;
   /** Historical residuals for this player's archetype, if available. */
   readonly residuals?: readonly number[];
+  /** When present, draw football stats first and score the realized line. */
+  readonly scenario?: StatLineScenario;
+  /** Pre-scored exact stat-line outcomes for the season simulator hot loop. */
+  readonly outcomes?: readonly number[];
 }
+
+export interface StatLineScenario {
+  readonly stats: StatLine;
+  readonly rules: Readonly<Record<string, number>>;
+  /** Probability of appearing at all, including injury and role uncertainty. */
+  readonly playProbability: number;
+  readonly teamPlays: number;
+  readonly passRate: number;
+  readonly redZoneRate: number;
+  readonly environmentMultiplier?: number;
+  readonly schemeVolumeMultiplier?: number;
+  readonly schemeEfficiencyMultiplier?: number;
+}
+
+const poisson = (mean: number, rng: Rng): number => {
+  if (mean <= 0) return 0;
+  if (mean > 20) return Math.max(0, Math.round(mean + Math.sqrt(mean) * standardNormal(rng)));
+  const limit = Math.exp(-mean);
+  let product = 1;
+  let count = 0;
+  do {
+    count += 1;
+    product *= rng();
+  } while (product > limit);
+  return count - 1;
+};
+
+const binomial = (trials: number, probability: number, rng: Rng): number => {
+  const p = Math.min(1, Math.max(0, probability));
+  if (trials > 40) {
+    const mean = trials * p;
+    const sd = Math.sqrt(trials * p * (1 - p));
+    return Math.min(trials, Math.max(0, Math.round(mean + sd * standardNormal(rng))));
+  }
+  let hits = 0;
+  for (let i = 0; i < trials; i += 1) if (rng() < p) hits += 1;
+  return hits;
+};
+
+const positiveRate = (mean: number, cv: number, shock: number): number =>
+  Math.max(0, mean * Math.exp(cv * shock - 0.5 * cv * cv));
+
+/** Draw a coherent football stat line, then apply the league's exact rules. */
+const sampleStatLine = (
+  scenario: StatLineScenario,
+  gameShock: number,
+  ownShock: number,
+  rng: Rng,
+): number => {
+  if (rng() >= Math.min(1, Math.max(0, scenario.playProbability))) return 0;
+
+  const means = scenario.stats;
+  const environment = Math.max(0.7, Math.min(1.3, scenario.environmentMultiplier ?? 1));
+  const volumeScheme = Math.max(0.8, Math.min(1.2, scenario.schemeVolumeMultiplier ?? 1));
+  const efficiencyScheme = Math.max(0.8, Math.min(1.2, scenario.schemeEfficiencyMultiplier ?? 1));
+  const pace = Math.max(0.8, Math.min(1.2, scenario.teamPlays / 64));
+  const teamVolume = positiveRate(environment * volumeScheme * pace, 0.1, gameShock);
+  const roleVolume = positiveRate(teamVolume, 0.2, ownShock);
+  const passVolume = roleVolume * Math.max(0.75, Math.min(1.25, scenario.passRate / 0.58));
+  const rushVolume = roleVolume * Math.max(0.75, Math.min(1.25, (1 - scenario.passRate) / 0.42));
+  const efficiency = positiveRate(efficiencyScheme, 0.18, 0.45 * gameShock + 0.55 * ownShock);
+
+  const attempts = Math.max(0, Math.round((means.attempts ?? 0) * passVolume));
+  const carries = Math.max(0, Math.round((means.carries ?? 0) * rushVolume));
+  const targets = Math.max(0, Math.round((means.targets ?? 0) * passVolume));
+  const completions = binomial(attempts, (means.completions ?? 0) / Math.max(means.attempts ?? 0, 1), rng);
+  const receptions = binomial(targets, (means.receptions ?? 0) / Math.max(means.targets ?? 0, 1), rng);
+
+  const line: Record<string, number> = { ...means, attempts, carries, targets, completions, receptions };
+  line.passing_yards = positiveRate(
+    attempts * ((means.passing_yards ?? 0) / Math.max(means.attempts ?? 0, 1)),
+    0.18,
+    ownShock,
+  ) * efficiency;
+  line.rushing_yards = positiveRate(
+    carries * ((means.rushing_yards ?? 0) / Math.max(means.carries ?? 0, 1)),
+    0.24,
+    ownShock,
+  ) * efficiency;
+  line.receiving_yards = positiveRate(
+    receptions * ((means.receiving_yards ?? 0) / Math.max(means.receptions ?? 0, 1)),
+    0.28,
+    ownShock,
+  ) * efficiency;
+
+  for (const stat of [
+    'passing_tds',
+    'passing_interceptions',
+    'rushing_tds',
+    'receiving_tds',
+    'rushing_fumbles_lost',
+    'receiving_fumbles_lost',
+  ]) {
+    const redZoneLift = stat.endsWith('_tds') ? 0.75 + 1.25 * scenario.redZoneRate : 1;
+    const volume = stat.startsWith('rushing_') ? rushVolume : passVolume;
+    line[stat] = poisson((means[stat] ?? 0) * volume * redZoneLift, rng);
+  }
+
+  // Kicker, defense and IDP counting stats do not share the offensive identity
+  // above. Draw their non-skill counts as Poisson events instead of leaving
+  // fractional sacks, tackles or field goals in a realized game.
+  const modelled = new Set([
+    'attempts', 'carries', 'targets', 'completions', 'receptions',
+    'passing_yards', 'rushing_yards', 'receiving_yards',
+    'passing_tds', 'passing_interceptions', 'rushing_tds', 'receiving_tds',
+    'rushing_fumbles_lost', 'receiving_fumbles_lost',
+  ]);
+  for (const [stat, mean] of Object.entries(means)) {
+    if (modelled.has(stat) || stat.startsWith('_') || mean <= 0) continue;
+    line[stat] = poisson(mean * teamVolume, rng);
+  }
+  if (means._points_allowed !== undefined) {
+    line._points_allowed = Math.max(0, means._points_allowed + 7 * gameShock);
+  }
+
+  return Math.max(0, scoreStatLine(line, scenario.rules));
+};
 
 /**
  * Sample one week of points for many players, respecting shared game factors.
@@ -50,6 +172,36 @@ export const sampleWeek = (
   const out = new Map<PlayerId, number>();
   for (let i = 0; i < players.length; i += 1) out.set(players[i]!.playerId, drawn[i]!);
   return out;
+};
+
+/** Real outcome quantiles from the same draw the season simulator uses. */
+export const playerScoreSamples = (
+  player: CorrelatedPlayer,
+  iterations = 2_000,
+  seed = 0x51ced,
+): number[] => {
+  const rng = seededRng(seed);
+  const drawn = new Float64Array(1);
+  const scores = new Array<number>(Math.max(1, iterations));
+  for (let i = 0; i < scores.length; i += 1) {
+    sampleWeekInto([player], rng, drawn);
+    scores[i] = drawn[0]!;
+  }
+  return scores;
+};
+
+export const playerScoreQuantiles = (
+  player: CorrelatedPlayer,
+  probabilities: readonly number[] = [0.25, 0.5, 0.75],
+  iterations = 2_000,
+  seed = 0x51ced,
+): number[] => {
+  const scores = playerScoreSamples(player, iterations, seed);
+  scores.sort((a, b) => a - b);
+  return probabilities.map((probability) => {
+    const p = Math.min(1, Math.max(0, probability));
+    return scores[Math.min(scores.length - 1, Math.floor(p * (scores.length - 1)))]!;
+  });
 };
 
 /**
@@ -86,7 +238,15 @@ export const sampleWeekInto = (
 
     const shock = Math.sqrt(loading) * shared + Math.sqrt(1 - loading) * own;
 
-    out[i] = Math.max(0, player.mean + player.sd * shock);
+    if (player.outcomes !== undefined && player.outcomes.length > 0) {
+      const base = resample(player.outcomes, rng);
+      out[i] = Math.max(0, base + player.sd * Math.sqrt(loading) * shared);
+    } else {
+      out[i] =
+        player.scenario === undefined
+          ? Math.max(0, player.mean + player.sd * shock)
+          : sampleStatLine(player.scenario, Math.sqrt(loading) * shared, own, rng);
+    }
   }
 };
 

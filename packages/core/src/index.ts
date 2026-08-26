@@ -2,7 +2,7 @@ export * from './domain/index.js';
 
 // simulation
 export { optimalLineup, lineupEfficiency, type LineupCandidate, type OptimalLineup } from './sim/lineup.js';
-export { sampleWeek, sampleWeekInto, DEFAULT_GAME_LOADING, type CorrelatedPlayer } from './sim/correlated.js';
+export { sampleWeek, sampleWeekInto, playerScoreSamples, playerScoreQuantiles, DEFAULT_GAME_LOADING, type CorrelatedPlayer, type StatLineScenario } from './sim/correlated.js';
 export { seededRng, seedFrom, standardNormal, resample, type Rng } from './sim/random.js';
 export {
   simulateSeason,
@@ -52,6 +52,7 @@ export {
   type PlayerEvaluation,
   type PlayerEvaluationInput,
 } from './valuation/player-evaluation.js';
+export { fundamentalPlayerValue, fundamentalPickValue, type FundamentalPlayerInput, type FundamentalValue } from './valuation/fundamental.js';
 
 // metrics
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';

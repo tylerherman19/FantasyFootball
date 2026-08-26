@@ -276,6 +276,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
                   color: myRoster.has(player.playerId) ? 'var(--accent)' : positionColor(player.position),
                   emphasis: myRoster.has(player.playerId),
                   radius: 3.5,
+                  href: `/league/${leagueId}/player/${player.playerId}`,
                 }))}
               />
               <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>

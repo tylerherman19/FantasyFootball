@@ -316,6 +316,45 @@ describe('trades', () => {
     expect(found[0]!.rationale.length).toBe(4);
     expect(found[0]!.evidenceScore).toBeGreaterThan(0);
   });
+
+  it('does not sell a young cornerstone for an older player in a rebuild', () => {
+    const { context } = buildContext();
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('young-wr', 'WR', 8_000)]],
+      ['2', [asset('old-wr', 'WR', 8_400)]],
+    ]);
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: ['WR'],
+      surplus: ['WR'],
+      objective: 'rebuild',
+      ages: new Map([['young-wr', 22], ['old-wr', 30]]),
+    });
+    expect(found).toHaveLength(0);
+  });
+
+  it('prefers the younger return when rebuilding', () => {
+    const { context } = buildContext();
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('prime-wr', 'WR', 5_000)]],
+      ['2', [asset('old-wr', 'WR', 5_300)]],
+      ['3', [asset('young-wr', 'WR', 4_800)]],
+    ]);
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: ['WR'],
+      surplus: ['WR'],
+      objective: 'rebuild',
+      ages: new Map([['prime-wr', 26], ['old-wr', 31], ['young-wr', 22]]),
+      finalists: 4,
+    });
+    expect(found[0]?.sideB.sends[0]?.playerId).toBe(asPlayerId('young-wr'));
+    expect(found.some((trade) => trade.sideB.sends[0]?.playerId === asPlayerId('old-wr'))).toBe(false);
+  });
 });
 
 describe('player evaluation', () => {

@@ -1,8 +1,8 @@
-import { asPlayerId, optimalLineup, type LineupCandidate, type Position } from '@ffe/core';
+import { asPlayerId, optimalLineup, playerScoreQuantiles, seedFrom, type LineupCandidate, type Position } from '@ffe/core';
 import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
-import { isPlayingIn, loadArtifact, scoreFor } from './projections';
+import { buildPool, isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadMarketValues } from './values';
 
 /**
@@ -76,6 +76,22 @@ export interface TeamProfile {
   readonly topTwoShare: number;
 
   readonly byPosition: readonly PositionSlice[];
+  readonly roster: readonly RosterPlayer[];
+}
+
+export interface RosterPlayer {
+  readonly playerId: string;
+  readonly name: string;
+  readonly position: string;
+  readonly nflTeam: string;
+  readonly starting: boolean;
+  readonly age: number | null;
+  readonly marketValue: number;
+  readonly projectedPoints: number;
+  readonly p25: number;
+  readonly p50: number;
+  readonly p75: number;
+  readonly basis: 'history' | 'rookie-prior' | 'unprojected';
 }
 
 /** Positions worth breaking a roster down by, in the order managers think of them. */
@@ -89,6 +105,11 @@ interface RatedPlayer {
   readonly marketValue: number;
   readonly age: number | null;
   readonly starting: boolean;
+  readonly name: string;
+  readonly nflTeam: string;
+  readonly sd: number;
+  readonly basis: 'history' | 'rookie-prior' | 'unprojected';
+  readonly range: readonly [number, number, number];
 }
 
 const ageFrom = (birthdate: string | null): number | null => {
@@ -111,6 +132,10 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
   ]);
 
   const rules = snapshot.league.scoring.raw;
+  const scenarioWeek =
+    artifact === null
+      ? undefined
+      : buildPool(artifact, [snapshot.asOfWeek], rules, availability).get(snapshot.asOfWeek);
   const outcomes = new Map(result.teams.map((team) => [team.teamId, team]));
   const records = new Map(snapshot.records.map((record) => [record.teamId, record]));
 
@@ -141,11 +166,26 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
           : scoreFor(projection, rules, availability[id]?.injuryStatus ?? null, snapshot.asOfWeek);
 
       const position = projection?.position ?? identity?.position ?? '?';
+      const scenarioProjection = scenarioWeek?.get(asPlayerId(id));
+      const range =
+        scenarioProjection === undefined
+          ? ([0, 0, 0] as const)
+          : (playerScoreQuantiles(
+              scenarioProjection,
+              [0.25, 0.5, 0.75],
+              1_000,
+              seedFrom(snapshot.league.id, snapshot.asOfWeek, id),
+            ) as [number, number, number]);
 
       players.push({
         playerId: id,
+        name: projection?.name || identity?.name || id,
         position,
+        nflTeam: projection?.team ?? identity?.team ?? '',
         points,
+        sd: projection?.sd ?? 0,
+        basis: projection?.basis ?? (projection === undefined ? 'unprojected' : 'history'),
+        range,
         marketValue: values.get(id)?.value ?? 0,
         age: ageFrom(identity?.birthdate ?? null),
       });
@@ -270,6 +310,29 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
       topTwoShare: starterPoints > 0 ? topTwo / starterPoints : 0,
 
       byPosition,
+      roster: [...players]
+        .sort(
+          (a, b) =>
+            Number(b.starting) - Number(a.starting) ||
+            b.marketValue - a.marketValue ||
+            b.points - a.points,
+        )
+        .map((player): RosterPlayer => {
+          return {
+            playerId: player.playerId,
+            name: player.name,
+            position: player.position,
+            nflTeam: player.nflTeam,
+            starting: player.starting,
+            age: player.age,
+            marketValue: player.marketValue,
+            projectedPoints: player.points,
+            p25: player.range[0],
+            p50: player.range[1],
+            p75: player.range[2],
+            basis: player.basis,
+          };
+        }),
     };
   });
 };

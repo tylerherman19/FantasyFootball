@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { playerScoreSamples, seedFrom } from '@ffe/core';
 import { notFound } from 'next/navigation';
 import { LeagueNav } from '@/components/LeagueNav';
 import { Section } from '@/components/Section';
@@ -9,7 +10,7 @@ import { Confidence, Why } from '@/components/Why';
 import { SchemeLine } from '@/components/SchemeLine';
 import { loadDefenses, opponentFrom } from '@/lib/defense';
 import { loadSchemeFinding } from '@/lib/scheme-impact';
-import { distributionOf } from '@/lib/distribution';
+import { distributionFromSamples } from '@/lib/distribution';
 import { PositionChip } from '@/components/charts/primitives';
 import {
   careerPhase,
@@ -27,7 +28,7 @@ import { loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
 import { loadAvailability } from '@/lib/availability';
 import { loadIdentities } from '@/lib/crosswalk';
-import { loadArtifact, loadExplanation } from '@/lib/projections';
+import { buildPool, loadArtifact, loadExplanation } from '@/lib/projections';
 import { loadOffense, offenseRead, rankOf } from '@/lib/offense';
 import { loadMarketValues } from '@/lib/values';
 
@@ -133,10 +134,22 @@ export default async function PlayerPage({
   const past = history?.bySleeperId.get(playerId) ?? null;
 
   // §49: the model has always produced a distribution; the page showed its mean.
+  const weeklyProjection =
+    artifact === null
+      ? undefined
+      : buildPool(artifact, [snapshot.asOfWeek], rules, availability)
+          .get(snapshot.asOfWeek)
+          ?.get(playerId as never);
   const spread =
-    player === undefined || explanation === null
+    player === undefined || explanation === null || weeklyProjection === undefined
       ? null
-      : distributionOf(explanation.total, player.sd);
+      : distributionFromSamples(
+          playerScoreSamples(
+            weeklyProjection,
+            4_000,
+            seedFrom(snapshot.league.id, snapshot.asOfWeek, playerId),
+          ),
+        );
 
   const opportunity =
     explanation?.steps.find((step) => step.label === 'Player opportunity' || step.label === 'Opportunity')?.value ?? 0;
@@ -198,7 +211,7 @@ export default async function PlayerPage({
             {spread !== null && (
               <RailBlock
                 title="The distribution"
-                note="Gaussian with a spread calibrated against real forecast error, and the same one the season simulation draws from — so this page cannot disagree with your title odds."
+                note="Simulated stat lines under this league's exact scoring, including DNP, game environment, usage, efficiency and threshold bonuses."
               >
                 {spread.percentiles.map((pc) => (
                   <RailStat key={pc.label} label={pc.label} value={pc.value.toFixed(1)} />
@@ -373,7 +386,7 @@ export default async function PlayerPage({
             {spread !== null && (
               <Section
                 title="The range, not the number"
-                note="The model has always produced a distribution — a calibrated spread the simulator draws from ten thousand times — and the product showed you its centre. Two players projected the same are not the same player if one is tight and the other is not. Hover any band for exact figures."
+                note="Each band comes from simulated football stat lines scored under this league's exact rules. Two players with the same median can have very different floors and ceilings. Hover any band for exact figures."
               >
                 <Distribution distribution={spread} />
 

@@ -349,6 +349,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                       color: positionColor(player.position),
                       radius: 4,
                       emphasis: player.starting,
+                      href: `/league/${leagueId}/player/${player.playerId}`,
                     }))}
                   />
                   <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
@@ -492,6 +493,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                         color: positionColor(player.position),
                         radius: 3.5 + Math.min(player.marginal, 8) * 0.35,
                         emphasis: player.starting,
+                        href: `/league/${leagueId}/player/${player.playerId}`,
                       }))}
                   />
                   <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>

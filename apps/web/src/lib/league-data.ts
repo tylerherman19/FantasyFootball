@@ -173,7 +173,12 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
   const snapshot = await stage('sleeper', () => adapter.loadSnapshot(platformLeagueId));
 
   const weeks: number[] = [];
-  for (let week = snapshot.asOfWeek; week <= snapshot.league.regularSeasonWeeks; week += 1) {
+  const playoffRounds = Math.ceil(Math.log2(Math.max(snapshot.league.playoffTeams, 1)));
+  const finalWeek = Math.max(
+    snapshot.league.regularSeasonWeeks,
+    snapshot.league.playoffStartWeek + playoffRounds - 1,
+  );
+  for (let week = snapshot.asOfWeek; week <= finalWeek; week += 1) {
     weeks.push(week);
   }
 

@@ -235,6 +235,10 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
 
   const maxPlayers = weekPlans.reduce((most, plan) => Math.max(most, plan.players.length), 0);
   const sampled = new Float64Array(maxPlayers);
+  const playoffScores = weekPlans
+    .filter((plan) => plan.week > snapshot.league.regularSeasonWeeks)
+    .map((plan) => ({ week: plan.week, scores: new Float64Array(teamCount) }));
+  const playoffScoreByWeek = new Map(playoffScores.map((entry) => [entry.week, entry.scores]));
 
   // Only a week that is actually being simulated can be priced.
   const leverage =
@@ -275,6 +279,14 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
         }
       }
 
+      if (alive === null && plan.week > snapshot.league.regularSeasonWeeks) {
+        for (let team = 0; team < teamCount; team += 1) {
+          if (scored[team] === 0) scores[team] = 0;
+        }
+        playoffScoreByWeek.get(plan.week)?.set(scores);
+        continue;
+      }
+
       for (let team = 0; team < teamCount; team += 1) {
         if (alive !== null && !alive.has(teamIds[team]!)) continue;
         if (scored[team] === 0) scores[team] = 0;
@@ -297,7 +309,10 @@ export const simulateSeason = (input: SeasonSimInput): SeasonSimResult => {
       recordLeverage(leverage, wins, points, teamCount, playoffTeams);
     }
 
-    recordFinish(teamIds, teamIndexOf, wins, points, ranked, tallies, playoffTeams, isGuillotine, alive, rng);
+    recordFinish(
+      teamIds, teamIndexOf, wins, points, ranked, tallies, playoffTeams,
+      isGuillotine, alive, rng, playoffScores.map((entry) => entry.scores),
+    );
   }
 
   return {
@@ -537,6 +552,7 @@ const recordFinish = (
   isGuillotine: boolean,
   alive: Set<string> | null,
   rng: Rng,
+  playoffScores: readonly Float64Array[],
 ): void => {
   if (isGuillotine) {
     // The survivor wins; there is no bracket.
@@ -579,7 +595,7 @@ const recordFinish = (
     if (team !== undefined) tallies[team]!.byes += 1;
   }
 
-  const champion = simulateBracket(bracket, points, rng);
+  const champion = simulateBracket(bracket, points, rng, playoffScores);
   if (champion !== null) tallies[champion]!.titles += 1;
 };
 
@@ -588,15 +604,21 @@ const nextPowerOfTwo = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(
 /**
  * Seeded single-elimination bracket.
  *
- * Rather than re-sampling full lineups for playoff weeks — which would cost
- * more than it buys — each game is decided by a draw around the teams' realized
- * scoring rate, preserving both seeding advantage and genuine upset risk.
+ * Uses the lineup and joint stat-line draw for the actual playoff week. The
+ * season-strength fallback exists only for old callers that do not provide
+ * playoff projections.
  */
-const simulateBracket = (seeds: readonly number[], points: Float64Array, rng: Rng): number | null => {
+const simulateBracket = (
+  seeds: readonly number[],
+  points: Float64Array,
+  rng: Rng,
+  playoffScores: readonly Float64Array[],
+): number | null => {
   if (seeds.length === 0) return null;
 
   let field = [...seeds];
 
+  let round = 0;
   while (field.length > 1) {
     const next: number[] = [];
     const byes = nextPowerOfTwo(field.length) - field.length;
@@ -616,18 +638,23 @@ const simulateBracket = (seeds: readonly number[], points: Float64Array, rng: Rn
         continue;
       }
 
-      const strengthHome = points[home] ?? 1;
-      const strengthAway = points[away] ?? 1;
-      const total = strengthHome + strengthAway;
-      const probabilityHome = total > 0 ? strengthHome / total : 0.5;
-
-      // Damp toward a coin flip: single fantasy games are far closer to even
-      // than season-long scoring totals imply.
-      const damped = 0.5 + (probabilityHome - 0.5) * 0.6;
-      next.push(rng() < damped ? home : away);
+      const weekly = playoffScores[round];
+      if (weekly !== undefined) {
+        const homeScore = weekly[home] ?? 0;
+        const awayScore = weekly[away] ?? 0;
+        next.push(homeScore === awayScore ? (rng() < 0.5 ? home : away) : homeScore > awayScore ? home : away);
+      } else {
+        const strengthHome = points[home] ?? 1;
+        const strengthAway = points[away] ?? 1;
+        const total = strengthHome + strengthAway;
+        const probabilityHome = total > 0 ? strengthHome / total : 0.5;
+        const damped = 0.5 + (probabilityHome - 0.5) * 0.6;
+        next.push(rng() < damped ? home : away);
+      }
     }
 
     field = next;
+    round += 1;
   }
 
   return field[0] ?? null;

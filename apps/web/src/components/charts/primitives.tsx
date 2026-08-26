@@ -424,6 +424,8 @@ export interface ScatterPoint {
   readonly color?: string;
   readonly radius?: number;
   readonly emphasis?: boolean;
+  /** Optional destination for the full player/team evidence page. */
+  readonly href?: string;
 }
 
 /**
@@ -539,12 +541,21 @@ export const Scatter = ({
         </>
       )}
 
-      {points.map((point) => (
-        <g key={point.key}>
-          <title>{point.label ?? point.key}</title>
+      {points.map((point) => {
+        const cx = xScale(point.x);
+        const cy = yScale(point.y);
+        const tooltipX = cx > width * 0.68 ? cx - 174 : cx + 10;
+        const tooltipY = cy < pad.top + 48 ? cy + 10 : cy - 46;
+        const mark = (
+        <g
+          className="scatter-point"
+          tabIndex={0}
+          role={point.href === undefined ? 'img' : undefined}
+          aria-label={point.label ?? point.key}
+        >
           <circle
-            cx={xScale(point.x)}
-            cy={yScale(point.y)}
+            cx={cx}
+            cy={cy}
             r={point.radius ?? 4}
             fill={point.color ?? 'var(--p-high)'}
             fillOpacity={point.emphasis === true ? 1 : 0.72}
@@ -564,16 +575,33 @@ export const Scatter = ({
             * would otherwise let the cursor straight through.
             */}
           <circle
-            cx={xScale(point.x)}
-            cy={yScale(point.y)}
+            cx={cx}
+            cy={cy}
             r={Math.max(12, (point.radius ?? 4) + 6)}
             fill="transparent"
-            style={{ pointerEvents: 'all', cursor: 'help' }}
+            style={{ pointerEvents: 'all', cursor: point.href === undefined ? 'help' : 'pointer' }}
+          />
+          <foreignObject
+            className="scatter-tooltip"
+            x={tooltipX}
+            y={tooltipY}
+            width={164}
+            height={42}
+            aria-hidden="true"
           >
-            <title>{point.label ?? point.key}</title>
-          </circle>
+            <div>{point.label ?? point.key}{point.href === undefined ? '' : ' · Click to open'}</div>
+          </foreignObject>
         </g>
-      ))}
+        );
+
+        return point.href === undefined ? (
+          <g key={point.key}>{mark}</g>
+        ) : (
+          <a key={point.key} href={point.href} aria-label={`Open ${point.label ?? point.key}`}>
+            {mark}
+          </a>
+        );
+      })}
 
       <text x={pad.left + plotWidth / 2} y={height - 6} fontSize={10} textAnchor="middle">
         {xLabel}

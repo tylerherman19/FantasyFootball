@@ -18,52 +18,67 @@ from model.features.store import FeatureStore
 from model.models import marcel, v1_usage
 
 if __name__ == "__main__":
-    first = int(sys.argv[1]) if len(sys.argv) > 1 else 2024
-    last = int(sys.argv[2]) if len(sys.argv) > 2 else 2024
+    first = int(sys.argv[1]) if len(sys.argv) > 1 else 2022
+    last = int(sys.argv[2]) if len(sys.argv) > 2 else 2025
+    if last <= first:
+        raise SystemExit("spread calibration needs at least one training season and a later validation season")
 
     ladder = [
         ("v0-marcel", partial(marcel.build, scoring=SCORING)),
-        ("v1-usage", partial(v1_usage.build, rules=SLEEPER_RULES)),
+        ("v1-usage-raw", partial(v1_usage.build, rules=SLEEPER_RULES, spread_multipliers={})),
     ]
 
     with FeatureStore(default_lake()) as store:
         for name, model in ladder:
             report = calibrate(
                 store, model, name,
-                seasons=range(first, last + 1),
+                seasons=range(first, last),
                 weeks=range(1, 18),
                 scoring=SCORING,
             )
             print(report.describe())
             print(f"  suggested spread multiplier: {recalibrate_spread(report):.3f}\n")
 
-        # Export per-position multipliers for the shipping model. Measured, not
-        # tuned by hand, and re-derivable whenever the model changes.
+        # Fit only on seasons strictly before the validation season. The old
+        # path measured and evaluated the spread on the same player-weeks,
+        # which made the calibration claim in-sample by construction.
         measured = calibrate_by_position(
             store,
             ladder[-1][1],
-            seasons=range(first, last + 1),
+            seasons=range(first, last),
             weeks=range(1, 18),
             scoring=SCORING,
         )
 
+        validation_model = partial(
+            v1_usage.build,
+            rules=SLEEPER_RULES,
+            spread_multipliers=measured,
+        )
+        validation = calibrate(
+            store,
+            validation_model,
+            f"v1-usage-calibrated-oos-{last}",
+            seasons=range(last, last + 1),
+            weeks=range(1, 18),
+            scoring=SCORING,
+        )
+        print("held-out validation")
+        print(validation.describe())
+
         out = Path("model/artifacts/spread-calibration.json")
 
-        # Compose with whatever correction is already applied, rather than
-        # replacing it. The model loads this file, so a measurement taken with
-        # the correction live reads ~1.0 by construction — writing that verbatim
-        # would silently undo the calibration on the next run.
-        existing: dict[str, float] = {}
-        if out.exists():
-            existing = json.loads(out.read_text()).get("multipliers", {})
-
-        multipliers = {
-            position: round(existing.get(position, 1.0) * value, 4)
-            for position, value in measured.items()
-        }
+        multipliers = {position: round(value, 4) for position, value in measured.items()}
         out.write_text(
             json.dumps(
-                {"seasons": [first, last], "multipliers": multipliers, "note": "composed with prior calibration"},
+                {
+                    "trainingSeasons": [first, last - 1],
+                    "validationSeason": last,
+                    "validationCoverage": validation.coverage,
+                    "validationPitDeviation": validation.pit_deviation,
+                    "multipliers": multipliers,
+                    "note": "fit on prior seasons; evaluated once on the held-out final season",
+                },
                 indent=2,
             )
         )

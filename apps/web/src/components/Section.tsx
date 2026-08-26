@@ -10,11 +10,9 @@ export const sectionId = (title: string): string =>
 /**
  * A titled block of data.
  *
- * Every section announces itself the same way — title, one line saying what the
- * numbers mean, then the numbers. The note is not decoration: a heat map of
- * positional strength is unreadable until you know whether the colour means
- * points or rank, and putting that where the eye already is beats a legend
- * somewhere else.
+ * Every section announces itself with a clear title and the data itself. Generic
+ * instructional notes were removed from the surface because they added noise;
+ * specific context belongs in the chart, table, or drill-down that needs it.
  *
  * **The title is a heading, not a label.** It used to render at the same weight
  * and size as the small-caps eyebrow used for field names, which flattened the
@@ -29,7 +27,6 @@ export const sectionId = (title: string): string =>
  */
 export const Section = ({
   title,
-  note,
   aside,
   source,
   children,
@@ -69,12 +66,6 @@ export const Section = ({
       </h2>
       {aside}
     </div>
-    {note !== undefined && (
-      <details className="section-context mb-3">
-        <summary>How to read this</summary>
-        <div className="deck mt-1.5 max-w-3xl text-[0.82rem] leading-relaxed">{note}</div>
-      </details>
-    )}
     {children}
     {source !== undefined && <div className="source-line">Source: {source}</div>}
   </section>

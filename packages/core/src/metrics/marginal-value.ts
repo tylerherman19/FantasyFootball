@@ -18,9 +18,11 @@ import { optimalLineup, type LineupCandidate } from '../sim/lineup.js';
  *
  * It also naturally handles the cases the heuristic misses. A backup behind an
  * elite starter shows near-zero marginal value even though he's good, which is
- * exactly why he's the right piece to trade. A mediocre starter at a thin
+ * exactly why he's a possible trade piece. A mediocre starter at a thin
  * position shows high marginal value even though he's bad, which is exactly why
- * you can't move him without a replacement.
+ * you can't move him without a replacement. The `starting` flag is part of the
+ * final decision because a starter can also have low marginal value when the
+ * lineup has an eligible duplicate; that is redundancy, not a sell signal.
  */
 
 export interface MarginalValue {
@@ -78,7 +80,20 @@ export interface DepthAssessment {
 }
 
 /** Below this, losing the player costs less than projection error anyway. */
-const EXPENDABLE_THRESHOLD = 1.0;
+export const EXPENDABLE_THRESHOLD = 1.0;
+
+/**
+ * A player is expendable only when the current optimal lineup does not use him.
+ *
+ * Marginal value alone is not enough: a starter can have a low marginal number
+ * when the roster has another player who can fill the same slot. That describes
+ * redundancy in the counterfactual, not permission to recommend selling the
+ * starter. Keeping this predicate next to the marginal calculation prevents
+ * each consumer from quietly inventing its own version of "spare."
+ */
+export const isExpendable = (
+  value: Pick<MarginalValue, 'marginal' | 'starting'>,
+): boolean => !value.starting && value.marginal < EXPENDABLE_THRESHOLD;
 
 /**
  * Positional depth, judged by consequences rather than headcount.
@@ -99,7 +114,7 @@ export const assessDepth = (
   return [...byPosition.entries()].map(([position, players]) => {
     const sorted = [...players].sort((a, b) => b.marginal - a.marginal);
     const totalMarginal = sorted.reduce((sum, p) => sum + p.marginal, 0);
-    const expendable = sorted.filter((p) => p.marginal < EXPENDABLE_THRESHOLD).map((p) => p.playerId);
+    const expendable = sorted.filter(isExpendable).map((p) => p.playerId);
     const exposureToTopLoss = sorted[0]?.marginal ?? 0;
 
     // A position with real spare parts has someone whose exit is free *and*

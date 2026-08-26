@@ -451,6 +451,9 @@ const buildTrades = async (
         marginalByPlayer: new Map(
           analysis.marginal.map((entry) => [String(entry.playerId), entry.marginal]),
         ),
+        startingByPlayer: new Map(
+          analysis.marginal.map((entry) => [String(entry.playerId), entry.starting]),
+        ),
         exposureByPosition: new Map(
           analysis.depth.map((entry) => [entry.position as Position, entry.exposureToTopLoss]),
         ),

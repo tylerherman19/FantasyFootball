@@ -2,6 +2,7 @@ import type { PlayerId, Position } from '../domain/index.js';
 import { currentOdds, oddsDelta, type OddsDelta, type SimContext } from './odds.js';
 import { evaluatePlayer, type PlayerEvaluationInput } from '../valuation/player-evaluation.js';
 import { fundamentalPickValue, fundamentalPlayerValue } from '../valuation/fundamental.js';
+import { isExpendable } from '../metrics/marginal-value.js';
 
 /**
  * Trades, priced in both currencies at once.
@@ -93,6 +94,8 @@ export const fairnessGap = (valueA: number, valueB: number): number => {
 export interface TradeRosterProfile {
   /** What the team's optimal lineup loses if a player leaves. */
   readonly marginalByPlayer: ReadonlyMap<string, number>;
+  /** Whether the player is currently in the optimal lineup. */
+  readonly startingByPlayer: ReadonlyMap<string, boolean>;
   /** How exposed the team is at each position. */
   readonly exposureByPosition: ReadonlyMap<Position, number>;
 }
@@ -149,6 +152,23 @@ const outgoingCost = (profile: TradeRosterProfile | undefined, assets: readonly 
 const averageConfidence = (assets: readonly TradeAsset[]): number => {
   if (assets.length === 0) return 0.75;
   return assets.reduce((sum, asset) => sum + clamp01(asset.modelConfidence ?? 0.75), 0) / assets.length;
+};
+
+/** Never treat a current starter as a disposable outgoing asset. */
+const isTradeableOutgoing = (
+  profile: TradeRosterProfile | undefined,
+  asset: TradeAsset,
+): boolean => {
+  if (profile === undefined) return true;
+  const playerId = String(asset.playerId);
+  const starting = profile.startingByPlayer.get(playerId);
+  // An incomplete role record fails closed instead of recreating the original
+  // bug with a low-marginal starter.
+  if (starting === undefined) return false;
+  return isExpendable({
+    marginal: profile.marginalByPlayer.get(playerId) ?? 0,
+    starting,
+  });
 };
 
 const youthYears = (sends: readonly TradeAsset[], gets: readonly TradeAsset[]): number => {
@@ -369,8 +389,10 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
    * Surplus narrows the outgoing side; it does not gate it. A roster with
    * nothing flagged spare is the normal case, and it still has trades.
    */
+  const mineProfile = input.rosterProfiles?.get(myTeamId);
   const myTradeable =
-    input.surplus.length > 0 ? mine.filter((a) => input.surplus.includes(a.position)) : mine;
+    (input.surplus.length > 0 ? mine.filter((a) => input.surplus.includes(a.position)) : mine)
+      .filter((asset) => isTradeableOutgoing(mineProfile, asset));
 
   const candidates: Candidate[] = [];
 

@@ -1,5 +1,5 @@
 import { LeagueNav } from '@/components/LeagueNav';
-import { RailBlock, RailLayout } from '@/components/design/DrillRail';
+import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { LeagueRail } from '@/components/design/LeagueRail';
 import { TradeObjectiveBar } from '@/components/TradeObjectiveBar';
 import { Section } from '@/components/Section';
@@ -115,10 +115,32 @@ export default async function TradesPage({
       <RailLayout
         rail={
           <LeagueRail view={view}>
-            <RailBlock title="How to use the finder">
-              Start with what you want to acquire. The engine searches the league for that player
-              or position, then shows the package you should offer for it. The offer side is
-              replacement-aware: it avoids treating a backup quarterback as a weekly starter.
+            <RailBlock title="Trade lens" note="This panel is the explanation for the recommendations, not another navigation menu.">
+              <RailStat label="Target" value={requestLabel} hint="Every returned proposal must acquire this player or position." />
+              <RailStat label="Mode" value={objective === 'winNow' ? 'Win now' : objective === 'rebuild' ? 'Rebuild' : 'Balanced'} />
+              <RailStat label="Offers found" value={trades === null ? '—' : String(trades.evaluations.length)} />
+              <RailStat label="Teams represented" value={trades === null ? '—' : String(new Set(trades.evaluations.map((item) => item.sideB.teamId)).size)} />
+            </RailBlock>
+            <RailBlock title="Read a recommendation" note="Hover a metric for a short definition. Open a proposal to see the full evidence stack.">
+              <p>Closed cards are the shortlist. The top card is the model&apos;s best starting point, not an instruction to accept blindly.</p>
+              <div className="mt-3 space-y-1">
+                <RailStat label="Score" value="overall fit" hint="A weighted blend of roster impact, acceptance, market balance, and evidence confidence." />
+                <RailStat label="Title odds" value="your swing" hint="The simulated change in your chance to win the league." />
+                <RailStat label="Acceptance" value="partner fit" hint="How well the offer matches the other manager's needs and incentives." />
+                <RailStat label="Evidence" value="confidence" hint="How much recent usage and role evidence supports the projection." />
+              </div>
+            </RailBlock>
+            <RailBlock title="Model inputs">
+              <details className="border-t pt-2" style={{ borderColor: 'var(--rule)' }}>
+                <summary className="cursor-pointer text-xs font-semibold">What makes up the model?</summary>
+                <div className="mt-2 space-y-2 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                  <p><strong style={{ color: 'var(--ink)' }}>Opportunity:</strong> routes, targets, touches, goal-line work, and role share.</p>
+                  <p><strong style={{ color: 'var(--ink)' }}>Scheme:</strong> offensive pace, pass rate, personnel, and position usage.</p>
+                  <p><strong style={{ color: 'var(--ink)' }}>Efficiency:</strong> production per opportunity, shrunk toward positional priors.</p>
+                  <p><strong style={{ color: 'var(--ink)' }}>Uncertainty:</strong> 25th / 50th / 75th percentile outcomes, not one fake-precise number.</p>
+                  <p><strong style={{ color: 'var(--ink)' }}>Roster fit:</strong> replacement level and who actually starts after the trade.</p>
+                </div>
+              </details>
             </RailBlock>
           </LeagueRail>
         }
@@ -217,9 +239,9 @@ export default async function TradesPage({
                   view.teamNames.get(evaluation.sideB.teamId) ?? evaluation.sideB.teamId;
 
                 return (
-                  <article key={index} className="panel overflow-hidden">
-                    <div
-                      className="flex flex-wrap items-start justify-between gap-4 border-b p-4"
+                  <details key={index} className="proposal-card panel overflow-hidden" open={index === 0}>
+                    <summary
+                      className="proposal-summary flex flex-wrap items-start justify-between gap-4 border-b p-4"
                       style={{ borderColor: 'var(--rule)' }}
                     >
                       <div>
@@ -235,6 +257,13 @@ export default async function TradesPage({
                           {Math.round(evaluation.recommendationScore)}/100
                         </div>
                       </div>
+                    </summary>
+
+                    <div className="grid grid-cols-2 gap-2 border-b px-4 py-3 sm:grid-cols-4" style={{ borderColor: 'var(--rule)', background: 'var(--ground)' }}>
+                      <div title="Change in your simulated chance to win the league."><div className="axis-label">Title odds</div><div className="tabular mt-1 text-sm font-semibold">{pct(mine?.titleDelta ?? 0)}</div></div>
+                      <div title="Estimated probability the partner sees this as a good roster move."><div className="axis-label">Acceptance</div><div className="tabular mt-1 text-sm font-semibold">{Math.round(evaluation.acceptanceScore * 100)}%</div></div>
+                      <div title="Distance from market balance. Lower is usually easier to send."><div className="axis-label">Market gap</div><div className="tabular mt-1 text-sm font-semibold">{formatPct(evaluation.fairness)}</div></div>
+                      <div title="Confidence in the underlying role and projection evidence."><div className="axis-label">Evidence</div><div className="tabular mt-1 text-sm font-semibold">{Math.round(evaluation.evidenceScore * 100)}%</div></div>
                     </div>
 
                     <div className="grid gap-0 md:grid-cols-2">
@@ -382,6 +411,20 @@ export default async function TradesPage({
                       </div>
                     </div>
 
+                    <details className="border-t px-4 py-3" style={{ borderColor: 'var(--rule)' }}>
+                      <summary className="cursor-pointer text-xs font-semibold">Show how this proposal was modeled</summary>
+                      <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+                        <div className="border-l-2 pl-3" style={{ borderColor: 'var(--accent)' }}>
+                          <div className="eyebrow mb-1">Projection stack</div>
+                          <p style={{ color: 'var(--ink-muted)' }}>Baseline history → role and opportunity → offensive scheme → efficiency → uncertainty band.</p>
+                        </div>
+                        <div className="border-l-2 pl-3" style={{ borderColor: 'var(--good)' }}>
+                          <div className="eyebrow mb-1">Decision stack</div>
+                          <p style={{ color: 'var(--ink-muted)' }}>Starter replacement → title odds → partner acceptance → market gap → objective lens.</p>
+                        </div>
+                      </div>
+                    </details>
+
                     <div className="border-t px-4 py-3 text-sm font-medium" style={{ borderColor: 'var(--rule)' }}>
                       {evaluation.verdict}
                       {evaluation.strategy?.objective === 'rebuild' && (
@@ -394,7 +437,7 @@ export default async function TradesPage({
                         </p>
                       )}
                     </div>
-                  </article>
+                  </details>
                 );
               })}
             </div>

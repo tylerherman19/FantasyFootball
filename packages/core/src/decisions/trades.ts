@@ -406,7 +406,9 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
    */
   const mineProfile = input.rosterProfiles?.get(myTeamId);
   const myTradeable =
-    (input.surplus.length > 0 ? mine.filter((a) => input.surplus.includes(a.position)) : mine)
+    (input.surplus.length > 0
+      ? mine.filter((asset) => asset.kind === 'pick' || input.surplus.includes(asset.position))
+      : mine)
       .filter((asset) => isTradeableOutgoing(mineProfile, asset));
 
   const candidates: Candidate[] = [];
@@ -545,8 +547,14 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   return helpful.length > 0 ? helpful : ranked.slice(0, finalists);
 };
 
-const hasDuplicatePosition = (assets: readonly TradeAsset[]): boolean =>
-  new Set(assets.map((asset) => asset.position)).size !== assets.length;
+const hasDuplicatePosition = (assets: readonly TradeAsset[]): boolean => {
+  // Picks do not have positional scarcity. Two picks are a valid package; the
+  // duplicate-position rule applies only to player assets.
+  const playerPositions = assets
+    .filter((asset) => asset.kind === 'player')
+    .map((asset) => asset.position);
+  return new Set(playerPositions).size !== playerPositions.length;
+};
 
 const pushIfFair = (
   into: Candidate[],

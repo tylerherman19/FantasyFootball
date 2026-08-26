@@ -396,7 +396,7 @@ describe('trades', () => {
       myTeamId: '1',
       assetsByTeam,
       needs: ['RB'],
-      surplus: [],
+      surplus: ['WR'],
       rosterProfiles: profiles,
     });
 

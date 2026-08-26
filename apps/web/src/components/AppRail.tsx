@@ -133,6 +133,7 @@ export const AppRail = ({
         <Link
           key={item.key}
           href={item.href}
+          title={item.label}
           aria-current={isActive ? 'page' : undefined}
           className="group relative mb-0.5 flex w-full flex-col items-center gap-0.5 py-2 transition-colors"
           style={{ color: isActive ? 'var(--ink)' : 'var(--ink-faint)' }}

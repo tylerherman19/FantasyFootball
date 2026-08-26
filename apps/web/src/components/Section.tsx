@@ -60,9 +60,9 @@ export const Section = ({
    * whose context needed rewriting anyway.
    */
   <section id={sectionId(title)} className={`scroll-mt-40 mb-10 ${className}`}>
-    <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div className="section-heading mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <h2
-        className="leading-tight"
+        className="section-title leading-tight"
         style={{ fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.016em' }}
       >
         {title}

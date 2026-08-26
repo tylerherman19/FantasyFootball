@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ContextBar } from './ContextBar';
 
 /**
  * The right-hand panel (§62, §86).
@@ -38,6 +39,7 @@ export const RailLayout = ({
   <div className="mx-auto max-w-[92rem] px-5 lg:pl-[4.75rem]">
     <div className="lg:flex lg:gap-10">
       <div className="min-w-0 flex-1 pb-8 lg:pb-20">
+        <ContextBar />
         {children}
 
         {/* Phone and tablet: the rail's material, folded away but reachable. */}
@@ -52,8 +54,8 @@ export const RailLayout = ({
         </details>
       </div>
 
-      <aside className="hidden shrink-0 pb-20 lg:block lg:w-[19rem]">
-        <div className="lg:sticky lg:top-[7.5rem]">{rail}</div>
+      <aside className="hidden shrink-0 pb-20 lg:block lg:w-[20rem]">
+        <div className="rail-surface lg:sticky lg:top-[7.5rem]">{rail}</div>
       </aside>
     </div>
   </div>

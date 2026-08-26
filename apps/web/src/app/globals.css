@@ -261,6 +261,18 @@ th {
   text-transform: uppercase;
 }
 .section-context[open] summary { color: var(--accent); }
+.section-context summary::marker { color: var(--accent); }
+
+@media (max-width: 1023px) {
+  .rail-surface { border-left: 0; padding-left: 0; }
+}
+
+@media (max-width: 639px) {
+  .section-heading { align-items: flex-start; }
+  .section-title { font-size: 1.05rem !important; }
+  .section-context summary { padding-block: 0.2rem; }
+  .panel { border-radius: 5px; }
+}
 
 @media (max-width: 700px) {
   .decision-row { grid-template-columns: 1.8rem minmax(0, 1fr); gap: 0.65rem; }
@@ -285,6 +297,35 @@ th {
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 6px;
+}
+
+.panel { box-shadow: var(--shadow); }
+.panel:focus-within { border-color: var(--rule-strong); }
+.rail-surface {
+  border-left: 1px solid var(--rule);
+  padding-left: 1.15rem;
+}
+.section-heading { min-height: 2rem; }
+.section-title { text-wrap: balance; }
+button, select, a { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Trade finder: collapsed recommendations stay scannable; the evidence opens in place. */
+.proposal-card > summary { list-style: none; cursor: pointer; transition: background 120ms ease; }
+.proposal-card > summary::-webkit-details-marker { display: none; }
+.proposal-card > summary::after { content: '＋'; color: var(--ink-faint); font-size: 1rem; line-height: 1; }
+.proposal-card[open] > summary::after { content: '−'; color: var(--accent); }
+.proposal-card > summary:hover,
+.proposal-card > summary:focus-visible { background: var(--surface-sunk); outline: none; }
+.proposal-card:not([open]) { border-color: var(--rule); }
+.proposal-card:not([open]) .proposal-summary { border-bottom: 0 !important; }
+
+@media (max-width: 639px) {
+  .proposal-card > summary { gap: 0.65rem; padding: 0.85rem; }
+  .proposal-card > summary h3 { font-size: 1rem; }
 }
 
 .panel-head {

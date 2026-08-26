@@ -221,7 +221,7 @@ th {
   font-weight: 600;
 }
 
-/* Overview decision board: conclusion, consequence, evidence on demand. */
+/* Legacy decision-board hooks remain harmless for older saved layouts. */
 .decision-row {
   display: grid;
   grid-template-columns: 2.3rem minmax(0, 1fr) 9rem;
@@ -292,14 +292,14 @@ th {
   color: var(--ink-faint);
 }
 
-/* A panel of data: hairline border, quiet fill, no ornament. */
+/* A data surface: editorial rules instead of dashboard chrome. */
 .panel {
   background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-block: 1px solid var(--rule-strong);
+  border-inline: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
-
-.panel { box-shadow: var(--shadow); }
 .panel:focus-within { border-color: var(--rule-strong); }
 .rail-surface {
   border-left: 1px solid var(--rule);
@@ -390,7 +390,7 @@ a:focus-visible .scatter-point > circle:first-of-type { fill-opacity: 1; stroke:
 .scatter-point:focus .scatter-tooltip,
 a:focus-visible .scatter-point .scatter-tooltip { opacity: 1; }
 
-.team-analysis-surface { overflow: hidden; border: 1px solid var(--rule-strong); border-top: 3px solid var(--accent); border-radius: var(--radius-panel); background: var(--surface); box-shadow: var(--shadow-panel); }
+.team-analysis-surface { overflow: hidden; border-block: 2px solid var(--ink); border-inline: 0; border-radius: 0; background: var(--surface); box-shadow: none; }
 .quiet-button { border: 1px solid var(--rule-strong); border-radius: 999px; background: transparent; color: var(--ink-muted); cursor: pointer; font-size: 0.75rem; padding: 0.3rem 0.65rem; }
 .quiet-button:hover,
 .quiet-button:focus-visible { border-color: var(--accent); color: var(--ink); outline: none; }
@@ -398,10 +398,6 @@ a:focus-visible .scatter-point .scatter-tooltip { opacity: 1; }
 .analysis-tabs { display: flex; gap: 0.25rem; overflow-x: auto; }
 .analysis-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 0.72rem; font-weight: 650; padding: 0.45rem 0.7rem; white-space: nowrap; }
 .analysis-tabs button[aria-selected='true'] { border-bottom-color: var(--accent); color: var(--ink); }
-.analysis-note { align-self: start; border-left: 1px solid var(--rule); padding-left: 1rem; }
-.analysis-note dl > div { display: flex; justify-content: space-between; gap: 0.75rem; border-top: 1px solid var(--rule); padding-top: 0.45rem; }
-.analysis-note dt { color: var(--ink-faint); }
-.analysis-note dd { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 .player-ledger-link { display: block; color: inherit; text-decoration: none; }
 .player-ledger-link span:last-child { display: block; color: var(--ink-faint); font-size: 0.65rem; }
@@ -409,10 +405,6 @@ a:focus-visible .scatter-point .scatter-tooltip { opacity: 1; }
 .player-ledger-link:focus-visible span:first-child { color: var(--accent); }
 .role-chip { display: inline-block; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-faint); font-size: 0.62rem; font-weight: 650; padding: 0.15rem 0.4rem; text-transform: uppercase; }
 .role-chip-start { border-color: color-mix(in srgb, var(--good) 45%, var(--rule)); color: var(--good); }
-
-@media (max-width: 1023px) {
-  .analysis-note { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; padding-top: 1rem; }
-}
 
 /* Scheme page: editorial decision board, not a stack of player cards. */
 .scheme-thesis {

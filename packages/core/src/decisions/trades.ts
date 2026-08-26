@@ -159,6 +159,9 @@ const isTradeableOutgoing = (
   profile: TradeRosterProfile | undefined,
   asset: TradeAsset,
 ): boolean => {
+  // Picks do not occupy lineup slots, so they have no starter/bench role.
+  // They must remain eligible even when a roster profile is present.
+  if (asset.kind === 'pick') return true;
   if (profile === undefined) return true;
   const playerId = String(asset.playerId);
   const starting = profile.startingByPlayer.get(playerId);

@@ -285,6 +285,10 @@ describe('trades', () => {
             ['wr1', 0],
             ['rb1', 12],
           ]),
+          startingByPlayer: new Map([
+            ['wr1', false],
+            ['rb1', true],
+          ]),
           exposureByPosition: new Map<Position, number>([
             ['RB', 10],
             ['WR', 2],
@@ -295,6 +299,7 @@ describe('trades', () => {
         '2',
         {
           marginalByPlayer: new Map([['rb2', 12]]),
+          startingByPlayer: new Map([['rb2', true]]),
           exposureByPosition: new Map<Position, number>([['WR', 18]]),
         },
       ],
@@ -332,6 +337,37 @@ describe('trades', () => {
       objective: 'rebuild',
       ages: new Map([['young-wr', 22], ['old-wr', 30]]),
     });
+    expect(found).toHaveLength(0);
+  });
+
+  it('does not offer a current starter just because its marginal value is low', () => {
+    const { context } = buildContext();
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [asset('star-wr', 'WR', 8_000)]],
+      ['2', [asset('target-rb', 'RB', 8_000)]],
+    ]);
+    const profiles = new Map([
+      ['1', {
+        marginalByPlayer: new Map([['star-wr', 0]]),
+        startingByPlayer: new Map([['star-wr', true]]),
+        exposureByPosition: new Map<Position, number>([['RB', 10]]),
+      }],
+      ['2', {
+        marginalByPlayer: new Map([['target-rb', 12]]),
+        startingByPlayer: new Map([['target-rb', true]]),
+        exposureByPosition: new Map<Position, number>([['WR', 12]]),
+      }],
+    ]);
+
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: ['RB'],
+      surplus: ['WR'],
+      rosterProfiles: profiles,
+    });
+
     expect(found).toHaveLength(0);
   });
 

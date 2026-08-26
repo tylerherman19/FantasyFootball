@@ -427,12 +427,15 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             {/* ---- buy / sell lists ------------------------------------ */}
             <div className="grid gap-3 lg:grid-cols-2">
               {analysis.sellCandidates.length > 0 && (
-                <Section title="Sell candidates" note="The market pays for them; your lineup doesn't need them.">
+                <Section title="Bench depth to explore">
                   <div className="panel divide-y" style={{ borderColor: 'var(--rule)' }}>
                     {analysis.sellCandidates.map((player) => (
                       <div key={player.playerId} className="flex items-center gap-2.5 px-3 py-2">
                         <PositionChip position={player.position} />
                         <span className="min-w-0 flex-1 truncate text-xs">{player.name}</span>
+                        <span className="hidden text-[10px] sm:inline" style={{ color: 'var(--ink-faint)' }}>
+                          bench · {player.projected.toFixed(1)} pts
+                        </span>
                         <CellBar
                           value={player.marketValue}
                           max={Math.max(...analysis.sellCandidates.map((p) => p.marketValue), 1)}

@@ -58,6 +58,8 @@ export { fundamentalPlayerValue, fundamentalPickValue, type FundamentalPlayerInp
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';
 export {
   assessDepth,
+  EXPENDABLE_THRESHOLD,
+  isExpendable,
   marginalValues,
   type DepthAssessment,
   type MarginalValue,

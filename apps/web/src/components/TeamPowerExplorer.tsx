@@ -15,25 +15,6 @@ import {
 
 type Lens = 'roster' | 'projection' | 'value' | 'odds';
 
-const LENS_COPY: Record<Lens, { title: string; body: string }> = {
-  roster: {
-    title: 'Roster construction',
-    body: 'Every rostered player is shown below. Starter is the optimal league-specific lineup, not the platform lineup.',
-  },
-  projection: {
-    title: 'Score range',
-    body: 'P25/P50/P75 come from the same calibrated weekly spread used by the simulator. They are outcome ranges, not confidence intervals around the mean.',
-  },
-  value: {
-    title: 'Market value',
-    body: 'Roster and player values use the league’s selected dynasty market. Value is kept separate from projected points so productive veterans and liquid young assets are not treated as the same thing.',
-  },
-  odds: {
-    title: 'Season odds',
-    body: 'Projected wins, playoff odds and title odds come from the same simulated seasons. The playoff bar includes the simulation’s sampling interval.',
-  },
-};
-
 export function TeamPowerExplorer({
   leagueId,
   profiles,
@@ -193,7 +174,7 @@ export function TeamPowerExplorer({
           </div>
 
           <div className="analysis-tabs px-4 pt-3" role="tablist" aria-label="Team analysis view">
-            {(Object.keys(LENS_COPY) as Lens[]).map((key) => (
+            {(['roster', 'projection', 'value', 'odds'] as Lens[]).map((key) => (
               <button key={key} type="button" role="tab" aria-selected={lens === key} onClick={() => setLens(key)}>
                 {key === 'roster' ? 'All players' : key === 'projection' ? 'Score range' : key === 'value' ? 'Value' : 'Odds'}
               </button>
@@ -230,17 +211,6 @@ export function TeamPowerExplorer({
               </table>
             </div>
 
-            <aside className="analysis-note">
-              <div className="eyebrow">How to read this</div>
-              <h4 className="mt-2 font-semibold">{LENS_COPY[lens].title}</h4>
-              <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>{LENS_COPY[lens].body}</p>
-              <dl className="mt-4 space-y-2 text-xs">
-                <div><dt>Starter value</dt><dd>{selected.starterMarketValue.toLocaleString()}</dd></div>
-                <div><dt>Bench value</dt><dd>{Math.max(0, selected.marketValue - selected.starterMarketValue).toLocaleString()}</dd></div>
-                <div><dt>Lineup efficiency</dt><dd>{formatPct(selected.lineupEfficiency)}</dd></div>
-                <div><dt>Top-two reliance</dt><dd>{formatPct(selected.topTwoShare)}</dd></div>
-              </dl>
-            </aside>
           </div>
         </section>
       )}

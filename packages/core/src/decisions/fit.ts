@@ -1,5 +1,5 @@
 import type { LineupSlot, PlayerId, Position } from '../domain/index.js';
-import { assessDepth, marginalValues, type DepthAssessment, type MarginalValue } from '../metrics/marginal-value.js';
+import { assessDepth, isExpendable, marginalValues, type DepthAssessment, type MarginalValue } from '../metrics/marginal-value.js';
 import type { LineupCandidate } from '../sim/lineup.js';
 
 /**
@@ -100,7 +100,7 @@ export const rankPartners = (
   const surplusPointsByPosition = (analysis: TeamRosterAnalysis): Map<string, number> => {
     const out = new Map<string, number>();
     for (const player of analysis.marginal) {
-      if (player.marginal >= 1) continue;
+      if (!isExpendable(player)) continue;
       // A spare player's worth to someone else is what he would actually
       // produce, not what he adds here — which is nothing.
       out.set(player.position, Math.max(out.get(player.position) ?? 0, player.projected));
@@ -179,7 +179,7 @@ export const offerCandidates = (
   const theirExposure = new Map(theirs.depth.map((d) => [d.position, d.exposureToTopLoss]));
 
   return mine.marginal
-    .filter((player) => player.marginal < 1)
+    .filter(isExpendable)
     .map((player) => ({
       playerId: player.playerId,
       position: player.position,

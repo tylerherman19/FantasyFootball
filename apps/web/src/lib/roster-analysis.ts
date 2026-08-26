@@ -2,6 +2,7 @@ import {
   analyzeRosters,
   asPlayerId,
   evaluatePlayer,
+  isExpendable,
   predictionQuantiles,
   type DepthAssessment,
   type LineupCandidate,
@@ -64,7 +65,7 @@ export interface RosterAnalysis {
    */
   readonly topTwoShare: number;
   readonly averageStarterAge: number | null;
-  /** Sell candidates: expendable here, valued by the market. */
+  /** Trade-away candidates: non-starters with a real replacement and market value. */
   readonly sellCandidates: readonly RosterPlayer[];
   /** Keepers: worth more to this lineup than the market would pay. */
   readonly undervalued: readonly RosterPlayer[];
@@ -190,9 +191,25 @@ export const analyzeRoster = async (
       ? null
       : agedStarters.reduce((sum, p) => sum + (p.age ?? 0), 0) / agedStarters.length;
 
-  // Sell: the market pays for him, the lineup doesn't need him.
+  // Trade-away: use the same canonical expendability rule as the trade engine.
+  // A low marginal number on its own is not a sell signal: it can describe a
+  // starter whose slot is duplicated by another player, which is exactly how an
+  // elite current starter could otherwise be mislabelled.
+  // Young, high-value/upside assets are also not automatic move suggestions:
+  // being replaceable today does not mean the dynasty asset should be sold.
+  const isYoungCoreAsset = (p: RosterPlayer): boolean =>
+    p.age !== null &&
+    p.age <= 25 &&
+    (p.marketValue >= 6_000 || p.projected >= 12);
+
   const sellCandidates = players
-    .filter((p) => p.marginal < 1 && p.marketValue > 0)
+    .filter(
+      (p) =>
+        isExpendable(p) &&
+        !isYoungCoreAsset(p) &&
+        p.marketValue > 0 &&
+        p.modelConfidence >= 0.45,
+    )
     .sort((a, b) => b.marketValue - a.marketValue)
     .slice(0, 5);
 

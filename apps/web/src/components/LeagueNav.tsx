@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { AppRail, ICONS } from './AppRail';
 import { Freshness } from './Freshness';
 import { LeagueSwitcher } from './LeagueSwitcher';
 import { ThemeToggle } from './ThemeToggle';
@@ -46,11 +45,11 @@ const VIEWS = [
 ] as const;
 
 const PRIMARY = [
-  { key: 'overview', label: 'Overview', href: '', icon: ICONS.outlook },
-  { key: 'week', label: 'This week', href: '/lineup', icon: ICONS.lineup },
-  { key: 'improve', label: 'Improve', href: '/waivers', icon: ICONS.waivers },
-  { key: 'team', label: 'Team', href: '/roster', icon: ICONS.roster },
-  { key: 'league', label: 'League', href: '/power', icon: ICONS.power },
+  { key: 'overview', label: 'Overview', href: '' },
+  { key: 'week', label: 'This week', href: '/lineup' },
+  { key: 'improve', label: 'Improve', href: '/waivers' },
+  { key: 'team', label: 'Team', href: '/roster' },
+  { key: 'league', label: 'League', href: '/power' },
 ] as const;
 
 export const LeagueNav = async ({
@@ -97,29 +96,11 @@ export const LeagueNav = async ({
   const activeGroup = activeView.group;
   const subviews = VIEWS.filter((view) => view.group === activeGroup);
 
-  /*
-   * The rail carries navigation at the edge of the screen, where it belongs on
-   * a page whose content is wide tables and charts — a horizontal strip spends
-   * vertical space on every view and pushes the first number below the fold.
-   * The strip stays for narrow screens, where a fixed rail would eat width the
-   * tables need more.
-   */
-  const railItems = PRIMARY.map((item) => ({
-    key: item.key,
-    label: item.label,
-    href: `/league/${leagueId}${item.href}`,
-    icon: item.icon,
-  }));
-
   return (
   <>
-    <div className="hidden lg:block">
-      <AppRail items={railItems} active={active} />
-    </div>
-
     <header
     data-league-nav
-    className="sticky top-0 z-20 mb-6 border-b backdrop-blur lg:ml-14"
+    className="sticky top-0 z-20 mb-6 border-b backdrop-blur"
     style={{ borderColor: 'var(--rule)', background: 'color-mix(in srgb, var(--ground) 88%, transparent)' }}
   >
     <div className="mx-auto max-w-6xl px-5 pt-4">
@@ -183,7 +164,7 @@ export const LeagueNav = async ({
         * for narrow screens, where a fixed rail would take width the tables
         * need more.
         */}
-      <nav className="scroll-x mt-3 flex gap-0.5 lg:hidden" aria-label="League sections">
+      <nav className="scroll-x mt-3 flex gap-0.5 border-t pt-1" style={{ borderColor: 'var(--rule)' }} aria-label="League sections">
         {PRIMARY.map((item) => {
           const isActive = item.key === activeGroup;
           return (

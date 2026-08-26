@@ -371,6 +371,38 @@ describe('trades', () => {
     expect(found).toHaveLength(0);
   });
 
+  it('keeps draft picks eligible even though they have no starter role', () => {
+    const { context } = buildContext();
+    const assetsByTeam = new Map<string, TradeAsset[]>([
+      ['1', [{ ...asset('pick-2027-1', 'PICK' as Position, 8_000), kind: 'pick' }]],
+      ['2', [asset('target-rb', 'RB', 8_000)]],
+    ]);
+    const profiles = new Map([
+      ['1', {
+        marginalByPlayer: new Map<string, number>(),
+        startingByPlayer: new Map<string, boolean>(),
+        exposureByPosition: new Map<Position, number>(),
+      }],
+      ['2', {
+        marginalByPlayer: new Map([['target-rb', 12]]),
+        startingByPlayer: new Map([['target-rb', true]]),
+        exposureByPosition: new Map<Position, number>([['WR', 12]]),
+      }],
+    ]);
+
+    const found = findTrades({
+      context,
+      myTeamId: '1',
+      assetsByTeam,
+      needs: ['RB'],
+      surplus: [],
+      rosterProfiles: profiles,
+    });
+
+    expect(found.length).toBeGreaterThan(0);
+    expect(found[0]!.sideA.sends[0]!.kind).toBe('pick');
+  });
+
   it('prefers the younger return when rebuilding', () => {
     const { context } = buildContext();
     const assetsByTeam = new Map<string, TradeAsset[]>([

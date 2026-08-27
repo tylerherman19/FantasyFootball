@@ -180,6 +180,28 @@ export default async function OutlookPage({ params }: { params: Promise<{ league
                 : `${(me.titlePct * 100).toFixed(1)}% title odds · ${(me.playoffPct * 100).toFixed(0)}% playoff odds. Your team is the dark dot.`
             }
             source={`${result.iterations.toLocaleString()} season simulations · model ${view.modelVersion ?? 'unknown'}`}
+            table={
+              <table className="data-table" aria-label="Championship and playoff probabilities by team">
+                <thead>
+                  <tr>
+                    <th scope="col">Team</th>
+                    <th scope="col">Title odds</th>
+                    <th scope="col">Playoff odds</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...result.teams]
+                    .sort((a, b) => b.titlePct - a.titlePct)
+                    .map((team) => (
+                      <tr key={team.teamId} data-mine={team.teamId === myTeamId ? 'true' : undefined}>
+                        <td>{teamNames.get(team.teamId) ?? team.teamId}{team.teamId === myTeamId ? ' · You' : ''}</td>
+                        <td className="figure">{(team.titlePct * 100).toFixed(1)}%</td>
+                        <td className="figure">{(team.playoffPct * 100).toFixed(0)}%</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            }
           >
             <OddsField
               teams={result.teams.map((team) => ({

@@ -24,6 +24,7 @@ export const Figure = ({
   deck,
   source,
   note,
+  table,
   children,
   className = '',
 }: {
@@ -35,6 +36,8 @@ export const Figure = ({
   readonly source?: string;
   /** A caveat that belongs under the chart rather than above it. */
   readonly note?: ReactNode;
+  /** Optional underlying values for readers who want exact comparisons. */
+  readonly table?: ReactNode;
   readonly children: ReactNode;
   readonly className?: string;
 }) => (
@@ -48,6 +51,13 @@ export const Figure = ({
       <figcaption className="mt-3 max-w-3xl text-xs leading-relaxed" style={{ color: 'var(--ink-faint)' }}>
         {note}
       </figcaption>
+    )}
+
+    {table !== undefined && (
+      <details className="figure-data mt-3">
+        <summary>Show underlying data</summary>
+        <div className="scroll-x mt-2">{table}</div>
+      </details>
     )}
 
     {source !== undefined && <div className="source-line">Source: {source}</div>}

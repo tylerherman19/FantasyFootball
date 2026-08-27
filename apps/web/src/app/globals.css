@@ -202,6 +202,19 @@ html.theme-switching *::after {
   margin-top: 0.6rem;
 }
 
+/* Exact values are available without hover, but stay out of the first read. */
+.figure-data summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--ink-faint);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+}
+.figure-data summary:hover,
+.figure-data summary:focus-visible { color: var(--accent); }
+.figure-data .data-table { min-width: 30rem; }
+
 .rule-top {
   border-top: 1px solid var(--rule);
 }
@@ -370,6 +383,12 @@ button:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visib
 
 .data-table tbody tr[data-mine='true'] td {
   background: var(--accent-soft);
+}
+
+@media (max-width: 639px) {
+  .figure-data .data-table { min-width: 100%; }
+  .figure-data .data-table tbody td,
+  .figure-data .data-table thead th { padding-inline: 0.35rem; }
 }
 
 /* Power table: every number is an entry point into its evidence. */

@@ -1,4 +1,4 @@
-import { Annotation, DirectLabel } from '@/components/design/Figure';
+import { DirectLabel } from '@/components/design/Figure';
 
 /**
  * The whole league on one axis, with you on it.
@@ -67,7 +67,13 @@ export const OddsField = ({
   const ticks = [0, ceiling / 2, ceiling];
 
   return (
-    <svg width={width} height={height} role="img" aria-label="Championship probability across the league">
+    <svg
+      width={width}
+      height={height}
+      role="img"
+      aria-label="Championship probability across the league"
+      style={{ display: 'block', width: '100%', height: 'auto' }}
+    >
       {/* Axis first, so dots sit on top of it. */}
       <line
         x1={pad.left}
@@ -123,12 +129,6 @@ export const OddsField = ({
         </DirectLabel>
       )}
 
-      {/* Below the axis, where nothing can collide with it. */}
-      <Annotation x={pad.left} y={height - pad.bottom + 26} width={width - pad.left - pad.right}>
-        Look at the gaps, not the places. Teams packed close together means one trade can move you
-        several spots; a team sitting alone out to the right has already pulled away, and catching it
-        takes more than a good week.
-      </Annotation>
     </svg>
   );
 };

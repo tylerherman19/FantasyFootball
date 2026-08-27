@@ -100,12 +100,12 @@ export const LeagueNav = async ({
   <>
     <header
     data-league-nav
-    className="sticky top-0 z-20 mb-6 border-b backdrop-blur"
+    className="league-nav-header sticky top-0 z-20 mb-6 border-b backdrop-blur"
     style={{ borderColor: 'var(--rule)', background: 'color-mix(in srgb, var(--ground) 88%, transparent)' }}
   >
     <div className="mx-auto max-w-6xl px-5 pt-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <div className="league-nav-top flex items-start justify-between gap-4">
+        <div className="league-nav-title min-w-0">
           <Link
             href="/"
             className="text-[11px] uppercase tracking-widest hover:opacity-60"
@@ -139,14 +139,14 @@ export const LeagueNav = async ({
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="league-nav-controls flex shrink-0 items-center gap-3">
           <Freshness sources={sources} modelGeneratedAt={artifact?.generatedAt ?? null} />
           <ThemeToggle />
         </div>
       </div>
 
       {stamps !== undefined && stamps.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="league-nav-stamps mt-2 flex flex-wrap gap-x-4 gap-y-1">
           {stamps.map((stamp) => (
             <span key={stamp.label} className="tabular text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               {stamp.label} <strong style={{ color: 'var(--ink-muted)' }}>{stamp.value}</strong>
@@ -164,13 +164,14 @@ export const LeagueNav = async ({
         * for narrow screens, where a fixed rail would take width the tables
         * need more.
         */}
-      <nav className="scroll-x mt-3 flex gap-0.5 border-t pt-1" style={{ borderColor: 'var(--rule)' }} aria-label="League sections">
+      <nav className="league-nav-primary scroll-x mt-3 flex gap-0.5 border-t pt-1" style={{ borderColor: 'var(--rule)' }} aria-label="League sections">
         {PRIMARY.map((item) => {
           const isActive = item.key === activeGroup;
           return (
             <Link
               key={item.key}
               href={`/league/${leagueId}${item.href}`}
+              aria-current={isActive ? 'page' : undefined}
               className="whitespace-nowrap px-2.5 py-2 text-[13px] transition-colors"
               style={{
                 color: isActive ? 'var(--ink)' : 'var(--ink-muted)',
@@ -186,7 +187,7 @@ export const LeagueNav = async ({
       </nav>
 
       {subviews.length > 1 && (
-        <nav className="scroll-x flex gap-4 border-t py-1.5" style={{ borderColor: 'var(--rule)' }} aria-label={`${PRIMARY.find((item) => item.key === activeGroup)?.label ?? 'Section'} views`}>
+        <nav className="league-nav-secondary scroll-x flex gap-4 border-t py-1.5" style={{ borderColor: 'var(--rule)' }} aria-label={`${PRIMARY.find((item) => item.key === activeGroup)?.label ?? 'Section'} views`}>
           {subviews.map((view) => (
             <Link
               key={view.key}

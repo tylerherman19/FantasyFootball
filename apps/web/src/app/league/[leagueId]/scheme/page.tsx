@@ -297,7 +297,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
         {/* ---- and what that read is worth -------------------------------- */}
         {finding !== null && (
           <Section
-            title="What the read above is actually worth"
+            title="Most matchup edges are small; a few deserve attention"
             source={`model/backtest/run_scheme_variance.py · ${finding.n.toLocaleString()} player-weeks, ${finding.seasons.join('–')}`}
             note={
               <>
@@ -423,7 +423,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
 
         {/* ---- the continuum ---------------------------------------------- */}
         <Section
-          title="Every defense on the continuum"
+          title="Defenses trade deep coverage for support in the box"
           note={
             <>
               Sorted from the softest shell to the most loaded box. The bar is where each defense
@@ -506,7 +506,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
 
         {/* ---- the trade, drawn -------------------------------------------- */}
         <Section
-          title="The trade, drawn"
+          title="The matchup tradeoff is visible in the roster"
           note={
             <>
               Deep passing allowed against rushing allowed. If the trade were free the dots would
@@ -544,7 +544,7 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
 
         {/* ---- position funnels -------------------------------------------- */}
         <Section
-          title="Where the targets go"
+          title="Target share shifts with the shell"
           note="Share of targets each defense allows to receivers, tight ends and backs. The spread is not subtle — the softest shell in the league gives tight ends half again as many targets as the tightest, which is worth more than most start/sit calls."
           aside={
             <Legend

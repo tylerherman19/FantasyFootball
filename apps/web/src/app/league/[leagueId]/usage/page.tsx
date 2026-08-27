@@ -124,7 +124,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
             no usage to show. The model writes one per week; this page reads whatever is there.
           </div>
         <Section
-          title="What this page is"
+          title="Opportunity is the signal beneath every projection"
           note={
             <>
               Every number here is scored under <strong>this league&apos;s</strong> rules and derived
@@ -157,7 +157,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
 
         {/* ---- opportunity leaderboard --------------------------------- */}
         <Section
-          title="Opportunity leaders"
+          title="These players control the most opportunity"
             source="model v1-usage+positional · projections rebuilt weekly"
           note={
             <>
@@ -247,7 +247,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
         {/* ---- opportunity vs production ------------------------------- */}
         {passCatchers.length > 6 && (
           <Section
-            title="Volume against production"
+            title="Volume is not converting evenly"
             note={
               <>
                 Targets on one axis, projected points on the other. The line through the middle is
@@ -288,7 +288,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
 
         {/* ---- positional scarcity ------------------------------------- */}
         <Section
-          title="Positional scarcity"
+          title="Replacement cliffs show where points are scarce"
           note={
             <>
               Projected points by rank at each position. The steepness is the whole argument: where a
@@ -348,7 +348,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
         {/* ---- NFL offenses -------------------------------------------- */}
         {offenses.length > 0 && (
           <Section
-            title="Offensive identity, all 32"
+            title="Every offense distributes opportunity differently"
             note={
               <>
                 How each offense is projected to distribute the ball. <strong>Pass lean</strong> is
@@ -429,7 +429,7 @@ export default async function UsagePage({ params }: { params: Promise<{ leagueId
 
         {/* ---- efficiency table ---------------------------------------- */}
         <Section
-          title="Efficiency, per opportunity"
+            title="Efficiency is the least stable part of the forecast"
           note={
             <>
               Points per carry-or-target, for players with enough volume to mean it. High efficiency

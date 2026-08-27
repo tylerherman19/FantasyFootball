@@ -96,7 +96,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
           <>
             {/* ---- league-wide context ------------------------------------ */}
             <Section
-              title="The field"
+              title="The league is separated by starter strength"
               source={`${result.iterations.toLocaleString()} stat-line season simulations · ${view.modelVersion ?? 'model unavailable'}`}
               note="What a typical roster in this league looks like, so every number below has something to be compared against."
             >
@@ -136,7 +136,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
 
             {/* ---- power rankings ----------------------------------------- */}
             <Section
-              title="Power rankings"
+              title="Starter strength puts the field in order"
               note={
                 <>
                   Ranked by what the optimal lineup projects to score this week, broken down by where
@@ -158,7 +158,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
 
             {/* ---- positional heat map ------------------------------------ */}
             <Section
-              title="Positional strength"
+              title="The heat map shows where each roster wins"
               source={`${view.modelVersion ?? 'model unavailable'} · projections rebuilt weekly`}
               note={
                 <>
@@ -266,7 +266,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
 
             {/* ---- roster construction ------------------------------------ */}
             <Section
-              title="Roster construction"
+                title="Depth determines how safely a roster absorbs injuries"
               note={
                 <>
                   Starters against bench, in projected points. Depth is real — it is what survives a
@@ -328,7 +328,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             {/* ---- contention window -------------------------------------- */}
             {hasAges && (
               <Section
-                title="Contention window"
+                title="Strength and age define each team’s window"
                 note={
                   <>
                     Roster age against current strength. Age is weighted by market value, so a
@@ -374,7 +374,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             {/* ---- scoring history ---------------------------------------- */}
             {hasHistory && (
               <Section
-                title="Points scored, by week"
+                title="Weekly scores show who is actually separating"
                 note="Completed weeks only. Your line is drawn over the field — the comparison matters, but only as context for yours."
               >
                 <div className="panel p-3">
@@ -398,7 +398,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
             {/* ---- manager efficiency ------------------------------------- */}
             {profiles.some((profile) => profile.lineupEfficiency > 0) && (
               <Section
-                title="Manager lineup efficiency"
+                title="Lineup choices widen the gap between rosters"
                 note={
                   <>
                     Points actually scored as a share of what each manager&apos;s best available

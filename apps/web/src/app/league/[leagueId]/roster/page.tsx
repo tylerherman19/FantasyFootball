@@ -147,7 +147,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
         ) : (
           <>
             <Section
-              title="Roster health"
+              title="Your lineup’s strength depends on what sits behind it"
               note="Top-two reliance is the fragility measure: a team drawing more than a third of its points from two players is one injury from collapse, whatever its record says."
             >
               <StatRow columns={5}>
@@ -184,7 +184,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
             {/* ---- contribution table --------------------------------- */}
             <Section
-              title="Who is carrying this team"
+              title="Lineup loss, not projection, shows who matters"
               note={
                 <>
                   Sorted by what the lineup loses without each player. The wide bar is that loss; the
@@ -326,7 +326,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             {/* ---- price against contribution -------------------------- */}
             {priced.length > 5 && (
               <Section
-                title="What the market charges against what you get"
+                title="The market and your lineup disagree about value"
                 note={
                   <>
                     Market value on one axis, what your lineup would lose on the other. The two
@@ -361,7 +361,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
             {/* ---- depth by position ----------------------------------- */}
             <Section
-              title="Depth by position"
+              title="Your thin spots are the positions with no replacement"
               note="How much of your lineup rests on each position, and how much of that would disappear with its best player. A position where the two bars are the same length is one player deep."
               aside={
                 <Legend
@@ -427,7 +427,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             {/* ---- buy / sell lists ------------------------------------ */}
             <div className="grid gap-3 lg:grid-cols-2">
               {analysis.sellCandidates.length > 0 && (
-                <Section title="Bench depth to explore">
+                <Section title="Bench depth is the safe trade capital">
                   <div className="panel divide-y" style={{ borderColor: 'var(--rule)' }}>
                     {analysis.sellCandidates.map((player) => (
                       <div key={player.playerId} className="flex items-center gap-2.5 px-3 py-2">
@@ -451,7 +451,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
               {analysis.undervalued.length > 0 && (
                 <Section
-                  title="Worth more to you than to the market"
+                  title="Some players are worth more to you than the market"
                   note="Cheap in market terms for what they do here. Keep, or buy more like them."
                 >
                   <div className="panel divide-y" style={{ borderColor: 'var(--rule)' }}>
@@ -472,7 +472,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             {/* ---- age curve ------------------------------------------- */}
             {isDynasty && analysis.players.some((player) => player.age !== null) && (
               <Section
-                title="Age against value"
+                title="Age changes the price of every dynasty asset"
                 note={
                   <>
                     In dynasty the only question that matters is <em>when</em>. Each dot is a player;
@@ -509,7 +509,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             {/* ---- usage detail ---------------------------------------- */}
             {analysis.players.some((player) => (usageOf.get(player.playerId)?.opportunities ?? 0) > 0) && (
               <Section
-                title="Projected usage, your players"
+                title="Usage explains the points your players project"
                 note="The volume behind each projection. Carries and targets are what repeat; yards and touchdowns are what regress toward them."
                 aside={
                   <Legend
@@ -592,7 +592,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
         {myTeamId !== null && fragilityCandidates.length > 0 && (
           <Section
-            title="What is your season resting on?"
+            title="The fragility test shows what can break this season"
             source="2,000 season simulations · model v1-usage+positional"
             note="The other what-if asks how a player's role might change. This asks what happens if he is gone — a different question, because the answer is about your roster rather than about him."
           >

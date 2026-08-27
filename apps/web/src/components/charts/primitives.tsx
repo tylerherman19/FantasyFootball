@@ -365,51 +365,76 @@ export const HeatMap = ({
   cellHeight?: number;
   highlightRow?: string;
 }) => (
-  <div className="scroll-x">
-    <table className="w-full" style={{ minWidth: rowLabelWidth + columns.length * 58 }}>
-      <thead>
-        <tr>
-          <th style={{ width: rowLabelWidth }} />
-          {columns.map((column) => (
-            <th key={column} className="axis-label pb-1 text-center font-semibold uppercase">
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.key}>
-            <td
-              className="truncate pr-2 text-xs"
-              style={{
-                maxWidth: rowLabelWidth,
-                fontWeight: row.key === highlightRow ? 700 : 400,
-                color: row.key === highlightRow ? 'var(--accent)' : 'var(--ink)',
-              }}
-            >
-              {row.label}
-            </td>
-            {row.cells.map((cell, index) => (
-              <td key={index} className="p-px">
-                <div
-                  title={cell.title}
-                  className="tabular flex items-center justify-center rounded-[2px] text-[11px] font-medium"
-                  style={{
-                    height: cellHeight,
-                    background: rampColor(cell.intensity),
-                    color: rampInk(cell.intensity),
-                  }}
-                >
-                  {cell.label}
-                </div>
-              </td>
+  <>
+    <div className="scroll-x">
+      <table className="w-full" style={{ minWidth: rowLabelWidth + columns.length * 58 }}>
+        <thead>
+          <tr>
+            <th style={{ width: rowLabelWidth }} />
+            {columns.map((column) => (
+              <th key={column} className="axis-label pb-1 text-center font-semibold uppercase">
+                {column}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <td
+                className="truncate pr-2 text-xs"
+                style={{
+                  maxWidth: rowLabelWidth,
+                  fontWeight: row.key === highlightRow ? 700 : 400,
+                  color: row.key === highlightRow ? 'var(--accent)' : 'var(--ink)',
+                }}
+              >
+                {row.label}
+              </td>
+              {row.cells.map((cell, index) => (
+                <td key={index} className="p-px">
+                  <div
+                    title={cell.title}
+                    className="tabular flex items-center justify-center rounded-[2px] text-[11px] font-medium"
+                    style={{
+                      height: cellHeight,
+                      background: rampColor(cell.intensity),
+                      color: rampInk(cell.intensity),
+                    }}
+                  >
+                    {cell.label}
+                  </div>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <details className="figure-data mt-3">
+      <summary>Show exact values</summary>
+      <div className="scroll-x mt-2">
+        <table className="data-table" aria-label="Exact values in this heat map">
+          <thead>
+            <tr>
+              <th scope="col">Team</th>
+              {columns.map((column) => <th key={column} scope="col">{column}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <td>{row.label}</td>
+                {columns.map((column, index) => (
+                  <td key={column} className="figure">{row.cells[index]?.label ?? '—'}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </>
 );
 
 // --------------------------------------------------------------------------
@@ -485,13 +510,14 @@ export const Scatter = ({
   const splitY = yMedian ?? median(ys);
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width="100%"
-      role="img"
-      aria-label={`${yLabel} against ${xLabel}`}
-      style={{ display: 'block', color: 'var(--ink-faint)' }}
-    >
+    <div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        role="img"
+        aria-label={`${yLabel} against ${xLabel}`}
+        style={{ display: 'block', color: 'var(--ink-faint)' }}
+      >
       <rect
         x={pad.left}
         y={pad.top}
@@ -615,7 +641,27 @@ export const Scatter = ({
       >
         {yLabel}
       </text>
-    </svg>
+      </svg>
+      <details className="figure-data mt-3">
+        <summary>Show exact values</summary>
+        <div className="scroll-x mt-2">
+          <table className="data-table" aria-label={`${yLabel} against ${xLabel} exact values`}>
+            <thead>
+              <tr><th scope="col">Player / team</th><th scope="col">{xLabel.replace(' →', '')}</th><th scope="col">{yLabel.replace(' →', '')}</th></tr>
+            </thead>
+            <tbody>
+              {points.map((point) => (
+                <tr key={point.key}>
+                  <td>{point.href === undefined ? point.label ?? point.key : <a href={point.href} className="hover:underline">{point.label ?? point.key}</a>}</td>
+                  <td className="figure">{point.x.toFixed(1)}</td>
+                  <td className="figure">{point.y.toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
   );
 };
 
@@ -684,13 +730,14 @@ export const LineChart = ({
   const xTicks = [...new Set(xs)].sort((a, b) => a - b);
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width="100%"
-      role="img"
-      aria-label={xLabel ?? 'Trend'}
-      style={{ display: 'block', color: 'var(--ink-faint)' }}
-    >
+    <div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        role="img"
+        aria-label={xLabel ?? 'Trend'}
+        style={{ display: 'block', color: 'var(--ink-faint)' }}
+      >
       {ticks.map((tick) => (
         <g key={tick}>
           <line
@@ -749,7 +796,32 @@ export const LineChart = ({
             </g>
           );
         })}
-    </svg>
+      </svg>
+      <details className="figure-data mt-3">
+        <summary>Show exact values</summary>
+        <div className="scroll-x mt-2">
+          <table className="data-table" aria-label="Exact values in this trend chart">
+            <thead>
+              <tr>
+                <th scope="col">{xLabel ?? 'X'}</th>
+                {series.map((item) => <th key={item.key} scope="col">{item.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {xTicks.map((tick) => (
+                <tr key={tick}>
+                  <td className="figure">{tick}</td>
+                  {series.map((item) => {
+                    const point = item.points.find((candidate) => candidate.x === tick);
+                    return <td key={item.key} className="figure">{point === undefined ? '—' : yFormat(point.y)}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
   );
 };
 

@@ -294,13 +294,12 @@ def project_with_explanations(
     if history.height == 0:
         return {}, {}
 
-    columns = [
+    numeric_columns = [
         c
         for c in {*VOLUME_STATS, *(s for s, _ in RATE_STATS), *(d for _, d in RATE_STATS)}
         if c in history.columns
     ]
-    if "team" in history.columns:
-        columns.append("team")
+    team_column = [pl.col("team").cast(pl.Utf8)] if "team" in history.columns else []
 
     frame = (
         history.filter(pl.col("position").is_in(SKILL_POSITIONS))
@@ -309,7 +308,8 @@ def project_with_explanations(
             pl.col("position").cast(pl.Utf8),
             pl.col("season").cast(pl.Int32),
             pl.col("week").cast(pl.Int32),
-            *[pl.col(c).cast(pl.Float64).fill_null(0.0) for c in columns],
+            *team_column,
+            *[pl.col(c).cast(pl.Float64).fill_null(0.0) for c in numeric_columns],
         )
         .sort(["player_id", "season", "week"])
     )

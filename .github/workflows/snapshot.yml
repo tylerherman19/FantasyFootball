@@ -78,19 +78,48 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
-      - name: Sync nflverse and rebuild integrated model artifacts
-        run: |
-          uv run --project model python model/ingest/nflverse.py data/lake
-          uv run --project model python model/ingest/crosswalk.py
-          uv run --project model python model/export_byes.py
-          uv run --project model python model/export_availability.py
-          uv run --project model python model/export_game_loading.py
-          uv run --project model python model/export_projections.py
-          uv run --project model python model/export_offense.py
-          uv run --project model python model/export_defense.py
-          uv run --project model python model/export_pressure.py
-          uv run --project model python model/export_coverage.py
-          uv run --project model python model/export_player_history.py
+      - name: Sync nflverse data
+        run: uv run --project model python model/ingest/nflverse.py data/lake
+        env:
+          PYTHONPATH: .
+      - name: Build player crosswalk
+        run: uv run --project model python model/ingest/crosswalk.py
+        env:
+          PYTHONPATH: .
+      - name: Export bye weeks
+        run: uv run --project model python model/export_byes.py
+        env:
+          PYTHONPATH: .
+      - name: Export availability
+        run: uv run --project model python model/export_availability.py
+        env:
+          PYTHONPATH: .
+      - name: Export game loading
+        run: uv run --project model python model/export_game_loading.py
+        env:
+          PYTHONPATH: .
+      - name: Export projections
+        run: uv run --project model python model/export_projections.py
+        env:
+          PYTHONPATH: .
+      - name: Export offense
+        run: uv run --project model python model/export_offense.py
+        env:
+          PYTHONPATH: .
+      - name: Export defense
+        run: uv run --project model python model/export_defense.py
+        env:
+          PYTHONPATH: .
+      - name: Export pressure
+        run: uv run --project model python model/export_pressure.py
+        env:
+          PYTHONPATH: .
+      - name: Export coverage
+        run: uv run --project model python model/export_coverage.py
+        env:
+          PYTHONPATH: .
+      - name: Export player history
+        run: uv run --project model python model/export_player_history.py
         env:
           PYTHONPATH: .
       # Stamp and store the artifacts only after they have been rebuilt. Running

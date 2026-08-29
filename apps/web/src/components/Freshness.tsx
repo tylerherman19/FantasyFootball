@@ -3,6 +3,7 @@
 import type { SourceFreshness } from '@ffe/ingest';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { projectionAgeMinutes, projectionWarning } from '@/lib/model-freshness';
 
 /**
  * How old the numbers are, on screen, always.
@@ -85,10 +86,8 @@ export const Freshness = ({
   const overall = worstOf(sources);
   const tone = TONE[overall] ?? TONE.unknown!;
 
-  const modelAge =
-    modelGeneratedAt === null
-      ? null
-      : (sources.find((source) => source.source === 'projections')?.ageMinutes ?? null);
+  const modelAge = projectionAgeMinutes(modelGeneratedAt);
+  const modelWarning = projectionWarning(modelGeneratedAt);
 
   const forceReload = async (): Promise<void> => {
     setRefreshing(true);
@@ -113,7 +112,23 @@ export const Freshness = ({
   };
 
   return (
-    <details className="group text-xs" style={{ color: 'var(--ink-muted)' }}>
+    <div className="flex flex-col items-end gap-1.5">
+      {modelWarning !== null && (
+        <div
+          role="alert"
+          className="max-w-64 rounded border px-2 py-1 text-right text-[11px] font-semibold leading-tight"
+          style={{
+            borderColor: 'var(--warn)',
+            background: 'color-mix(in srgb, var(--warn) 12%, var(--surface))',
+            color: 'var(--warn)',
+          }}
+        >
+          {modelWarning === 'stale'
+            ? `Warning: projections are ${humanAge(modelAge)} old`
+            : 'Warning: projection age is unknown'}
+        </div>
+      )}
+      <details className="group text-xs" style={{ color: 'var(--ink-muted)' }}>
       <summary className="flex cursor-pointer list-none items-center gap-1.5 whitespace-nowrap">
         <span
           aria-hidden
@@ -222,7 +237,8 @@ export const Freshness = ({
               {s.consecutiveFailures === 1 ? '' : 's'} — {s.lastError}
             </p>
           ))}
-      </div>
-    </details>
+        </div>
+      </details>
+    </div>
   );
 };

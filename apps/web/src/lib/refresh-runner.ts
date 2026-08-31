@@ -1,6 +1,5 @@
-import { fetchAllValueConfigurations, refreshStoreFromEnv, withRefreshTracking } from '@ffe/ingest';
+import { refreshStoreFromEnv, withRefreshTracking } from '@ffe/ingest';
 import type { RefreshCounts, RefreshTrigger, SourceFreshness } from '@ffe/ingest';
-import { PostgrestSnapshotStore } from '@ffe/ingest';
 import { clearSleeperCache } from '@ffe/adapters';
 import { invalidateAll } from './cache';
 
@@ -10,8 +9,14 @@ import { invalidateAll } from './cache';
  * Two kinds of source live here and the difference is worth stating, because it
  * is the honest limit of what a serverless button can do.
  *
- * **Serve-time sources** — market values, Sleeper league state, and the caches
- * built on them — are fetched live and can genuinely be refreshed on demand.
+ * **Serve-time sources** — Sleeper league state and the caches built on it —
+ * are fetched live and can genuinely be refreshed on demand.
+ *
+ * **Derived quantities** — asset values, above all — are computed from the
+ * artifacts on each render. They were a third kind until recently, fetched from
+ * a market feed on a daily cadence; they are now a function of the projections,
+ * so refreshing them means refreshing those, and a button offering otherwise
+ * would be theatre.
  *
  * **Model artifacts** — projections, the identity crosswalk, the nflverse lake
  * — are produced by the Python pipeline, which by design never runs in the
@@ -23,7 +28,7 @@ import { invalidateAll } from './cache';
 
 export type SourceId = 'sleeper' | 'values' | 'projections' | 'crosswalk' | 'nflverse';
 
-export const REFRESHABLE: readonly SourceId[] = ['sleeper', 'values'];
+export const REFRESHABLE: readonly SourceId[] = ['sleeper'];
 
 export interface RefreshReport {
   readonly source: string;
@@ -37,27 +42,6 @@ export interface RefreshReport {
 }
 
 /**
- * Market values from FantasyCalc, written to the snapshot table.
- *
- * The daily series only exists because we record it — nobody publishes
- * yesterday's values — so a failed run is a permanent hole, not a delay.
- */
-const refreshValues = async (): Promise<RefreshCounts> => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SECRET_KEY;
-
-  const rows = await fetchAllValueConfigurations();
-  if (rows.length === 0) throw new Error('FantasyCalc returned no values');
-
-  let written = 0;
-  if (url && key) {
-    written = await new PostgrestSnapshotStore(url, key).writeValues(rows);
-  }
-
-  return { processed: rows.length, added: written };
-};
-
-/**
  * Sleeper is read live on every page behind a TTL memo, so "refresh" means
  * dropping that memo rather than fetching anything here. The next request
  * repopulates it from the API.
@@ -69,13 +53,16 @@ const refreshSleeper = async (): Promise<RefreshCounts> => {
 };
 
 const RUNNERS: Partial<Record<SourceId, () => Promise<RefreshCounts>>> = {
-  values: refreshValues,
   sleeper: refreshSleeper,
 };
 
 const OFFLINE_NOTE =
   'Built offline by the Python pipeline, which never runs in the serving path. ' +
   'Rebuild with model/export_projections.py; this page can only report its age.';
+
+const DERIVED_NOTE =
+  'Computed from the projection artifact on every render, per league. There is ' +
+  'nothing to fetch: it is as fresh as the projections it is derived from.';
 
 export const runRefresh = async (
   sources: readonly SourceId[],
@@ -87,7 +74,12 @@ export const runRefresh = async (
     sources.map(async (source): Promise<RefreshReport> => {
       const runner = RUNNERS[source];
       if (runner === undefined) {
-        return { source, status: 'skipped', durationMs: 0, note: OFFLINE_NOTE };
+        return {
+          source,
+          status: 'skipped',
+          durationMs: 0,
+          note: source === 'values' ? DERIVED_NOTE : OFFLINE_NOTE,
+        };
       }
 
       const startedAt = Date.now();
@@ -129,8 +121,11 @@ export const readFreshness = async (
 
   const ageMinutes = Math.round((Date.now() - Date.parse(artifactGeneratedAt)) / 60_000);
 
+  // Values are derived from the artifact, so they are exactly as old as it is.
+  // Reporting them separately would let the panel show a fresh market beside
+  // stale projections, which has not been possible since the feed was removed.
   return rows.map((row) =>
-    row.source === 'projections'
+    row.source === 'projections' || row.source === 'values'
       ? {
           ...row,
           dataTimestamp: artifactGeneratedAt,

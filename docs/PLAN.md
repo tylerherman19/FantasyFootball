@@ -45,7 +45,7 @@ Two existing tools each solve half the problem, and neither connects the halves:
   /decisions               trade eval, trade finder, waivers, start/sit
   /metrics                 luck, efficiency, leverage, scarcity, age curves
 /packages/adapters         SleeperAdapter, YahooAdapter (PlatformAdapter interface)
-/packages/ingest           nflverse, FantasyCalc, DynastyProcess, Odds API loaders
+/packages/ingest           nflverse, DynastyProcess, Odds API loaders
 /model                     Python: feature store, training, backtesting, artifact export
   /features                point-in-time feature builders
   /models                  v0…v4 ladder
@@ -66,12 +66,12 @@ Two existing tools each solve half the problem, and neither connects the halves:
 | Sleeper API | leagues, rosters, matchups, transactions, traded picks, drafts, players, trending add/drop | Public, no key |
 | Yahoo Fantasy API | leagues, rosters, matchups, transactions, `percent_owned` | OAuth2 — **needs your dev app** |
 | The Odds API | NFL totals + spreads (de-vigged) | Free tier — **needs your key** |
-| [FantasyCalc](https://api.fantasycalc.com/values/current) | dynasty + redraft values, ADP, roster %, trade frequency | Public JSON, verified working |
+| ~~FantasyCalc~~ | dynasty + redraft values, ADP, roster % | **Removed 2026-08.** Values are now derived in-house from our own projections — see `packages/core/src/valuation/market.ts`. A purchased number could not be explained, could not be disagreed with, and knew only four things about a league. |
 | [DynastyProcess data](https://github.com/dynastyprocess/data) | `values.csv`, player ID crosswalk | Open data |
 
 **Training window: 2016+** (Next Gen Stats era), recency-weighted. Play-by-play goes back to 1999, but the game changed; we don't ingest 25 years just because it exists.
 
-**Rostership honesty:** Dynasty Daddy's rostership works because of 2.7M ingested leagues. We'll have ~5. We source the same signal legitimately — Yahoo `percent_owned`, Sleeper trending add/drop, FantasyCalc roster % — and build our own only once volume exists. Not a launch feature.
+**Rostership honesty:** Dynasty Daddy's rostership works because of 2.7M ingested leagues. We'll have ~5. We source the same signal legitimately — Yahoo `percent_owned`, Sleeper trending add/drop — and build our own only once volume exists. Not a launch feature. Removing the market feed removed its roster-share field too; the app reports it as unknown rather than substituting a proxy.
 
 Everything is reimplemented from concepts. MFA's bundles are minified proprietary code; Dynasty Daddy's license is unverified. We take ideas, not code.
 

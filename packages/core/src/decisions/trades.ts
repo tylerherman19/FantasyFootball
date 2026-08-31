@@ -20,7 +20,7 @@ interface TradeAssetBase {
   readonly playerId: PlayerId;
   readonly name: string;
   readonly position: Position;
-  /** Market value from the configured source. */
+  /** Asset value on the in-house index, from `valuation/market.ts`. */
   readonly value: number;
   /** Current-season projection used for replacement-aware screening. */
   readonly projectedPoints?: number;
@@ -39,6 +39,13 @@ interface TradeAssetBase {
     readonly p75: number;
   };
   readonly weeklyPoints?: number;
+  /**
+   * Points per game at this player's positional replacement level, in this
+   * league. Supplied by the valuation pass, which computes it from the actual
+   * lineup slots; the constants below are the fallback for a caller that has
+   * not.
+   */
+  readonly replacementPoints?: number;
 }
 
 /** A rostered player: role-aware and eligible for lineup replacement analysis. */
@@ -346,7 +353,9 @@ const rebuildPackageValue = (
 ): number => assets.reduce((total, asset) => {
   if (asset.kind === 'pick') return total + fundamentalPickValue(asset.value, asset.yearsOut ?? 1);
   const age = asset.age ?? ages?.get(String(asset.playerId));
-  const replacement: Readonly<Record<Position, number>> = {
+  // Only reached when the caller has not run the valuation pass; a league whose
+  // lineup differs from a standard one gets the real number instead.
+  const assumedReplacement: Readonly<Record<Position, number>> = {
     QB: 15, RB: 7, WR: 8, TE: 6, K: 7, DEF: 7, DL: 6, LB: 7, DB: 6,
   };
   const weeklyPoints = asset.weeklyPoints ?? asset.projectedPoints;
@@ -355,8 +364,7 @@ const rebuildPackageValue = (
       position: asset.position,
       age,
       weeklyPoints,
-      replacementPoints: replacement[asset.position],
-      marketValue: asset.value,
+      replacementPoints: asset.replacementPoints ?? assumedReplacement[asset.position],
     }).total;
   }
   return total + asset.value * rebuildMultiplier(asset.position, age);

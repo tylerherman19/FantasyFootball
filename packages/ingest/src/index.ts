@@ -13,7 +13,6 @@ export {
   type SourceFreshness,
   type SourceHealth,
 } from './refresh.js';
-export { fetchAllValueConfigurations, fetchValues, type ValueSnapshot } from './values.js';
 export {
   JsonlSnapshotStore,
   type OddsSnapshot,

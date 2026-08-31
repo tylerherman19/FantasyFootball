@@ -1,5 +1,4 @@
 import type { OddsSnapshot, ProjectionSnapshot, SnapshotStore } from './snapshot-store.js';
-import type { ValueSnapshot } from './values.js';
 
 /**
  * Supabase-backed store, over PostgREST.
@@ -62,28 +61,6 @@ export class PostgrestSnapshotStore implements SnapshotStore {
     );
   }
 
-  async writeValues(rows: readonly ValueSnapshot[]): Promise<number> {
-    return this.#post(
-      'value_snapshots?on_conflict=sleeper_id,is_dynasty,super_flex,captured_date',
-      rows.map((r) => ({
-        sleeper_id: r.sleeperId,
-        name: r.name,
-        position: r.position,
-        is_dynasty: r.isDynasty,
-        super_flex: r.superFlex,
-        value: r.value,
-        overall_rank: r.overallRank,
-        position_rank: r.positionRank,
-        rostered_pct: r.rosteredPct,
-        captured_at: r.capturedAt,
-        // One row per player per market per day: intraday noise is not signal,
-        // and a daily series is what trend detection actually reads.
-        captured_date: r.capturedAt.slice(0, 10),
-      })),
-      'resolution=merge-duplicates',
-    );
-  }
-
   async #post(path: string, rows: readonly unknown[], prefer?: string): Promise<number> {
     if (rows.length === 0) return 0;
 
@@ -128,8 +105,4 @@ export class TeeSnapshotStore implements SnapshotStore {
     return Math.max(0, ...counts);
   }
 
-  async writeValues(rows: readonly ValueSnapshot[]): Promise<number> {
-    const counts = await Promise.all(this.stores.map((s) => s.writeValues(rows)));
-    return Math.max(0, ...counts);
-  }
 }

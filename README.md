@@ -13,12 +13,19 @@ rating gap and a coin flip. Neither measures whether it's right.
 
 This one owns its projections, simulates actual football, and scores itself every week.
 
+It also owns its **values**. Asset prices used to come from a public market feed, which made
+a third party the author of the number every trade, sell recommendation and pick valuation
+turned on — and gave the site no way to disagree with it or explain it. Value is now derived
+from our own projections: production above the replacement level *this* league's lineup slots
+actually create, aged along fitted curves and discounted over the horizon the format implies.
+See `packages/core/src/valuation/market.ts`.
+
 ## Layout
 
 ```
 packages/core        pure TS — domain model, projections, simulation, decisions
 packages/adapters    Sleeper + Yahoo, behind one PlatformAdapter interface
-packages/ingest      nflverse, FantasyCalc, DynastyProcess, odds loaders
+packages/ingest      nflverse, odds loaders, snapshot stores
 model/               Python (uv) — feature store, training, backtesting; offline only
 apps/web             Next.js UI
 supabase/migrations  schema

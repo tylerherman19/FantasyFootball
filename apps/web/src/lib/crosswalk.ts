@@ -23,6 +23,17 @@ export interface Identity {
    * halves of the product cannot be joined at all.
    */
   readonly gsisId: string | null;
+  /**
+   * The season he was drafted into the NFL.
+   *
+   * Which class a player belongs to, which is what makes rookie-pick pricing
+   * possible: a pick is a claim on this year's class, so the class has to be
+   * identifiable before it can be valued. Null for undrafted players, who are
+   * still rookies — `draftRound` separates the two where it matters.
+   */
+  readonly draftYear: number | null;
+  readonly draftRound: number | null;
+  readonly draftOverall: number | null;
 }
 
 let cache: Record<string, Identity> | null = null;
@@ -43,6 +54,9 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
           team: string | null;
           birthdate: string | null;
           gsis_id: string | null;
+          draft_year: number | null;
+          draft_round: number | null;
+          draft_overall: number | null;
         }
       >;
     };
@@ -55,6 +69,9 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
         team: entry.team,
         birthdate: entry.birthdate ?? null,
         gsisId: entry.gsis_id ?? null,
+        draftYear: entry.draft_year ?? null,
+        draftRound: entry.draft_round ?? null,
+        draftOverall: entry.draft_overall ?? null,
       };
     }
 

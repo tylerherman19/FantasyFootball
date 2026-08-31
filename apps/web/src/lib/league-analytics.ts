@@ -123,10 +123,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(snapshot),
     loadIdentities(),
     loadAvailability(),
   ]);

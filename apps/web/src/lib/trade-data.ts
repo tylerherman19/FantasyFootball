@@ -244,10 +244,7 @@ const buildTrades = async (
   const [{ players: usagePlayers, offenses }, defenses, market, identities, offenseArtifact] = await Promise.all([
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadDefenses(),
-    loadMarketData(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketData(snapshot),
     loadIdentities(),
     loadOffense(),
   ]);
@@ -339,6 +336,10 @@ const buildTrades = async (
       // trade finder.
       projectedPoints,
       weeklyPoints: projectedPoints,
+      // This league's own replacement level, so the rebuild-value arm prices
+      // surplus against what actually starts here rather than against a
+      // standard-lineup constant.
+      ...(market.replacementLevel > 0 ? { replacementPoints: market.replacementLevel } : {}),
       sd: weeklyProjection?.sd ?? projection.sd,
       modelConfidence,
       quantiles,

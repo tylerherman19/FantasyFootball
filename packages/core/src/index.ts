@@ -40,12 +40,21 @@ export {
 
 // valuation
 export {
-  marketPickValues,
+  modelPickValues,
   pickInventory,
   valuePicks,
+  type ModelPickOptions,
   type PickValueSource,
   type ValuedPick,
 } from './valuation/picks.js';
+export {
+  replacementLevels,
+  valueAssets,
+  type AssetValue,
+  type ReplacementLevel,
+  type ValuationInput,
+  type ValuationSettings,
+} from './valuation/market.js';
 export {
   evaluatePlayer,
   type EvaluationObjective,

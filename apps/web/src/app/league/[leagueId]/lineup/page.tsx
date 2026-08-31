@@ -41,10 +41,7 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
   const [artifact, availability, values, playerInfo] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
     loadAvailability(),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(snapshot),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
   ]);
 

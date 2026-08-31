@@ -122,20 +122,27 @@ jobs:
         run: uv run --project model python model/export_player_history.py
         env:
           PYTHONPATH: .
-      # Stamp and store the artifacts only after they have been rebuilt. Running
-      # this in the snapshot job raced the rebuild and recorded yesterday's
-      # timestamps, leaving production marked stale after a successful refresh.
-      - name: Sync rebuilt artifacts and freshness ledger
-        run: npx tsx scripts/sync-canonical.ts
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       - name: Publish rebuilt artifacts for audit/download
         uses: actions/upload-artifact@v4
         with:
           name: football-model-artifacts
           path: model/artifacts
           retention-days: 14
+
+      # Publication runs BEFORE the canonical sync, and the order is the whole
+      # point.
+      #
+      # It used to run after. On 29 and 30 August the model rebuilt correctly
+      # both days, the sync then died on a duplicate-key error, and because this
+      # step was downstream of it the fresh projections were never committed and
+      # never deployed. Production served 26 August artifacts while every
+      # modelling step in the run reported success.
+      #
+      # Nothing about writing the history requires the history to be written
+      # first. Deployment depends on the artifacts, which exist by now; the sync
+      # depends on the artifacts too, and on nothing this step does. Ordering
+      # them the other way made a bookkeeping table a single point of failure for
+      # the product's freshness, which it has no business being.
       - name: Version artifacts and trigger production deployment
         run: |
           git config user.name "fantasy-edge-data-bot"
@@ -147,3 +154,16 @@ jobs:
             git commit -m "Refresh football model artifacts"
             git push origin HEAD:main
           fi
+
+      # Stamp and store the artifacts only after they have been rebuilt. Running
+      # this in the snapshot job raced the rebuild and recorded yesterday's
+      # timestamps, leaving production marked stale after a successful refresh.
+      #
+      # Still fails the job when it fails — a silent bookkeeping failure is what
+      # let the original one run for two days unnoticed — but it can no longer
+      # take the fresh numbers down with it.
+      - name: Sync rebuilt artifacts and freshness ledger
+        run: npx tsx scripts/sync-canonical.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}

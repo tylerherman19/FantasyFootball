@@ -79,10 +79,7 @@ export const analyzeRoster = async (
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(snapshot),
     loadIdentities(),
     loadAvailability(),
   ]);
@@ -197,10 +194,17 @@ export const analyzeRoster = async (
   // elite current starter could otherwise be mislabelled.
   // Young, high-value/upside assets are also not automatic move suggestions:
   // being replaceable today does not mean the dynasty asset should be sold.
+  //
+  // The bar is a share of the league's best asset rather than a fixed 6,000.
+  // That constant was calibrated against a feed whose scale we no longer use,
+  // and an absolute threshold on a normalised index means something different
+  // in a shallow league than in a deep one — which is exactly the kind of quiet
+  // miscalibration that produces a confident bad sell recommendation.
+  const topValue = Math.max(...players.map((p) => p.marketValue), 1);
   const isYoungCoreAsset = (p: RosterPlayer): boolean =>
     p.age !== null &&
     p.age <= 25 &&
-    (p.marketValue >= 6_000 || p.projected >= 12);
+    (p.marketValue >= topValue * 0.6 || p.projected >= 12);
 
   const sellCandidates = players
     .filter(

@@ -10,7 +10,6 @@ import {
   JsonlSnapshotStore,
   PostgrestSnapshotStore,
   TeeSnapshotStore,
-  fetchAllValueConfigurations,
   fetchOdds,
   fetchSleeperProjections,
   scoringKey,
@@ -78,14 +77,11 @@ if (apiKey === undefined || apiKey === '') {
 }
 
 
-// Market values are captured locally and, when configured, in Supabase. A
-// missing database must not erase the first day of a useful value series.
-try {
-  const values = await fetchAllValueConfigurations();
-  const wroteValues = await store.writeValues(values);
-  console.log(`values: ${wroteValues} rows across 4 market configurations`);
-} catch (error) {
-  // A market outage should not fail the projection snapshot, which is the
-  // deadline-bound half of this job.
-  console.log(`values: skipped (${error instanceof Error ? error.message : String(error)})`);
-}
+// Market values are no longer captured here.
+//
+// They used to be fetched from a third party, which meant the series only
+// existed if we wrote it down each day. Values are now derived from our own
+// projections at serve time, and every projection this model has ever published
+// is already in `player_projections` — so the value history is *recomputable*
+// rather than merely recorded, and recomputable per league rather than for the
+// four canned market configurations the feed offered.

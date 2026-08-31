@@ -1,7 +1,7 @@
 import { loadIdentities } from './crosswalk';
 import { loadHistory, type PlayerHistory } from './history';
 import { buildTeamProfiles, type TeamProfile } from './league-analytics';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
 import { declineAge, loadAgeCurves, yearByYearOutlook } from './age-curves';
 import { loadMarketData } from './values';
@@ -253,7 +253,7 @@ const decide = (
   };
 };
 
-export const buildDynastyView = async (
+const computeDynastyView = async (
   view: LeagueView,
   teamId: string,
 ): Promise<DynastyView | null> => {
@@ -428,3 +428,6 @@ export const buildDynastyView = async (
 };
 
 export { DECLINE_AGE, PEAK_AGE };
+
+/** Cached per league state and team: it fans out into team profiles and history. */
+export const buildDynastyView = derived('dynasty', computeDynastyView, (teamId: string) => teamId);

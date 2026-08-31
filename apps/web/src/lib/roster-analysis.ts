@@ -10,7 +10,7 @@ import {
 } from '@ffe/core';
 import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadExplanation } from './projections';
 import { projectionConfidence } from './explain';
@@ -71,7 +71,7 @@ export interface RosterAnalysis {
   readonly undervalued: readonly RosterPlayer[];
 }
 
-export const analyzeRoster = async (
+const computeRosterAnalysis = async (
   view: LeagueView,
   teamId: string,
 ): Promise<RosterAnalysis | null> => {
@@ -233,3 +233,12 @@ export const analyzeRoster = async (
     undervalued,
   };
 };
+
+/**
+ * One team's roster read, cached per league state and team.
+ *
+ * Every candidate's marginal value is a separate lineup solve, so this is
+ * quadratic in roster size — and the roster page, the trade page and the team
+ * page all want it for the same team.
+ */
+export const analyzeRoster = derived('roster-analysis', computeRosterAnalysis, (teamId: string) => teamId);

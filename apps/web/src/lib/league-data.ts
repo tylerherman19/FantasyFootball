@@ -1,5 +1,5 @@
 import { unstable_cache } from 'next/cache';
-import { SleeperAdapter } from '@ffe/adapters';
+import { SleeperAdapter, SleeperClient } from '@ffe/adapters';
 import {
   asPlayerId,
   lineupEfficiencies,
@@ -14,7 +14,7 @@ import {
   type TeamContext,
 } from '@ffe/core';
 import { loadAvailability } from './availability';
-import { ttlCache } from './cache';
+import { ttlCache, type TtlCache } from './cache';
 import { loadIdentities } from './crosswalk';
 import { buildPool, loadArtifact } from './projections';
 
@@ -32,7 +32,32 @@ import { buildPool, loadArtifact } from './projections';
  * Without this each of them paid the full cost again.
  */
 
-const adapter = new SleeperAdapter();
+/*
+ * Sleeper responses persist beyond this process.
+ *
+ * A league snapshot is around thirty requests. The client already shares them
+ * inside one server, which is the whole answer on a machine that stays up and
+ * no answer at all on a platform that recycles the instance between visits —
+ * there, every cold request paid the full round trip again, which is most of
+ * the second a first-time reader waited.
+ *
+ * The revalidate window is the same five minutes the league memo already uses,
+ * so this makes nothing staler than it already was; it only stops the same
+ * fetch being paid for once per instance instead of once per five minutes.
+ */
+const adapter = new SleeperAdapter(
+  new SleeperClient(8, { requestInit: { next: { revalidate: 300 } } as RequestInit }),
+);
+
+/** FNV-1a. Short, stable, and not a security boundary — it keys a cache. */
+const hash = (text: string): string => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+};
 
 /**
  * Iterations behind a page render.
@@ -58,6 +83,34 @@ const PAGE_ITERATIONS = 10_000;
  */
 const LEAGUE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Memoize something derived from a league view.
+ *
+ * The pages are six views of one league, and every one of them was rebuilding
+ * the same intermediate results from scratch. Team profiles alone are a
+ * thousand-sample quantile draw for every rostered player — a sixth of a second
+ * — and the outlook page, the power page and the dynasty page each did it
+ * independently, on every navigation, for a result that cannot differ between
+ * them.
+ *
+ * Keyed on the view's signature rather than on the view, because a `LeagueView`
+ * is a new object on every cache miss and would key nothing. Two identical
+ * leagues loaded seconds apart share the derived work, and concurrent callers
+ * share one computation instead of racing to do it twice.
+ */
+export const derived = <T, A extends readonly unknown[] = []>(
+  name: string,
+  compute: (view: LeagueView, ...args: A) => Promise<T>,
+  keyOf: (...args: A) => string = () => '',
+): TtlCache<[LeagueView, ...A], T> =>
+  ttlCache<[LeagueView, ...A], T>(
+    LEAGUE_TTL_MS,
+    (view, ...args) => `${view.signature}:${keyOf(...args)}`,
+    compute as (...args: [LeagueView, ...A]) => Promise<T>,
+    { name, maxEntries: 32 },
+  );
+
+
 export interface LeagueView {
   readonly snapshot: LeagueSnapshot;
   readonly context: SimContext;
@@ -67,6 +120,16 @@ export interface LeagueView {
   readonly modelVersion: string | null;
   readonly generatedAt: string | null;
   readonly efficiencies: ReadonlyMap<string, import('@ffe/core').EfficiencyResult>;
+  /**
+   * Everything that changes the answer, as one string.
+   *
+   * The cache key for every view derived from this one — team profiles, roster
+   * analysis, the dynasty read. Those are pure functions of the snapshot, the
+   * simulation and the artifact, so two calls with the same signature must
+   * produce the same result, and the six routes that each want them should
+   * compute them once between them rather than once apiece.
+   */
+  readonly signature: string;
   /** Milliseconds per stage of the cold build. Empty on a cache hit. */
   readonly stages?: Readonly<Record<string, number>>;
   /** Wall-clock cost of building this view, for the footer's honesty line. */
@@ -169,6 +232,14 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
    */
   const availabilityPromise = stage('availability', () => loadAvailability());
   const identitiesPromise = stage('crosswalk', () => loadIdentities());
+  /*
+   * Resolving the viewer is a Sleeper round trip that depends on the username
+   * and nothing else. It used to be awaited after the artifact and the pool
+   * were built, which put a whole network latency in series behind work it has
+   * no relationship to. Started here, it costs nothing: it resolves while the
+   * league snapshot is still in flight.
+   */
+  const userPromise = stage('resolve-user', () => resolveUser(username));
 
   const snapshot = await stage('sleeper', () => adapter.loadSnapshot(platformLeagueId));
 
@@ -224,7 +295,7 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
   //
   // Resolved before simulating rather than after, because knowing whose team is
   // whose lets this week's games be priced inside the same run.
-  const myUserId = await resolveUser(username);
+  const myUserId = await userPromise;
   const me =
     myUserId === null
       ? undefined
@@ -254,6 +325,16 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
   const rosterSignature = snapshot.rosters
     .map((roster) => `${roster.teamId}:${[...roster.playerIds].sort().join('.')}`)
     .join('|');
+
+  // Long, and never shown to anyone. Hashed so a derived cache key is a short
+  // string rather than a few kilobytes of roster repeated per entry.
+  const signature = [
+    snapshot.league.id,
+    snapshot.asOfWeek,
+    artifact?.generatedAt ?? 'no-artifact',
+    mine?.id ?? 'no-team',
+    hash(rosterSignature),
+  ].join(':');
 
   const simulate = unstable_cache(
     async () =>
@@ -303,6 +384,7 @@ const buildLeague = async (platformLeagueId: string, username: string): Promise<
     modelVersion: artifact?.modelVersion ?? null,
     generatedAt: artifact?.generatedAt ?? null,
     efficiencies,
+    signature,
     loadMs: Date.now() - startedAt,
     stages,
   };

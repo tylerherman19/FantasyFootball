@@ -1,5 +1,5 @@
 import { modelPickValues, pickInventory, valuePicks } from '@ffe/core';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 import type { WirePick } from './serialize';
 import { loadMarketData } from './values';
 
@@ -24,7 +24,7 @@ import { loadMarketData } from './values';
 const SEASONS_AHEAD = 3;
 const ROUNDS = [1, 2, 3, 4];
 
-export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
+const computePicks = async (view: LeagueView): Promise<WirePick[]> => {
   const { snapshot, result } = view;
 
   if (snapshot.league.format !== 'dynasty' && snapshot.league.format !== 'keeper') {
@@ -57,3 +57,11 @@ export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
     value: pick.value,
   }));
 };
+
+/**
+ * Cached per league state.
+ *
+ * The trades page and the dynasty page both price the same inventory against
+ * the same simulated finishes, and the answer cannot differ between them.
+ */
+export const loadPicks = derived('picks', computePicks);

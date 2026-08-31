@@ -74,6 +74,19 @@ export const productionWhenPlaying = (status: InjuryStatus): number => {
   return PRODUCTION_WHEN_PLAYING[status] ?? 1;
 };
 
+/**
+ * Designations that mean "hurt but expected to play", as opposed to "out".
+ *
+ * Only these are worth remembering after they are removed: a player who was
+ * listed Out on Wednesday and is off the report on Sunday has recovered, while
+ * one who was Questionable all week and is activated ninety minutes before
+ * kickoff is playing through something.
+ */
+const GAME_TIME_DESIGNATIONS: readonly string[] = ['Questionable', 'Doubtful'];
+
+export const isGameTimeDesignation = (status: InjuryStatus): boolean =>
+  typeof status === 'string' && GAME_TIME_DESIGNATIONS.includes(status);
+
 export const playProbability = (status: InjuryStatus): number => {
   if (status === null || status === undefined || status === '') return 1;
   return PLAY_PROBABILITY[status] ?? 1;
@@ -92,18 +105,22 @@ export interface AvailabilityAdjustment {
 /**
  * Apply availability to a projection.
  *
- * **When you are deciding matters, and this does not know.** The play
- * probability is a Wednesday number: it is the long-run rate at which players
- * carrying this designation appeared, and it is correct for a decision made
- * before the inactives list drops. By Sunday morning you often *know*, and at
- * that point the haircut is too harsh — a Questionable receiver who has been
- * declared active is worth his production discount and nothing more.
+ * **When you are deciding matters.** The play probability is a mid-week number:
+ * the long-run rate at which players carrying this designation appeared, which
+ * is the right estimate for a decision made before the inactives list drops. A
+ * 20-point Questionable player prices at 9.2 here (0.593 x 0.774).
  *
- * The effect is not small. A 20-point Questionable player prices at 9.2 here
- * (0.593 x 0.774), against 15.5 if you already know he is playing. Until the
- * app takes a kickoff-relative timestamp, mid-week is the assumption, and it
- * errs toward not starting a hurt player — which is the safer direction to be
- * wrong in, but it is a direction.
+ * Once he is declared active, `clearedFrom` resolves the availability half and
+ * he prices at 15.5 — his production discount and nothing more. That is the
+ * case the audit called out as too pessimistic, and it is now handled rather
+ * than assumed away.
+ *
+ * What remains unmodelled is the middle: a Friday designation is more
+ * informative than a Wednesday one, and 0.593 is the average over both. Fixing
+ * that needs play rates measured against hours-to-kickoff, which
+ * `model/export_availability.py` does not yet produce. Until it does, mid-week
+ * is the assumption between the report and the inactives, and it errs toward
+ * not starting a hurt player — the safer direction, but a direction.
  *
  * The mean scales with the chance of playing. The spread *grows*, because a
  * player who might not play at all has a genuinely wider range of outcomes than
@@ -115,6 +132,11 @@ export const applyAvailability = (
   sd: number,
   status: InjuryStatus,
   onBye: boolean,
+  /**
+   * The designation this player carried earlier in the week, if it has since
+   * been removed. See the block below — this is the "cleared" case.
+   */
+  clearedFrom: InjuryStatus = null,
 ): AvailabilityAdjustment => {
   if (onBye) {
     return { mean: 0, sd: 0, playProbability: 0, note: 'on bye' };
@@ -124,6 +146,40 @@ export const applyAvailability = (
 
   if (probability === 0) {
     return { mean: 0, sd: 0, playProbability: 0, note: status ?? 'out' };
+  }
+
+  /*
+   * Cleared, and still hurt.
+   *
+   * The platform removes a designation the moment a player is declared active,
+   * and until now that took his whole injury with it: the previous line
+   * returned him at his full healthy projection, because as far as this
+   * function could see nothing had ever been wrong.
+   *
+   * That is the second of two opposite errors the audit found in one paragraph.
+   * Before the inactives drop, a 0.593 play rate averaged over the whole week
+   * is too harsh for a Friday designation. After they drop, dropping the
+   * designation entirely is too kind — a receiver who spent the week
+   * Questionable and is activated at ninety minutes is not the player he is in
+   * a healthy week, and the measured 0.774 says by how much.
+   *
+   * Only the availability half resolves at kickoff. He is certainly playing, so
+   * the play probability is one. What he does while playing was never a
+   * function of the clock and does not resolve with it.
+   *
+   * The number is the one already measured over 2,359 such appearances in
+   * `model/export_availability.py`; nothing here is newly asserted.
+   */
+  if (probability === 1 && isGameTimeDesignation(clearedFrom)) {
+    const discount = productionWhenPlaying(clearedFrom);
+    if (discount < 1) {
+      return {
+        mean: mean * discount,
+        sd: sd * discount,
+        playProbability: 1,
+        note: `cleared from ${clearedFrom} · playing, at ${Math.round(discount * 100)}% of himself`,
+      };
+    }
   }
 
   if (probability === 1) {

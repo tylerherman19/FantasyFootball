@@ -1,10 +1,10 @@
 import { loadIdentities } from './crosswalk';
 import { loadHistory, type PlayerHistory } from './history';
 import { buildTeamProfiles, type TeamProfile } from './league-analytics';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 import { loadArtifact, scoreFor } from './projections';
-import { declineAge, loadAgeCurves } from './age-curves';
-import { loadMarketValues } from './values';
+import { declineAge, loadAgeCurves, yearByYearOutlook } from './age-curves';
+import { loadMarketData } from './values';
 import { fundamentalPlayerValue, type Position } from '@ffe/core';
 
 /**
@@ -253,22 +253,20 @@ const decide = (
   };
 };
 
-export const buildDynastyView = async (
+const computeDynastyView = async (
   view: LeagueView,
   teamId: string,
 ): Promise<DynastyView | null> => {
   const { snapshot } = view;
 
-  const [profiles, artifact, values, identities, history] = await Promise.all([
+  const [profiles, artifact, market, identities, history] = await Promise.all([
     buildTeamProfiles(view),
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketData(snapshot),
     loadIdentities(),
     loadHistory(),
   ]);
+  const values = market.players;
 
   const profile = profiles.find((entry) => entry.teamId === teamId);
   const roster = snapshot.rosters.find((entry) => entry.teamId === teamId);
@@ -306,14 +304,27 @@ export const buildDynastyView = async (
     const position = projection?.position ?? identity?.position ?? '?';
     const projected = projection === undefined ? 0 : scoreFor(projection, rules);
     const marketValue = values.get(id)?.value ?? 0;
-    const replacement: Readonly<Record<string, number>> = { QB: 15, RB: 7, WR: 8, TE: 6, K: 7, DEF: 7, DL: 6, LB: 7, DB: 6 };
-    const fundamental = position in replacement
+
+    /*
+     * Replacement level comes from this league, not from a table.
+     *
+     * The constants that used to sit here — QB 15, RB 7, WR 8 — were a standard
+     * twelve-team lineup written down as if it were a fact about football. In a
+     * superflex league the quarterback number is nowhere near 15, and every
+     * contend-or-rebuild verdict on this page was being decided against it.
+     * `market.replacement` is the same quantity measured from the slots the
+     * league actually starts.
+     */
+    const replacementPoints = market.replacement.get(position);
+    const fundamental = replacementPoints !== undefined
       ? fundamentalPlayerValue({
           position: position as Position,
           age: age ?? undefined,
           weeklyPoints: projected,
-          replacementPoints: replacement[position] ?? 7,
-          marketValue,
+          replacementPoints,
+          futureSeasons: yearByYearOutlook(ageCurves, position, age, 4).filter(
+            (year): year is number => year !== null,
+          ),
         })
       : { total: marketValue, survival: [1, 1, 1, 1], annualSurplus: [] };
 
@@ -417,3 +428,6 @@ export const buildDynastyView = async (
 };
 
 export { DECLINE_AGE, PEAK_AGE };
+
+/** Cached per league state and team: it fans out into team profiles and history. */
+export const buildDynastyView = derived('dynasty', computeDynastyView, (teamId: string) => teamId);

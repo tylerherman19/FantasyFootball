@@ -57,10 +57,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
    */
   const [portfolioArtifact, portfolioValues, correlations] = await Promise.all([
     loadArtifact(view.snapshot.league.season, view.snapshot.asOfWeek),
-    loadMarketValues(view.snapshot.league.format, view.snapshot.league.superFlex, {
-      teamCount: view.snapshot.league.teamCount,
-      ppr: view.snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(view.snapshot),
     loadCorrelations().catch(() => null),
   ]);
   const myRoster = view.snapshot.rosters.find((r) => r.teamId === myTeamId);
@@ -187,12 +184,12 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {/* ---- team value ------------------------------------------------- */}
         <Section
           title="What your team is worth"
-            source="FantasyCalc market values · matched to this league's format"
+            source="In-house asset values · surplus over this league's replacement level"
           note={
             <>
-              Market value is what other managers would actually pay, from trades executed in real
-              Sleeper leagues — not a ranking. It is the only currency a trade is settled in, which
-              is why it sits next to the age bands rather than on its own: the same total means very
+              Asset value is discounted production above replacement — what a player is worth to a
+              roster in this league, priced by our own model rather than read off a market feed. It
+              sits next to the age bands rather than on its own because the same total means very
               different things depending on how old it is.
             </>
           }
@@ -308,7 +305,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {dynasty.assets.some((asset) => asset.age !== null && asset.marketValue > 0) && (
           <Section
             title="Your window, player by player"
-            source="FantasyCalc values · aging curves fitted 2016-2025 by the delta method"
+            source="In-house asset values · aging curves fitted 2016-2025 by the delta method"
             note={
               <>
                 Age against market value, with each position&apos;s decline age as the dividing

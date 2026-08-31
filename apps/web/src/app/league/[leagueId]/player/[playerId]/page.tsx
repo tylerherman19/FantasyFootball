@@ -97,10 +97,7 @@ export default async function PlayerPage({
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
     loadIdentities(),
     loadAvailability(),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(snapshot),
     loadHistory().catch(() => null),
   ]);
   const [ageCurves, offenseArtifact, defenses, schemeFinding] = await Promise.all([

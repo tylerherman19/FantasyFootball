@@ -50,10 +50,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
     await Promise.all([
       myTeamId === null ? Promise.resolve(null) : analyzeRoster(view, myTeamId),
       buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-      loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-        teamCount: snapshot.league.teamCount,
-        ppr: snapshot.league.scoring.rec,
-      }),
+      loadMarketValues(snapshot),
       loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
       loadDefenses().catch(() => null),
       loadSchemeFinding().catch(() => null),
@@ -130,9 +127,9 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                   hint="Points the optimal lineup gives up without him — his marginal value, not his projection."
                 />
                 <RailStat
-                  label="Market"
-                  value="FantasyCalc"
-                  hint="Dynasty or redraft, superflex-aware, matched to this league's format."
+                  label="Asset value"
+                  value="in-house"
+                  hint="Discounted production above this league's own replacement level — computed from our projections and your actual lineup slots, not bought from a market feed."
                 />
               </RailBlock>
             </>

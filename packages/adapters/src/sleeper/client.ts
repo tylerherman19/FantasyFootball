@@ -92,17 +92,30 @@ export const clearSleeperCache = (): void => {
  *
  * Responses are cached by URL with a per-endpoint lifetime, and concurrent
  * callers asking for the same URL share one request rather than racing.
+ *
+ * That cache lives in this process, which is the right shape for a server that
+ * stays up and the wrong one for a platform that recycles it. `requestInit`
+ * exists for the second case: the host passes whatever its runtime uses to
+ * persist a response beyond one process — Next reads `next.revalidate` off the
+ * init object — and the adapter stays ignorant of which host it is running in.
+ * Runtimes that do not recognise the extra fields ignore them, which is why
+ * this can be a plain `RequestInit` rather than a framework import.
  */
 export class SleeperClient {
   #inFlight = 0;
   readonly #maxConcurrent: number;
   readonly #cacheEnabled: boolean;
+  readonly #requestInit: RequestInit;
 
   readonly #queue: (() => void)[] = [];
 
-  constructor(maxConcurrent = 8, { cache = true }: { cache?: boolean } = {}) {
+  constructor(
+    maxConcurrent = 8,
+    { cache = true, requestInit = {} }: { cache?: boolean; requestInit?: RequestInit } = {},
+  ) {
     this.#maxConcurrent = maxConcurrent;
     this.#cacheEnabled = cache;
+    this.#requestInit = requestInit;
   }
 
   async #withSlot<T>(fn: () => Promise<T>): Promise<T> {
@@ -163,7 +176,10 @@ export class SleeperClient {
 
       for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
-          const res = await fetch(url, { headers: { accept: 'application/json' } });
+          const res = await fetch(url, {
+            ...this.#requestInit,
+            headers: { accept: 'application/json', ...this.#requestInit.headers },
+          });
 
           if (res.status === 404 && opts.allow404 === true) return null;
 

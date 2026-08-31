@@ -10,7 +10,7 @@ import {
 } from '@ffe/core';
 import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadExplanation } from './projections';
 import { projectionConfidence } from './explain';
@@ -71,7 +71,7 @@ export interface RosterAnalysis {
   readonly undervalued: readonly RosterPlayer[];
 }
 
-export const analyzeRoster = async (
+const computeRosterAnalysis = async (
   view: LeagueView,
   teamId: string,
 ): Promise<RosterAnalysis | null> => {
@@ -79,10 +79,7 @@ export const analyzeRoster = async (
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(snapshot),
     loadIdentities(),
     loadAvailability(),
   ]);
@@ -99,13 +96,14 @@ export const analyzeRoster = async (
 
     const position = projection.position as Position;
     const status = availability[String(id)]?.injuryStatus ?? null;
+    const clearedFrom = availability[String(id)]?.clearedFrom ?? null;
 
     return [
       {
         playerId: asPlayerId(String(id)),
         position,
         eligiblePositions: [position],
-        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek),
+        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek, clearedFrom),
         stddev: projection.sd,
       },
     ];
@@ -197,10 +195,17 @@ export const analyzeRoster = async (
   // elite current starter could otherwise be mislabelled.
   // Young, high-value/upside assets are also not automatic move suggestions:
   // being replaceable today does not mean the dynasty asset should be sold.
+  //
+  // The bar is a share of the league's best asset rather than a fixed 6,000.
+  // That constant was calibrated against a feed whose scale we no longer use,
+  // and an absolute threshold on a normalised index means something different
+  // in a shallow league than in a deep one — which is exactly the kind of quiet
+  // miscalibration that produces a confident bad sell recommendation.
+  const topValue = Math.max(...players.map((p) => p.marketValue), 1);
   const isYoungCoreAsset = (p: RosterPlayer): boolean =>
     p.age !== null &&
     p.age <= 25 &&
-    (p.marketValue >= 6_000 || p.projected >= 12);
+    (p.marketValue >= topValue * 0.6 || p.projected >= 12);
 
   const sellCandidates = players
     .filter(
@@ -229,3 +234,12 @@ export const analyzeRoster = async (
     undervalued,
   };
 };
+
+/**
+ * One team's roster read, cached per league state and team.
+ *
+ * Every candidate's marginal value is a separate lineup solve, so this is
+ * quadratic in roster size — and the roster page, the trade page and the team
+ * page all want it for the same team.
+ */
+export const analyzeRoster = derived('roster-analysis', computeRosterAnalysis, (teamId: string) => teamId);

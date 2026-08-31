@@ -140,6 +140,79 @@ export default function ModelPage() {
           every hurt starter — in the direction that loses leagues, because it tells you to start
           him.
         </Para>
+        <Para>
+          It also survives the tag being taken away. Sleeper drops a designation the moment a player
+          is declared active, which used to take his whole injury with it: he snapped back to a full
+          healthy projection because nothing in the data said otherwise. The site now remembers the
+          removal for the rest of that week. Being activated settles whether he plays — it settles
+          nothing about how well. A 20-point player reads 9.2 mid-week, <strong>15.5 once he is
+          active</strong>, and 20.0 only if he was never listed at all.
+        </Para>
+      </Section>
+
+      <Section
+        title="Asset values are ours now"
+        note="They used to be somebody else's number, on the render path of six pages."
+      >
+        <Para>
+          Every price here — trade fairness, sell candidates, what your roster is worth, what a 2027
+          first is worth — used to come from a public market feed. Those are real trades from real
+          leagues, which is a genuine market and a defensible place to start. But it made a third
+          party the author of the number this product argues with, and left the site no way to
+          disagree with it or explain it.
+        </Para>
+        <Para>
+          It also could not describe your league. That endpoint knows four things: dynasty or not,
+          how many quarterbacks start, how many teams, and a PPR number. It does not know that yours
+          starts a third receiver, plays two flexes, awards a point per first down, or that eleven
+          weeks are left — which are the facts that decide what a player is worth.
+        </Para>
+        <Para>
+          Value is now <strong>discounted production above replacement</strong>, computed from the
+          same projections everything else on the site uses. Replacement level falls out of counting
+          your actual lineup slots, so a superflex league reprices every quarterback without anyone
+          coding a special case for superflex. Rookie picks are priced against this model&rsquo;s
+          own read of the class they would be spent on, rather than a chart that says a 1.03 is worth
+          the same in every draft ever held.
+        </Para>
+        <Para>
+          One thing was genuinely lost and is marked as lost rather than faked: roster share is a
+          fact about other people&rsquo;s leagues, not about football, so the site now says it does
+          not know instead of substituting a proxy.
+        </Para>
+      </Section>
+
+      <Section
+        title="It is now scored against the free alternative, every week"
+        note="The gap this page had the least right to leave open."
+      >
+        <Para>
+          Everything above compares the model to <em>itself</em> — v1 against v0, the rookie prior
+          against a flat average, matchup adjustments against no adjustment. Those are real
+          measurements and they are the ones that decide what ships. They are also not the question
+          you are actually asking, which is whether this beats the projection Sleeper already shows
+          you for free.
+        </Para>
+        <Para>
+          Until now that could not be answered. The snapshot table has recorded Sleeper&rsquo;s
+          consensus before every kickoff since before Week 1, and it never recorded ours, and it
+          never recorded what actually happened. Half the data for the comparison was simply
+          missing — so the honest description of the claim was <em>untested</em>, not proven and not
+          disproven.
+        </Para>
+        <Para>
+          Both halves now run weekly. Our projection is captured before kickoff beside the
+          consensus, under the same scoring rules; on Tuesday, once Monday night has settled the
+          week, both are scored against what actually happened. The comparison is set up to be hard
+          on us on purpose: only players <em>both</em> sources projected, so breadth cannot pass for
+          skill; only players who actually appeared, so an injury miss cannot hide inside a
+          projection score; and a paired t-test, so a single good week reports itself as a single
+          good week rather than a finding.
+        </Para>
+        <Para>
+          Expect the first several weeks to say the two are not separated. That is what one week of
+          fantasy projections can support, and saying so is the point.
+        </Para>
       </Section>
 
       <Section
@@ -266,12 +339,35 @@ export default function ModelPage() {
             <strong>Correlation is by position pair.</strong> Two specific receivers on one team get
             their position&rsquo;s number unless they have played enough games together.
           </li>
+          <li>
+            <strong>The head-to-head is young.</strong> Weekly scoring against the free consensus
+            started this season. Until a season of weeks accumulates, the right reading of it is
+            &ldquo;not separated yet&rdquo;, whichever way the sign happens to point.
+          </li>
+          <li>
+            <strong>A Friday injury report reads like a Wednesday one.</strong> The 59% play rate is
+            an average over the whole week, and a designation issued the day before kickoff carries
+            more information than one issued three days out. Splitting them needs play rates measured
+            against hours-to-kickoff, which the availability export does not yet produce.
+          </li>
+          <li>
+            <strong>It is slow to believe a surprise starter.</strong> Twenty-four games of memory
+            is what makes it hard to fool with a hot fortnight, and it is the same property that
+            makes it late on a genuine role change. Nothing here has been tuned to fix that, because
+            a change to the memory that has not been backtested is exactly the kind this project has
+            already declined twice.
+          </li>
+          <li>
+            <strong>Season odds are not calibrated.</strong> Weekly spread is; the playoff and title
+            percentages inherit it without having been checked against realised outcomes. Treat the
+            ordering as meaningful and the exact percentage as not.
+          </li>
         </ul>
       </Section>
 
       <div className="source-line">
-        All figures from walk-forward backtests · run <code>model/backtest/run_ladder.py</code> to
-        reproduce
+        Backtest figures from walk-forward runs · <code>model/backtest/run_ladder.py</code> to
+        reproduce · head-to-head from <code>scripts/score-snapshots.ts</code>, weekly
       </div>
     </main>
   );

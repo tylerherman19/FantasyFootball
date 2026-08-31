@@ -1,7 +1,7 @@
 import { asPlayerId, optimalLineup, playerScoreQuantiles, seedFrom, type LineupCandidate, type Position } from '@ffe/core';
 import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 import { buildPool, isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadMarketValues } from './values';
 
@@ -94,6 +94,22 @@ export interface RosterPlayer {
   readonly basis: 'history' | 'rookie-prior' | 'unprojected';
 }
 
+/**
+ * Samples behind each player's displayed quartile range.
+ *
+ * This was a thousand, which cost roughly 120 ms across a twelve-team league and
+ * bought nothing anyone can see. A quartile from n draws carries a standard
+ * error near 1.2/sqrt(n) of a standard deviation: at 1,000 that is 0.04 sd, at
+ * 256 it is 0.075 sd — on a receiver projected for 12 points give or take 6,
+ * the difference between the two is about a quarter of a point on a number
+ * rendered to one decimal.
+ *
+ * The season simulation still runs at ten thousand, because a title probability
+ * is read at two decimal places and genuinely needs them. A bar on a roster row
+ * does not.
+ */
+const RANGE_SAMPLES = 256;
+
 /** Positions worth breaking a roster down by, in the order managers think of them. */
 const CORE_POSITIONS: readonly string[] = ['QB', 'RB', 'WR', 'TE'];
 const EXTRA_POSITIONS: readonly string[] = ['K', 'DEF', 'DL', 'LB', 'DB'];
@@ -118,15 +134,12 @@ const ageFrom = (birthdate: string | null): number | null => {
   return Number.isFinite(years) && years > 0 && years < 60 ? years : null;
 };
 
-export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]> => {
+const computeTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]> => {
   const { snapshot, result, teamNames, myTeamId, efficiencies } = view;
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadMarketValues(snapshot),
     loadIdentities(),
     loadAvailability(),
   ]);
@@ -163,7 +176,13 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
       const points =
         projection === undefined
           ? 0
-          : scoreFor(projection, rules, availability[id]?.injuryStatus ?? null, snapshot.asOfWeek);
+          : scoreFor(
+              projection,
+              rules,
+              availability[id]?.injuryStatus ?? null,
+              snapshot.asOfWeek,
+              availability[id]?.clearedFrom ?? null,
+            );
 
       const position = projection?.position ?? identity?.position ?? '?';
       const scenarioProjection = scenarioWeek?.get(asPlayerId(id));
@@ -173,7 +192,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
           : (playerScoreQuantiles(
               scenarioProjection,
               [0.25, 0.5, 0.75],
-              1_000,
+              RANGE_SAMPLES,
               seedFrom(snapshot.league.id, snapshot.asOfWeek, id),
             ) as [number, number, number]);
 
@@ -340,6 +359,16 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
 /** Which positions any team in this league actually rosters, in reading order. */
 export const positionsInPlay = (profiles: readonly TeamProfile[]): string[] =>
   profiles[0]?.byPosition.map((slice) => slice.position) ?? [];
+
+/**
+ * Team profiles, computed once per league state.
+ *
+ * Three routes ask for these — outlook, power and dynasty — and until this
+ * wrapper existed each of them rebuilt the whole thing, including a Monte Carlo
+ * range for every rostered player in the league. Nothing about the result can
+ * differ between the callers, so nothing about the work should repeat.
+ */
+export const buildTeamProfiles = derived('team-profiles', computeTeamProfiles);
 
 /**
  * Contention window, from age and strength.

@@ -30,3 +30,63 @@ describe('ttlCache invalidation', () => {
     expect(calls).toBe(2);
   });
 });
+
+describe('ttlCache sharing', () => {
+  it('computes once for concurrent callers, which is what the six tabs rely on', async () => {
+    let calls = 0;
+    const cached = ttlCache(
+      60_000,
+      (key: string) => key,
+      async (key: string) => {
+        calls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return `${key}-built`;
+      },
+      { name: 'cache-sharing-test' },
+    );
+
+    const all = await Promise.all([cached('a'), cached('a'), cached('a')]);
+
+    expect(all).toEqual(['a-built', 'a-built', 'a-built']);
+    expect(calls).toBe(1);
+  });
+
+  it('keys separately, so two leagues do not share one answer', async () => {
+    let calls = 0;
+    const cached = ttlCache(
+      60_000,
+      (key: string) => key,
+      async (key: string) => {
+        calls += 1;
+        return key;
+      },
+      { name: 'cache-keying-test' },
+    );
+
+    expect(await cached('league-a')).toBe('league-a');
+    expect(await cached('league-b')).toBe('league-b');
+    expect(await cached('league-a')).toBe('league-a');
+    expect(calls).toBe(2);
+  });
+
+  it('evicts oldest first so one process serving many leagues stays bounded', async () => {
+    let calls = 0;
+    const cached = ttlCache(
+      60_000,
+      (key: string) => key,
+      async (key: string) => {
+        calls += 1;
+        return key;
+      },
+      { name: 'cache-bound-test', maxEntries: 2 },
+    );
+
+    await cached('one');
+    await cached('two');
+    await cached('three');
+    // 'one' was evicted when 'three' arrived, so asking again recomputes it.
+    await cached('one');
+
+    expect(calls).toBe(4);
+  });
+});

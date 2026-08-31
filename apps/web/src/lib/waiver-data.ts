@@ -8,7 +8,7 @@ import {
   type WaiverRecommendation,
 } from '@ffe/core';
 import { isPlayingIn, loadArtifact, scoreFor, type ArtifactPlayer } from './projections';
-import type { LeagueView } from './league-data';
+import { derived, type LeagueView } from './league-data';
 
 /**
  * Waiver analysis for one team.
@@ -40,7 +40,7 @@ export interface WaiverView {
   readonly seasonBudget: number;
 }
 
-export const loadWaivers = async (view: LeagueView, teamId: string): Promise<WaiverView | null> => {
+const computeWaivers = async (view: LeagueView, teamId: string): Promise<WaiverView | null> => {
   const { snapshot, context } = view;
 
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
@@ -156,7 +156,7 @@ export const loadWaivers = async (view: LeagueView, teamId: string): Promise<Wai
  * and a player who cannot start cannot change your odds. Simulating them would
  * cost time to prove a foregone conclusion.
  */
-export const loadFreeAgents = async (view: LeagueView, teamId: string | null = null) => {
+const computeFreeAgents = async (view: LeagueView, teamId: string | null = null) => {
   const { snapshot, context } = view;
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return [];
@@ -237,3 +237,9 @@ export const waiverBudgetFor = (
     seasonBudget: snapshot.league.waiverBudget,
   };
 };
+
+/** Cached per league state and team. Each candidate claim is a simulated season. */
+export const loadWaivers = derived('waivers', computeWaivers, (teamId: string) => teamId);
+
+/** Cached per league state and team. */
+export const loadFreeAgents = derived('free-agents', computeFreeAgents, (teamId: string | null = null) => teamId ?? '-');

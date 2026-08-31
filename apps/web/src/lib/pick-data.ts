@@ -1,5 +1,5 @@
-import { marketPickValues, pickInventory, valuePicks } from '@ffe/core';
-import type { LeagueView } from './league-data';
+import { modelPickValues, pickInventory, valuePicks } from '@ffe/core';
+import { derived, type LeagueView } from './league-data';
 import type { WirePick } from './serialize';
 import { loadMarketData } from './values';
 
@@ -12,24 +12,29 @@ import { loadMarketData } from './values';
  * Each pick is priced against the projected finish of the team that will
  * produce it, which is the entire reason a rebuilding team's first is worth
  * chasing and a contender's is not.
+ *
+ * What it is priced *in* changed. Slot values used to come from a published
+ * pick chart carried on the market feed; they now come from our own valuation
+ * of the rookie class the pick would actually be spent on. A chart says a 1.03
+ * is worth the same in every draft ever held. The class says whether this one
+ * has three players worth having or eleven.
  */
 
 /** How many seasons ahead leagues actually trade. Beyond this is noise. */
 const SEASONS_AHEAD = 3;
 const ROUNDS = [1, 2, 3, 4];
 
-export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
+const computePicks = async (view: LeagueView): Promise<WirePick[]> => {
   const { snapshot, result } = view;
 
   if (snapshot.league.format !== 'dynasty' && snapshot.league.format !== 'keeper') {
     return [];
   }
 
-  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex, {
-    teamCount: snapshot.league.teamCount,
-    ppr: snapshot.league.scoring.rec,
-  });
-  if (market.picks.size === 0) return [];
+  const market = await loadMarketData(snapshot);
+  // No valued rookie class means no basis for pricing a pick. Publishing zeros
+  // would put "free" first-rounders into the trade finder.
+  if (market.rookieValues.length === 0) return [];
 
   const seasons = Array.from({ length: SEASONS_AHEAD }, (_, i) => snapshot.league.season + 1 + i);
   const inventory = pickInventory(snapshot, seasons, ROUNDS);
@@ -38,7 +43,9 @@ export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
     inventory,
     result,
     snapshot,
-    marketPickValues(market.picks, snapshot.league.season + 1),
+    modelPickValues(market.rookieValues, snapshot.league.season + 1, {
+      teamCount: snapshot.league.teamCount,
+    }),
   );
 
   return valued.map((pick) => ({
@@ -50,3 +57,11 @@ export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
     value: pick.value,
   }));
 };
+
+/**
+ * Cached per league state.
+ *
+ * The trades page and the dynasty page both price the same inventory against
+ * the same simulated finishes, and the answer cannot differ between them.
+ */
+export const loadPicks = derived('picks', computePicks);

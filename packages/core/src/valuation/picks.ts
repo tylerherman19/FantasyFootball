@@ -140,23 +140,97 @@ export const valuePicks = (
 };
 
 /**
- * Build a value source from a market feed keyed by pick label.
+ * Price the rookie draft off our own valuation of the class in it.
  *
- * FantasyCalc publishes exact slots for the next draft ("2026 Pick 1.04") and
- * tiers beyond it ("2027 1st (Early)"), so both shapes are looked up here and
- * the caller stays ignorant of the naming.
+ * The feed this replaces published a fixed table of pick values — "a 2027 1.03
+ * is worth 4,200" — which is a statement about rookie picks in general and
+ * cannot be a statement about *this* draft. Some classes are top-heavy and some
+ * are flat, and in a flat one the 1.03 and the 1.09 are nearly the same asset.
+ * A static chart prices them as if they never are.
+ *
+ * We already value every incoming rookie, from draft capital and the rookie
+ * prior, in the same units as every veteran. So a pick is priced as what it
+ * actually is: a claim on a player from a class we have already assessed.
+ *
+ * Two things separate a pick from the player it becomes, and both belong here.
+ *
+ * **You do not get the player you ranked there.** Rookie draft order tracks our
+ * ordering loosely and no further; managers reach, and the board falls
+ * differently every year. So a slot is priced as a weighted average over the
+ * players plausibly available at it, not as the one we happen to rank at that
+ * number. The spread widens with depth, because the eighth pick is far less
+ * predictable than the first — which is also why the resulting curve is steep
+ * at the top and flat by the third round, the shape every published pick chart
+ * has, arrived at rather than assumed.
+ *
+ * **A future pick is a pick in a draft nobody has scouted.** Its class is
+ * unknown, and so is the slot, so it is priced from the shape of the class we
+ * can see and discounted for the wait.
  */
-export const marketPickValues = (
-  byName: ReadonlyMap<string, number>,
-  nextSeason: number,
-): PickValueSource => ({
-  exactSlot: (round, slot) =>
-    byName.get(`${nextSeason} Pick ${round}.${String(slot).padStart(2, '0')}`) ??
-    byName.get(`${nextSeason} ${round === 1 ? '1st' : `${round}th`}`),
+export interface ModelPickOptions {
+  /** Teams in the league — how many picks are in a round. */
+  readonly teamCount: number;
+  /** Per-year discount on picks in drafts beyond the next one. */
+  readonly discount?: number;
+}
 
-  tier: (season, round, tier) => {
-    const ordinal = round === 1 ? '1st' : round === 2 ? '2nd' : round === 3 ? '3rd' : `${round}th`;
-    const label = tier.charAt(0).toUpperCase() + tier.slice(1);
-    return byName.get(`${season} ${ordinal} (${label})`) ?? byName.get(`${season} ${ordinal}`);
-  },
-});
+const FUTURE_DISCOUNT = 0.9;
+
+/**
+ * Expected value at an overall rookie-draft slot.
+ *
+ * `pick` is 1-indexed. The kernel is deliberately wide and gets wider: two
+ * ranks of uncertainty at the top of the first round, roughly a third of the
+ * pick number by the end of the draft.
+ */
+const expectedAt = (values: readonly number[], pick: number): number => {
+  if (values.length === 0) return 0;
+
+  const centre = pick - 1;
+  const spread = Math.max(1.5, 0.35 * pick);
+
+  let weighted = 0;
+  let total = 0;
+
+  for (let rank = 0; rank < values.length; rank += 1) {
+    const z = (rank - centre) / spread;
+    if (Math.abs(z) > 4) continue;
+    const weight = Math.exp(-0.5 * z * z);
+    weighted += weight * values[rank]!;
+    total += weight;
+  }
+
+  // Past the end of the class the kernel runs off the board. What is left there
+  // is not a player, so the tail decays to nothing rather than flattening onto
+  // the last rookie we happened to value.
+  return total > 0 ? weighted / total : 0;
+};
+
+/**
+ * A pick value source built from this class, not from a table.
+ *
+ * `rookieValues` is the incoming class in our own index units, best first.
+ */
+export const modelPickValues = (
+  rookieValues: readonly number[],
+  nextSeason: number,
+  options: ModelPickOptions,
+): PickValueSource => {
+  const teams = Math.max(2, Math.round(options.teamCount));
+  const discount = options.discount ?? FUTURE_DISCOUNT;
+  const sorted = [...rookieValues].sort((a, b) => b - a);
+
+  const overall = (round: number, slot: number): number => (round - 1) * teams + slot;
+
+  return {
+    exactSlot: (round, slot) => expectedAt(sorted, overall(round, slot)),
+
+    tier: (season, round, tier) => {
+      // The middle of the tier, since which third of the round a pick lands in
+      // is the most we claim to know about a draft that has not happened.
+      const within = tier === 'early' ? teams / 6 : tier === 'mid' ? teams / 2 : (5 * teams) / 6;
+      const yearsOut = Math.max(1, season - nextSeason + 1);
+      return expectedAt(sorted, overall(round, Math.round(within))) * discount ** (yearsOut - 1);
+    },
+  };
+};

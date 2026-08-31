@@ -113,6 +113,120 @@ const patch = async (path: string, body: unknown): Promise<boolean> => {
 };
 
 /**
+ * Read a table, in pages.
+ *
+ * PostgREST caps a response at its configured maximum rows and says nothing
+ * about it, so a single unbounded GET silently returns a prefix. Reconciliation
+ * that runs on a prefix is worse than no reconciliation: it would conclude an
+ * id is unclaimed because the row holding it fell off the end.
+ */
+const getAll = async <T>(path: string, select: string): Promise<T[]> => {
+  const PAGE = 1000;
+  const out: T[] = [];
+
+  for (let offset = 0; ; offset += PAGE) {
+    const res = await fetch(
+      `${url}/rest/v1/${path}?select=${select}&order=player_uid.asc&limit=${PAGE}&offset=${offset}`,
+      { headers: { apikey: key, authorization: `Bearer ${key}` } },
+    );
+    if (!res.ok) {
+      throw new Error(`PostgREST ${res.status} reading ${path}: ${(await res.text()).slice(0, 300)}`);
+    }
+    const page = (await res.json()) as T[];
+    out.push(...page);
+    if (page.length < PAGE) return out;
+  }
+};
+
+/** Call a Postgres function. */
+const rpc = async (name: string, args: Record<string, unknown>): Promise<string> => {
+  const res = await fetch(`${url}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: key,
+      authorization: `Bearer ${key}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) {
+    throw new Error(`PostgREST ${res.status} calling ${name}: ${(await res.text()).slice(0, 300)}`);
+  }
+  return (await res.text()).replace(/^"|"$/g, '');
+};
+
+interface StoredIdentity {
+  readonly player_uid: string;
+  readonly gsis_id: string | null;
+  readonly sleeper_id: string | null;
+}
+
+/**
+ * Resolve every identity collision before writing a single row.
+ *
+ * `players` has three unique keys and the upsert can only name one of them, so
+ * an external id that has changed hands is a 409 the write cannot recover from.
+ * The one that broke production: a player stored as `sleeper:13806` before
+ * nflverse listed him, whose uid becomes `gsis:00-00…` the moment it does. The
+ * new row claims sleeper_id 13806; the old row still holds it; the sync exits 1
+ * and two days of fresh projections never left the runner.
+ *
+ * So the id is freed first. Each stale row is collapsed into the uid that now
+ * owns its ids, which moves the projection history rather than discarding it —
+ * the point of the rename being a rename and not a delete.
+ *
+ * Runs before every sync, not just after a schema change, because the crosswalk
+ * is rebuilt from nflverse daily and a uid can migrate on any of those days.
+ */
+const reconcileIdentities = async (
+  desired: readonly { player_uid: string; gsis_id: string | null; sleeper_id: string | null }[],
+): Promise<void> => {
+  const stored = await getAll<StoredIdentity>('players', 'player_uid,gsis_id,sleeper_id');
+  if (stored.length === 0) return;
+
+  const owner = new Map<string, string>();
+  for (const row of stored) {
+    if (row.gsis_id !== null) owner.set(`gsis:${row.gsis_id}`, row.player_uid);
+    if (row.sleeper_id !== null) owner.set(`sleeper:${row.sleeper_id}`, row.player_uid);
+  }
+
+  const present = new Set(stored.map((row) => row.player_uid));
+  let merges = 0;
+
+  for (const row of desired) {
+    // Every external id this row is about to claim. A collision on any one of
+    // them fails the whole batch, so all of them are checked.
+    const claims = [
+      row.gsis_id === null ? null : `gsis:${row.gsis_id}`,
+      row.sleeper_id === null ? null : `sleeper:${row.sleeper_id}`,
+    ].filter((claim): claim is string => claim !== null);
+
+    for (const claim of claims) {
+      const held = owner.get(claim);
+      if (held === undefined || held === row.player_uid) continue;
+
+      const outcome = await rpc('merge_player', { from_uid: held, to_uid: row.player_uid });
+      merges += 1;
+
+      // Keep the local view of the table honest, because one stale row can hold
+      // an id that a later row in this same loop also wants.
+      present.delete(held);
+      present.add(row.player_uid);
+      for (const [id, uid] of owner) if (uid === held) owner.set(id, row.player_uid);
+
+      if (merges <= 10) console.log(`  ${held} -> ${row.player_uid}: ${outcome}`);
+    }
+  }
+
+  if (merges > 0) {
+    console.log(
+      `identity: ${merges} stale player_uid${merges === 1 ? '' : 's'} migrated` +
+        (merges > 10 ? ` (first 10 shown)` : ''),
+    );
+  }
+};
+
+/**
  * The internal key.
  *
  * gsis where we have it, because it is the id every league-independent dataset
@@ -191,6 +305,9 @@ const main = async (): Promise<void> => {
       updated_at: new Date().toISOString(),
     };
   });
+
+  console.log('identity: reconciling external ids');
+  await reconcileIdentities(playerRows);
 
   const players = await post(
     'players?on_conflict=player_uid',

@@ -56,7 +56,14 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
       team: projection?.team ?? playerInfo[playerId]?.team ?? '',
       projected,
       sd: projection?.sd ?? 0,
-      injuryStatus: availability[playerId]?.injuryStatus ?? null,
+      // A cleared designation is shown as one: the board should say "playing,
+      // at 77% of himself" rather than silently pricing a discount nobody can
+      // see on a row that looks healthy.
+      injuryStatus:
+        availability[playerId]?.injuryStatus ??
+        (availability[playerId]?.clearedFrom == null
+          ? null
+          : `cleared from ${availability[playerId]?.clearedFrom}`),
     };
   };
 
@@ -66,13 +73,14 @@ export default async function LineupPage({ params }: { params: Promise<{ leagueI
 
     const position = projection.position as Position;
     const status = availability[String(id)]?.injuryStatus ?? null;
+    const clearedFrom = availability[String(id)]?.clearedFrom ?? null;
 
     return [
       {
         playerId: asPlayerId(String(id)),
         position,
         eligiblePositions: [position],
-        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek),
+        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek, clearedFrom),
         stddev: projection.sd,
       },
     ];

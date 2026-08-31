@@ -96,13 +96,14 @@ const computeRosterAnalysis = async (
 
     const position = projection.position as Position;
     const status = availability[String(id)]?.injuryStatus ?? null;
+    const clearedFrom = availability[String(id)]?.clearedFrom ?? null;
 
     return [
       {
         playerId: asPlayerId(String(id)),
         position,
         eligiblePositions: [position],
-        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek),
+        projectedPoints: scoreFor(projection, rules, status, snapshot.asOfWeek, clearedFrom),
         stddev: projection.sd,
       },
     ];

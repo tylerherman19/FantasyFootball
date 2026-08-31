@@ -6,13 +6,17 @@
  *
  *   node --env-file=.env.local node_modules/.bin/tsx scripts/snapshot.ts [week]
  */
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   JsonlSnapshotStore,
   PostgrestSnapshotStore,
   TeeSnapshotStore,
   fetchOdds,
   fetchSleeperProjections,
+  modelSnapshots,
   scoringKey,
+  type ArtifactLike,
 } from '../packages/ingest/src/index.js';
 import { SleeperClient } from '../packages/adapters/src/index.js';
 
@@ -57,6 +61,46 @@ console.log(`projections: ${wrote} rows from sleeper`);
 if (projections.length > 0) {
   const top = [...projections].sort((a, b) => b.points - a.points).slice(0, 5);
   console.log(`  top: ${top.map((p) => `${p.playerId}=${p.points}`).join(', ')}`);
+}
+
+/*
+ * Our own projections, into the same table, before the same kickoff.
+ *
+ * This job has recorded Sleeper's consensus faithfully since before Week 1 and
+ * never once recorded us, which is why the head-to-head the product's central
+ * claim depends on could not be computed. It was not a hard problem; half the
+ * data was simply missing.
+ *
+ * Captured from the artifact rather than recomputed, so the row says what the
+ * app served that week — a benchmark against a number nobody was shown is a
+ * benchmark of the wrong thing.
+ */
+const artifactPath = join(
+  process.cwd(),
+  'model',
+  'artifacts',
+  `projections-${season}-${String(week).padStart(2, '0')}.json`,
+);
+
+try {
+  const artifact = JSON.parse(await readFile(artifactPath, 'utf8')) as ArtifactLike;
+  const ours = modelSnapshots(artifact, SCORING);
+  const wroteOurs = await store.writeProjections(ours);
+  console.log(`projections: ${wroteOurs} rows from ffe (${artifact.modelVersion}, built ${artifact.generatedAt.slice(0, 16)})`);
+} catch (error) {
+  /*
+   * Loud, and not fatal.
+   *
+   * A missing artifact means this week's capture records the consensus and not
+   * us, which leaves a hole in the accuracy series that cannot be backfilled —
+   * the whole point of a pre-kickoff snapshot is that it cannot be recreated
+   * afterwards. But failing the job here would also lose the consensus rows we
+   * did manage to capture, which is strictly worse.
+   */
+  console.log(
+    `projections: NO FFE ROWS — ${error instanceof Error ? error.message : String(error)}`,
+  );
+  console.log('  this week will have no head-to-head. Rebuild the artifact and rerun before kickoff.');
 }
 
 const apiKey = process.env.ODDS_API_KEY;

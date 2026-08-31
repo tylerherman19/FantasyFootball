@@ -210,6 +210,7 @@ const toProjection = (
   useContingency = false,
   externalRoleProbability = 1,
   gameIdOverride?: string,
+  clearedFrom: string | null = null,
 ): PlayerProjection | null => {
   if (!SKILL.includes(player.position)) return null;
   const position = player.position as Position;
@@ -233,7 +234,7 @@ const toProjection = (
 
   // Availability is applied here rather than in the model, because injuries
   // change daily and the artifact is rebuilt weekly.
-  const adjusted = applyAvailability(scored, sourceSd, injuryStatus, onBye);
+  const adjusted = applyAvailability(scored, sourceSd, injuryStatus, onBye, clearedFrom);
   const roleProbability = Math.min(1, Math.max(0, player.scenario?.playProbability ?? 1)) * externalRoleProbability;
   const mean = adjusted.mean * roleProbability;
   const variance =
@@ -299,7 +300,7 @@ export const buildPool = (
   artifact: ProjectionArtifact,
   weeks: readonly number[],
   rules: Readonly<Record<string, number>>,
-  availability: Record<string, { injuryStatus: string | null }> = {},
+  availability: Record<string, { injuryStatus: string | null; clearedFrom?: string | null }> = {},
 ): ProjectionPool => {
   const [first] = weeks;
   const players = Object.values(artifact.players);
@@ -329,6 +330,8 @@ export const buildPool = (
     for (const player of players) {
       // Current injury reports are not carried into future weeks.
       const status = week === first ? availability[player.playerId]?.injuryStatus ?? null : null;
+      // Nor is a clearance: it is a fact about this Sunday's inactives list.
+      const clearedFrom = week === first ? availability[player.playerId]?.clearedFrom ?? null : null;
       const primary = player.position === 'QB' && player.contingencyStats !== undefined
         ? primaryFor(player.team)
         : undefined;
@@ -353,6 +356,7 @@ export const buildPool = (
         useContingency,
         player.contingencyStats === undefined ? 1 : roleProbability,
         gameId,
+        clearedFrom,
       );
       if (projection !== null) forWeek.set(projection.playerId, projection);
     }
@@ -412,9 +416,10 @@ export const scoreFor = (
   rules: Readonly<Record<string, number>>,
   injuryStatus: string | null = null,
   week: number | null = null,
+  clearedFrom: string | null = null,
 ): number => {
   const scored = Math.max(0, scoreStatLine(player.stats ?? {}, rules));
   const onBye = week !== null && player.byeWeek === week;
-  if (injuryStatus === null && !onBye) return scored;
-  return applyAvailability(scored, player.sd, injuryStatus, onBye).mean;
+  if (injuryStatus === null && clearedFrom === null && !onBye) return scored;
+  return applyAvailability(scored, player.sd, injuryStatus, onBye, clearedFrom).mean;
 };

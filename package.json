@@ -19,6 +19,8 @@
     "format": "prettier --write .",
     "snapshot": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/snapshot.ts",
     "snapshot:ci": "tsx scripts/snapshot.ts",
+    "score:snapshots": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/score-snapshots.ts",
+    "score:snapshots:ci": "tsx scripts/score-snapshots.ts",
     "build": "tsc --build",
     "dev": "npm run build && npm run dev --workspace=@ffe/web",
     "sync:canonical": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/sync-canonical.ts",

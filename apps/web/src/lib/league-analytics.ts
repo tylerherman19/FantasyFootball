@@ -176,7 +176,13 @@ const computeTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]> => 
       const points =
         projection === undefined
           ? 0
-          : scoreFor(projection, rules, availability[id]?.injuryStatus ?? null, snapshot.asOfWeek);
+          : scoreFor(
+              projection,
+              rules,
+              availability[id]?.injuryStatus ?? null,
+              snapshot.asOfWeek,
+              availability[id]?.clearedFrom ?? null,
+            );
 
       const position = projection?.position ?? identity?.position ?? '?';
       const scenarioProjection = scenarioWeek?.get(asPlayerId(id));

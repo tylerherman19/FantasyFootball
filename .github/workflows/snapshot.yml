@@ -65,6 +65,22 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
+      # Score the week that just finished, against the projections captured
+      # before it started.
+      #
+      # Tuesday noon is the right moment for both halves: Monday Night Football
+      # has closed the previous week, so its actuals are final, and Thursday has
+      # not opened the next one, so this week's capture is still pre-kickoff.
+      #
+      # This is the step that turns a table of recorded projections into a
+      # measurement. Without it the product could say it was tested and could
+      # not say what the test found.
+      - name: Score last week and report the head-to-head
+        run: npm run score:snapshots:ci
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+
   # Rebuild every serve-time football artifact from source, including offensive
   # and defensive scheme. Artifacts are committed because Vercel serves them
   # from the immutable deployment filesystem; this commit is therefore both the

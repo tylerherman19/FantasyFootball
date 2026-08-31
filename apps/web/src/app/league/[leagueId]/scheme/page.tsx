@@ -110,7 +110,13 @@ export default async function SchemePage({ params }: { params: Promise<{ leagueI
       {
         playerId: id,
         position: projection.position,
-        projected: scoreFor(projection, rules, availability[id]?.injuryStatus ?? null, snapshot.asOfWeek),
+        projected: scoreFor(
+          projection,
+          rules,
+          availability[id]?.injuryStatus ?? null,
+          snapshot.asOfWeek,
+          availability[id]?.clearedFrom ?? null,
+        ),
         sd: projection.sd,
       },
     ];

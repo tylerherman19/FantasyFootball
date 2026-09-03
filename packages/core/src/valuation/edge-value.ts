@@ -246,7 +246,13 @@ export const multiYearMultiplier = (
 ): number => {
   if (curves == null || age === undefined) return years;
   const now = shareOfPeak(curves, position, age);
-  if (now === null || now <= 0) return years;
+  // No curve for the position: flat, per the module docs.
+  if (now === null) return years;
+  // The curve has run him out entirely (share at or past the zero crossing):
+  // what remains is this season, and only this season. Falling back to
+  // `years` here re-inverted the pricing — a 34-year-old past the crossing
+  // read as four full future seasons, worse than the flat clamp ever was.
+  if (now <= 0) return 1;
 
   let total = 1;
   for (let offset = 1; offset < years; offset += 1) {

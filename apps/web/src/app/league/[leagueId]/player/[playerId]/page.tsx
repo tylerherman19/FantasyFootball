@@ -30,7 +30,8 @@ import { loadAvailability } from '@/lib/availability';
 import { loadIdentities } from '@/lib/crosswalk';
 import { buildPool, loadArtifact, loadExplanation } from '@/lib/projections';
 import { loadOffense, offenseRead, rankOf } from '@/lib/offense';
-import { loadMarketValues } from '@/lib/values';
+import { loadEdgePlayerValues } from '@/lib/edge-values';
+import { loadMarketValues, type MarketValue } from '@/lib/values';
 
 /**
  * Should I believe in this player?
@@ -41,8 +42,10 @@ import { loadMarketValues } from '@/lib/values';
  * this is the page that has to justify one.
  *
  * League-scoped rather than global, because none of these answers are
- * league-independent. Points come from this league's rules, market value from
- * this league's format, and replacement level from this league's starters. A
+ * league-independent. Points come from this league's rules, value from the
+ * model's own pricing (points above replacement), with the market shown as an
+ * optional comparison only. Replacement level comes from this league's
+ * starters. A
  * global player page would have to pick one and be wrong for the other two.
  *
  * Ordered the way 538 orders a story: the conclusion, then why, then the
@@ -93,14 +96,16 @@ export default async function PlayerPage({
   const { snapshot, teamNames } = view;
   const rules = snapshot.league.scoring.raw;
 
-  const [artifact, identities, availability, values, history] = await Promise.all([
+  const [artifact, identities, availability, values, marketValues, history] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
     loadIdentities(),
     loadAvailability(),
+    loadEdgePlayerValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
+    // Optional sanity comparison only: nothing on this page depends on it.
     loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
       teamCount: snapshot.league.teamCount,
       ppr: snapshot.league.scoring.rec,
-    }),
+    }).catch(() => new Map<string, import('@/lib/values').MarketValue>()),
     loadHistory().catch(() => null),
   ]);
   const [ageCurves, offenseArtifact, defenses, schemeFinding] = await Promise.all([
@@ -126,7 +131,8 @@ export default async function PlayerPage({
   const position = player?.position ?? identity?.position ?? '?';
   const team = player?.team ?? identity?.team ?? '';
   const injuryStatus = availability[playerId]?.injuryStatus ?? null;
-  const market = values.get(playerId);
+  const valuation = values.get(playerId);
+  const market: MarketValue | undefined = marketValues.get(playerId);
   const years = age(identity?.birthdate ?? null);
 
   const explanation = player === undefined ? null : explain(player, rules, injuryStatus);
@@ -324,13 +330,24 @@ export default async function PlayerPage({
             </div>
           )}
 
+          {valuation !== undefined && (
+            <div>
+              <div className="eyebrow mb-1">Model value</div>
+              <div className="tabular text-2xl font-semibold">{Math.round(valuation.value).toLocaleString()}</div>
+              <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
+                #{valuation.overallRank} overall · {valuation.weeklyPar.toFixed(1)} pts above replacement
+              </div>
+            </div>
+          )}
+
           {market !== undefined && (
             <div>
-              <div className="eyebrow mb-1">Market value</div>
+              <div className="eyebrow mb-1">Market (FantasyCalc)</div>
               <div className="tabular text-2xl font-semibold">{market.value.toLocaleString()}</div>
               <div className="text-xs" style={{ color: 'var(--ink-faint)' }}>
                 #{market.overallRank} overall
                 {market.rosteredPct !== null && ` · rostered in ${market.rosteredPct.toFixed(0)}%`}
+                {' · comparison only'}
               </div>
             </div>
           )}

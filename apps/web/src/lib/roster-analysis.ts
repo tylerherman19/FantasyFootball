@@ -14,7 +14,7 @@ import type { LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, scoreFor } from './projections';
 import { loadExplanation } from './projections';
 import { projectionConfidence } from './explain';
-import { loadMarketValues } from './values';
+import { loadEdgePlayerValues } from './edge-values';
 
 /**
  * Everything the roster page needs, computed once.
@@ -41,14 +41,16 @@ export interface RosterPlayer {
   /** Points the optimal lineup loses without this player. */
   readonly marginal: number;
   readonly starting: boolean;
-  readonly marketValue: number;
+  readonly value: number;
+  /** Rank among all priced players league-wide, 1 = most valuable. */
+  readonly overallRank: number | null;
   readonly injuryStatus: string | null;
   /**
-   * Market value per point of lineup contribution.
+   * Model value per point of lineup contribution.
    *
-   * High means the market prices him well above what he does for this roster —
-   * a sell candidate. Low means the reverse: he is worth more here than the
-   * market would pay, so keep him.
+   * High means the price reflects more than what he does for this roster —
+   * longevity, name-independent future production — a sell candidate. Low
+   * means the reverse: he is worth more here than his price says, so keep him.
    */
   readonly valuePerPoint: number | null;
 }
@@ -79,10 +81,7 @@ export const analyzeRoster = async (
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadEdgePlayerValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
     loadIdentities(),
     loadAvailability(),
   ]);
@@ -129,7 +128,8 @@ export const analyzeRoster = async (
     const id = String(entry.playerId);
     const projection = artifact.players[id];
     const identity = identities[id];
-    const marketValue = values.get(id)?.value ?? 0;
+    const valuation = values.get(id);
+    const value = valuation?.value ?? 0;
     const weekly = view.context.pool.get(snapshot.asOfWeek)?.get(asPlayerId(id));
     const quantiles =
       weekly?.p25 === undefined || weekly.p50 === undefined || weekly.p75 === undefined
@@ -175,9 +175,10 @@ export const analyzeRoster = async (
       decisionPoints: decision.evidenceAdjustedPoints,
       marginal: entry.marginal,
       starting: entry.starting,
-      marketValue,
+      value,
+      overallRank: valuation?.overallRank ?? null,
       injuryStatus: availability[id]?.injuryStatus ?? null,
-      valuePerPoint: marketValue > 0 && entry.marginal > 0.5 ? marketValue / entry.marginal : null,
+      valuePerPoint: value > 0 && entry.marginal > 0.5 ? value / entry.marginal : null,
     };
   });
 
@@ -197,20 +198,24 @@ export const analyzeRoster = async (
   // elite current starter could otherwise be mislabelled.
   // Young, high-value/upside assets are also not automatic move suggestions:
   // being replaceable today does not mean the dynasty asset should be sold.
+  // "High value" is relative to this league, not a constant on a feed's old
+  // scale: a core asset is one of the first four rounds' worth of players, or
+  // already a genuine weekly starter.
+  const coreCutoff = snapshot.league.teamCount * 4;
   const isYoungCoreAsset = (p: RosterPlayer): boolean =>
     p.age !== null &&
     p.age <= 25 &&
-    (p.marketValue >= 6_000 || p.projected >= 12);
+    ((p.overallRank !== null && p.overallRank <= coreCutoff) || p.projected >= 12);
 
   const sellCandidates = players
     .filter(
       (p) =>
         isExpendable(p) &&
         !isYoungCoreAsset(p) &&
-        p.marketValue > 0 &&
+        p.value > 0 &&
         p.modelConfidence >= 0.45,
     )
-    .sort((a, b) => b.marketValue - a.marketValue)
+    .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
   // Keep: he carries the lineup for less than the market would charge.

@@ -121,6 +121,42 @@ const patch = async (path: string, body: unknown): Promise<boolean> => {
  * row — the audit's §5 point, that keying on `sleeper_id` makes a
  * "platform-neutral" model quietly Sleeper-shaped.
  */
+
+/**
+ * Read rows back. PostgREST pages at 1,000 rows by default, so loop the Range
+ * header rather than trusting one request — the players table is ~8x that.
+ */
+const get = async (path: string): Promise<Record<string, unknown>[]> => {
+  const out: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += 1000) {
+    const res = await fetch(`${url}/rest/v1/${path}`, {
+      headers: {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+        'Range-Unit': 'items',
+        range: `${from}-${from + 999}`,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`PostgREST ${res.status} on ${path}: ${(await res.text()).slice(0, 300)}`);
+    }
+    const page = (await res.json()) as Record<string, unknown>[];
+    out.push(...page);
+    if (page.length < 1000) return out;
+  }
+};
+
+/** Delete matching rows. Used only for stale identity keys — see below. */
+const del = async (path: string): Promise<void> => {
+  const res = await fetch(`${url}/rest/v1/${path}`, {
+    method: 'DELETE',
+    headers: { apikey: key, authorization: `Bearer ${key}` },
+  });
+  if (!res.ok) {
+    throw new Error(`PostgREST ${res.status} on DELETE ${path}: ${(await res.text()).slice(0, 300)}`);
+  }
+};
+
 const uidOf = (identity: Identity): string =>
   identity.gsis_id ? `gsis:${identity.gsis_id}` : `sleeper:${identity.sleeper_id}`;
 
@@ -191,6 +227,48 @@ const main = async (): Promise<void> => {
       updated_at: new Date().toISOString(),
     };
   });
+
+  /*
+   * A player's uid can CHANGE between syncs. The first time we see a player the
+   * crosswalk has no gsis id for him, so his row is keyed `sleeper:<id>`; once
+   * nflverse rosters him the crosswalk gains one, and his uid becomes
+   * `gsis:<id>` — same person, new key. Upserting on player_uid then inserts a
+   * second row that claims the sleeper_id the old row still holds, and the
+   * unique index on sleeper_id rejects the whole batch. (Exactly this killed
+   * every refresh run from Aug 30 onward: sleeper_id 13806, a tight end whose
+   * gsis id arrived with the post-cutdown roster sync.)
+   *
+   * The dedupe above only collapses duplicates *within this file*; it cannot
+   * see that a stored row is the same person under an old key. So reconcile
+   * against what is stored: if a sleeper_id we are about to write already
+   * belongs to a different uid, that stored row is this player's previous key
+   * — stale by definition — and it goes first. Its projection history
+   * cascades; the upserts below rewrite him under the new key, and his
+   * current-week projections follow in the same run.
+   */
+  const stored = await get('players?select=player_uid,sleeper_id');
+  const storedUidBySleeper = new Map<string, string>();
+  for (const row of stored) {
+    if (row.sleeper_id != null && row.player_uid != null) {
+      storedUidBySleeper.set(String(row.sleeper_id), String(row.player_uid));
+    }
+  }
+
+  const staleUids = new Set<string>();
+  for (const row of playerRows) {
+    const storedUid = storedUidBySleeper.get(row.sleeper_id);
+    if (storedUid !== undefined && storedUid !== row.player_uid) {
+      staleUids.add(storedUid);
+    }
+  }
+  for (const uid of staleUids) {
+    await del(`players?player_uid=eq.${encodeURIComponent(uid)}`);
+  }
+  if (staleUids.size > 0) {
+    console.log(
+      `identity: ${staleUids.size} stale player key${staleUids.size === 1 ? '' : 's'} retired (same person, key changed)`,
+    );
+  }
 
   const players = await post(
     'players?on_conflict=player_uid',

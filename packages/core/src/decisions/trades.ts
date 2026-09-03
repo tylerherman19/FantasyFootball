@@ -350,10 +350,8 @@ const rebuildMultiplier = (position: Position, age: number | undefined): number 
  * old version re-blended in a market anchor and a hand-set decline table; both
  * are gone, so the package value is simply the sum of the model's prices.
  */
-const rebuildPackageValue = (
-  assets: readonly TradeAsset[],
-  _ages: ReadonlyMap<string, number> | undefined,
-): number => assets.reduce((total, asset) => total + asset.value, 0);
+const rebuildPackageValue = (assets: readonly TradeAsset[]): number =>
+  assets.reduce((total, asset) => total + asset.value, 0);
 
 /**
  * A young cornerstone is defined relatively, not against a feed's scale: worth
@@ -487,8 +485,8 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   const cornerstoneCutoff = cornerstoneCutoffFor(assetsByTeam);
   const viableCandidates = objective === 'rebuild'
     ? candidates.filter((candidate) => {
-        const sent = rebuildPackageValue(candidate.iSend, input.ages);
-        const received = rebuildPackageValue(candidate.iGet, input.ages);
+        const sent = rebuildPackageValue(candidate.iSend);
+        const received = rebuildPackageValue(candidate.iGet);
         const protectsCornerstone = candidate.iSend.some((asset) => isYoungCornerstone(asset, input.ages, cornerstoneCutoff));
         const requiredGain = protectsCornerstone ? sent * 0.05 : Math.max(50, sent * 0.01);
         return received - sent >= requiredGain;
@@ -497,8 +495,8 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
 
   const topCandidates = viableCandidates
     .sort((a, b) => objective === 'rebuild'
-      ? (rebuildPackageValue(b.iGet, input.ages) - rebuildPackageValue(b.iSend, input.ages)) -
-        (rebuildPackageValue(a.iGet, input.ages) - rebuildPackageValue(a.iSend, input.ages))
+      ? (rebuildPackageValue(b.iGet) - rebuildPackageValue(b.iSend)) -
+        (rebuildPackageValue(a.iGet) - rebuildPackageValue(a.iSend))
       : b.proxyScore - a.proxyScore)
     .reduce((selected, candidate) => {
       if (selected.length >= finalists) return selected;
@@ -522,8 +520,8 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
       );
       if (objective !== 'rebuild') return evaluation;
       const futureValueDelta =
-        rebuildPackageValue(candidate.iGet, input.ages) -
-        rebuildPackageValue(candidate.iSend, input.ages);
+        rebuildPackageValue(candidate.iGet) -
+        rebuildPackageValue(candidate.iSend);
       return {
         ...evaluation,
         strategy: {

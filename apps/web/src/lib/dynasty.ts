@@ -258,7 +258,7 @@ const decide = (
     ],
     longTerm: [
       'Consolidate. Two mid-round assets for one high-end player is the trade that gets a team out of the middle.',
-      'Get younger where it is free — take the younger side of any swap the market prices as even.',
+      'Get younger where it is free — take the younger side of any swap the model prices as even.',
     ],
   };
 };

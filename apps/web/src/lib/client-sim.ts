@@ -207,7 +207,7 @@ export const evaluateTradeClient = (
   const mine = oddsDelta(context, changes, myTeamId);
   const theirs = oddsDelta(context, changes, partnerTeamId);
 
-  // Picks are priced by the market but play no games, so they move value
+  // Picks carry real value but play no games, so they move value
   // without moving this season's odds. Saying that plainly is more useful than
   // pretending a 2028 second changes your playoff chances in October.
   const pickValue = new Map(wire.picks.map((pick) => [pick.id, pick.value]));

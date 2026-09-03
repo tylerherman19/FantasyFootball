@@ -3,7 +3,7 @@ import { loadAvailability } from './availability';
 import { loadIdentities } from './crosswalk';
 import type { LeagueView } from './league-data';
 import { buildPool, isPlayingIn, loadArtifact, scoreFor } from './projections';
-import { loadMarketValues } from './values';
+import { loadEdgePlayerValues } from './edge-values';
 
 /**
  * The league, measured every way that fits on a page.
@@ -33,7 +33,7 @@ export interface PositionSlice {
   readonly starterPoints: number;
   /** Projected points from the rest. */
   readonly benchPoints: number;
-  readonly marketValue: number;
+  readonly value: number;
   readonly count: number;
   /** 1 = best in the league at this position, by starter points. */
   readonly rank: number;
@@ -49,8 +49,8 @@ export interface TeamProfile {
   readonly starterPoints: number;
   readonly benchPoints: number;
   readonly totalPoints: number;
-  readonly marketValue: number;
-  readonly starterMarketValue: number;
+  readonly value: number;
+  readonly starterValue: number;
 
   readonly playoffPct: number;
   readonly titlePct: number;
@@ -86,7 +86,7 @@ export interface RosterPlayer {
   readonly nflTeam: string;
   readonly starting: boolean;
   readonly age: number | null;
-  readonly marketValue: number;
+  readonly value: number;
   readonly projectedPoints: number;
   readonly p25: number;
   readonly p50: number;
@@ -102,7 +102,7 @@ interface RatedPlayer {
   readonly playerId: string;
   readonly position: string;
   readonly points: number;
-  readonly marketValue: number;
+  readonly value: number;
   readonly age: number | null;
   readonly starting: boolean;
   readonly name: string;
@@ -123,10 +123,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
 
   const [artifact, values, identities, availability] = await Promise.all([
     loadArtifact(snapshot.league.season, snapshot.asOfWeek),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadEdgePlayerValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
     loadIdentities(),
     loadAvailability(),
   ]);
@@ -186,7 +183,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
         sd: projection?.sd ?? 0,
         basis: projection?.basis ?? (projection === undefined ? 'unprojected' : 'history'),
         range,
-        marketValue: values.get(id)?.value ?? 0,
+        value: values.get(id)?.value ?? 0,
         age: ageFrom(identity?.birthdate ?? null),
       });
 
@@ -249,11 +246,11 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
 
     // Weighted by market value: the average of a roster's ages says little when
     // half of it is deep-bench flyers nobody would trade for.
-    const aged = players.filter((player) => player.age !== null && player.marketValue > 0);
-    const ageWeight = aged.reduce((sum, player) => sum + player.marketValue, 0);
+    const aged = players.filter((player) => player.age !== null && player.value > 0);
+    const ageWeight = aged.reduce((sum, player) => sum + player.value, 0);
     const averageAge =
       ageWeight > 0
-        ? aged.reduce((sum, player) => sum + (player.age ?? 0) * player.marketValue, 0) / ageWeight
+        ? aged.reduce((sum, player) => sum + (player.age ?? 0) * player.value, 0) / ageWeight
         : null;
 
     const byPosition = positionsPresent.map((position): PositionSlice => {
@@ -270,7 +267,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
         position,
         starterPoints: ownStarterPoints,
         benchPoints: own.filter((p) => !p.starting).reduce((sum, player) => sum + player.points, 0),
-        marketValue: own.reduce((sum, player) => sum + player.marketValue, 0),
+        value: own.reduce((sum, player) => sum + player.value, 0),
         count: own.length,
         rank: across.filter((value) => value > ownStarterPoints).length + 1,
         strength: best > worst ? (ownStarterPoints - worst) / (best - worst) : 0.5,
@@ -285,8 +282,8 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
       starterPoints,
       benchPoints: bench.reduce((sum, player) => sum + player.points, 0),
       totalPoints: players.reduce((sum, player) => sum + player.points, 0),
-      marketValue: players.reduce((sum, player) => sum + player.marketValue, 0),
-      starterMarketValue: starters.reduce((sum, player) => sum + player.marketValue, 0),
+      value: players.reduce((sum, player) => sum + player.value, 0),
+      starterValue: starters.reduce((sum, player) => sum + player.value, 0),
 
       playoffPct: outcome?.playoffPct ?? 0,
       titlePct: outcome?.titlePct ?? 0,
@@ -314,7 +311,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
         .sort(
           (a, b) =>
             Number(b.starting) - Number(a.starting) ||
-            b.marketValue - a.marketValue ||
+            b.value - a.value ||
             b.points - a.points,
         )
         .map((player): RosterPlayer => {
@@ -325,7 +322,7 @@ export const buildTeamProfiles = async (view: LeagueView): Promise<TeamProfile[]
             nflTeam: player.nflTeam,
             starting: player.starting,
             age: player.age,
-            marketValue: player.marketValue,
+            value: player.value,
             projectedPoints: player.points,
             p25: player.range[0],
             p50: player.range[1],

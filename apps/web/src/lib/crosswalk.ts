@@ -23,6 +23,8 @@ export interface Identity {
    * halves of the product cannot be joined at all.
    */
   readonly gsisId: string | null;
+  /** Overall draft position for rookies; feeds the internal pick chart. */
+  readonly draftOverall: number | null;
 }
 
 let cache: Record<string, Identity> | null = null;
@@ -43,6 +45,7 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
           team: string | null;
           birthdate: string | null;
           gsis_id: string | null;
+          draft_overall: number | null;
         }
       >;
     };
@@ -55,6 +58,7 @@ export const loadIdentities = async (): Promise<Record<string, Identity>> => {
         team: entry.team,
         birthdate: entry.birthdate ?? null,
         gsisId: entry.gsis_id ?? null,
+        draftOverall: entry.draft_overall ?? null,
       };
     }
 

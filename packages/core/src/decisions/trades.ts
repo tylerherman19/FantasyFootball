@@ -1,15 +1,14 @@
 import type { PlayerId, Position } from '../domain/index.js';
 import { currentOdds, oddsDelta, type OddsDelta, type SimContext } from './odds.js';
 import { evaluatePlayer, type PlayerEvaluationInput } from '../valuation/player-evaluation.js';
-import { fundamentalPickValue, fundamentalPlayerValue } from '../valuation/fundamental.js';
 import { isExpendable } from '../metrics/marginal-value.js';
 
 /**
  * Trades, priced in both currencies at once.
  *
- * Market value answers "is this fair" — will the other manager plausibly accept.
- * Championship probability answers "is this good for me" — the question that
- * actually matters. Tools that report only the first tell you a trade is even
+ * Model value (points above replacement, valuation/edge-value.ts) answers "is
+ * this fair". Championship probability answers "is this good for me" — the
+ * question that actually matters. Tools that report only the first tell you a trade is even
  * when it does nothing for your season; tools that report only the second
  * propose trades nobody would ever accept.
  *
@@ -20,7 +19,7 @@ interface TradeAssetBase {
   readonly playerId: PlayerId;
   readonly name: string;
   readonly position: Position;
-  /** Market value from the configured source. */
+  /** The model's own price: points above replacement (edge-value). */
   readonly value: number;
   /** Current-season projection used for replacement-aware screening. */
   readonly projectedPoints?: number;
@@ -93,9 +92,9 @@ const sumValue = (assets: readonly TradeAsset[]): number =>
   assets.reduce((total, asset) => total + asset.value, 0);
 
 /**
- * Market fairness as a proportion of the larger side.
+ * Value fairness as a proportion of the larger side.
  *
- * Proportional rather than absolute because 500 points of value means something
+ * Proportional rather than absolute because 50 points of PAR means something
  * very different in a trade of backups than in one involving two first-rounders.
  */
 export const fairnessGap = (valueA: number, valueB: number): number => {
@@ -306,7 +305,7 @@ export interface TradeFinderInput {
   readonly needs: readonly Position[];
   /** Positions I'm willing to give up. */
   readonly surplus: readonly Position[];
-  /** Only propose trades within this market-value band. */
+  /** Only propose trades within this value band. */
   readonly fairnessBand?: number;
   /** How many candidates survive to full simulation. */
   readonly finalists?: number;
@@ -340,34 +339,57 @@ const rebuildMultiplier = (position: Position, age: number | undefined): number 
   return age <= 25 ? 1.1 : age <= 28 ? 1 : 0.75;
 };
 
-const rebuildPackageValue = (
-  assets: readonly TradeAsset[],
-  ages: ReadonlyMap<string, number> | undefined,
-): number => assets.reduce((total, asset) => {
-  if (asset.kind === 'pick') return total + fundamentalPickValue(asset.value, asset.yearsOut ?? 1);
-  const age = asset.age ?? ages?.get(String(asset.playerId));
-  const replacement: Readonly<Record<Position, number>> = {
-    QB: 15, RB: 7, WR: 8, TE: 6, K: 7, DEF: 7, DL: 6, LB: 7, DB: 6,
-  };
-  const weeklyPoints = asset.weeklyPoints ?? asset.projectedPoints;
-  if (weeklyPoints !== undefined) {
-    return total + fundamentalPlayerValue({
-      position: asset.position,
-      age,
-      weeklyPoints,
-      replacementPoints: replacement[asset.position],
-      marketValue: asset.value,
-    }).total;
-  }
-  return total + asset.value * rebuildMultiplier(asset.position, age);
-}, 0);
+/**
+ * What a package is worth to a rebuilding team, summed in the model's own
+ * currency.
+ *
+ * For players in dynasty formats that currency is already the right one:
+ * edge-value prices four seasons of points above replacement with the measured
+ * age curves applied, which *is* "what will this be worth when we are good
+ * again." Picks likewise arrive priced off the model's own rookie class. The
+ * old version re-blended in a market anchor and a hand-set decline table; both
+ * are gone, so the package value is simply the sum of the model's prices.
+ */
+const rebuildPackageValue = (assets: readonly TradeAsset[]): number =>
+  assets.reduce((total, asset) => total + asset.value, 0);
 
+/**
+ * A young cornerstone is defined relatively, not against a feed's scale: worth
+ * at least as much as a mid-first-round pick (the chart's own price for slot
+ * 1.06 in a twelve-team sense — the median of whatever first-round picks are
+ * actually in the pool) and still on the rising side of his position's curve.
+ * The old cutoff was a constant on FantasyCalc's 0-9999 scale, which meant the
+ * definition silently changed meaning the day the feed did.
+ */
 const isYoungCornerstone = (
   asset: TradeAsset,
   ages: ReadonlyMap<string, number> | undefined,
+  cornerstoneCutoff: number,
 ): boolean => {
   const age = asset.age ?? ages?.get(String(asset.playerId));
-  return asset.value >= 6_000 && age !== undefined && rebuildMultiplier(asset.position, age) >= 1.1;
+  return asset.value >= cornerstoneCutoff && age !== undefined && rebuildMultiplier(asset.position, age) >= 1.1;
+};
+
+/**
+ * The value of a mid-first-rounder, inferred from the picks actually in the
+ * trade pool. With no picks present (redraft), the 90th-percentile player
+ * price stands in — a cornerstone is a top-of-roster asset by definition.
+ */
+const cornerstoneCutoffFor = (assetsByTeam: ReadonlyMap<string, readonly TradeAsset[]>): number => {
+  const firsts: number[] = [];
+  const playerValues: number[] = [];
+  for (const assets of assetsByTeam.values()) {
+    for (const asset of assets) {
+      if (asset.kind === 'pick' && asset.round === 1) firsts.push(asset.value);
+      else if (asset.kind === 'player') playerValues.push(asset.value);
+    }
+  }
+  if (firsts.length > 0) {
+    firsts.sort((a, b) => a - b);
+    return firsts[Math.floor(firsts.length / 2)]!;
+  }
+  playerValues.sort((a, b) => a - b);
+  return playerValues[Math.floor(playerValues.length * 0.9)] ?? Number.POSITIVE_INFINITY;
 };
 
 interface Candidate {
@@ -460,11 +482,12 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
   // partner can generate many equally fair packages. Keep the screen broad
   // and reserve room for multiple opposing rosters.
   const objective = input.objective ?? 'balanced';
+  const cornerstoneCutoff = cornerstoneCutoffFor(assetsByTeam);
   const viableCandidates = objective === 'rebuild'
     ? candidates.filter((candidate) => {
-        const sent = rebuildPackageValue(candidate.iSend, input.ages);
-        const received = rebuildPackageValue(candidate.iGet, input.ages);
-        const protectsCornerstone = candidate.iSend.some((asset) => isYoungCornerstone(asset, input.ages));
+        const sent = rebuildPackageValue(candidate.iSend);
+        const received = rebuildPackageValue(candidate.iGet);
+        const protectsCornerstone = candidate.iSend.some((asset) => isYoungCornerstone(asset, input.ages, cornerstoneCutoff));
         const requiredGain = protectsCornerstone ? sent * 0.05 : Math.max(50, sent * 0.01);
         return received - sent >= requiredGain;
       })
@@ -472,8 +495,8 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
 
   const topCandidates = viableCandidates
     .sort((a, b) => objective === 'rebuild'
-      ? (rebuildPackageValue(b.iGet, input.ages) - rebuildPackageValue(b.iSend, input.ages)) -
-        (rebuildPackageValue(a.iGet, input.ages) - rebuildPackageValue(a.iSend, input.ages))
+      ? (rebuildPackageValue(b.iGet) - rebuildPackageValue(b.iSend)) -
+        (rebuildPackageValue(a.iGet) - rebuildPackageValue(a.iSend))
       : b.proxyScore - a.proxyScore)
     .reduce((selected, candidate) => {
       if (selected.length >= finalists) return selected;
@@ -497,8 +520,8 @@ export const findTrades = (input: TradeFinderInput): TradeEvaluation[] => {
       );
       if (objective !== 'rebuild') return evaluation;
       const futureValueDelta =
-        rebuildPackageValue(candidate.iGet, input.ages) -
-        rebuildPackageValue(candidate.iSend, input.ages);
+        rebuildPackageValue(candidate.iGet) -
+        rebuildPackageValue(candidate.iSend);
       return {
         ...evaluation,
         strategy: {
@@ -582,12 +605,15 @@ const pushIfFair = (
   const scheme = averageScheme(iGet) - averageScheme(iSend);
 
   // Cheap screen: prioritize actual lineup help and partner fit, then use
-  // market value as a guardrail/tie-breaker. Full simulation still decides the
+  // value as a guardrail/tie-breaker. Full simulation still decides the
   // final order, so the screen cannot turn a proxy into a recommendation.
+  // The 0.01 weight keeps the value term at the same magnitude it had on the
+  // old 0-9999 market scale: edge values are annualized points, roughly a
+  // hundred times smaller.
   into.push({
     partnerId,
     iSend,
     iGet,
-    proxyScore: myHelp - myCost + partnerHelp * 0.35 + scheme + (getValue - sendValue) * 0.001,
+    proxyScore: myHelp - myCost + partnerHelp * 0.35 + scheme + (getValue - sendValue) * 0.01,
   });
 };

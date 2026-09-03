@@ -1,7 +1,7 @@
-import { marketPickValues, pickInventory, valuePicks } from '@ffe/core';
+import { edgePickValues, pickInventory, valuePicks } from '@ffe/core';
 import type { LeagueView } from './league-data';
 import type { WirePick } from './serialize';
-import { loadMarketData } from './values';
+import { loadEdgeValues } from './edge-values';
 
 /**
  * Tradeable draft picks for one league.
@@ -11,7 +11,8 @@ import { loadMarketData } from './values';
  *
  * Each pick is priced against the projected finish of the team that will
  * produce it, which is the entire reason a rebuilding team's first is worth
- * chasing and a contender's is not.
+ * chasing and a contender's is not. The slot values themselves come from the
+ * model's own rookie class (edgePickChart), not a market feed.
  */
 
 /** How many seasons ahead leagues actually trade. Beyond this is noise. */
@@ -25,11 +26,10 @@ export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
     return [];
   }
 
-  const market = await loadMarketData(snapshot.league.format, snapshot.league.superFlex, {
-    teamCount: snapshot.league.teamCount,
-    ppr: snapshot.league.scoring.rec,
-  });
-  if (market.picks.size === 0) return [];
+  const { pickChart } = await loadEdgeValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek);
+  // No chart means the rookie class is too thin to price slots — an honest
+  // "we don't know", not a missing feed.
+  if (pickChart === null) return [];
 
   const seasons = Array.from({ length: SEASONS_AHEAD }, (_, i) => snapshot.league.season + 1 + i);
   const inventory = pickInventory(snapshot, seasons, ROUNDS);
@@ -38,7 +38,7 @@ export const loadPicks = async (view: LeagueView): Promise<WirePick[]> => {
     inventory,
     result,
     snapshot,
-    marketPickValues(market.picks, snapshot.league.season + 1),
+    edgePickValues(pickChart, snapshot.league.teamCount),
   );
 
   return valued.map((pick) => ({

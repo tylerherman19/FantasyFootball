@@ -22,7 +22,7 @@ import { loadPicks } from './pick-data';
 import type { LeagueView } from './league-data';
 import { isPlayingIn, loadArtifact, loadExplanation, scoreFor } from './projections';
 import { projectionConfidence } from './explain';
-import { loadMarketData } from './values';
+import { loadEdgeValues } from './edge-values';
 import { buildUsage } from './usage';
 import { loadDefenses, opponentFrom } from './defense';
 import { loadOffense } from './offense';
@@ -30,10 +30,11 @@ import { loadOffense } from './offense';
 /**
  * Trade suggestions for one team.
  *
- * Combines the two halves the plan calls for: market value decides whether a
- * proposal is plausible, simulation decides whether it is good for you. Neither
- * alone is enough — value-only tools call a trade "even" when it does nothing
- * for your season, odds-only tools propose fleeces nobody would accept.
+ * Combines the two halves the plan calls for: the model's own price (points
+ * above replacement, lib/edge-values.ts) decides whether a proposal is
+ * plausible, simulation decides whether it is good for you. Neither alone is
+ * enough — value-only tools call a trade "even" when it does nothing for your
+ * season, odds-only tools propose fleeces nobody would accept.
  */
 
 /**
@@ -241,17 +242,14 @@ const buildTrades = async (
   const artifact = await loadArtifact(snapshot.league.season, snapshot.asOfWeek);
   if (artifact === null) return null;
 
-  const [{ players: usagePlayers, offenses }, defenses, market, identities, offenseArtifact] = await Promise.all([
+  const [{ players: usagePlayers, offenses }, defenses, edgeTable, identities, offenseArtifact] = await Promise.all([
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadDefenses(),
-    loadMarketData(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadEdgeValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
     loadIdentities(),
     loadOffense(),
   ]);
-  const values = market.players;
+  const values = edgeTable.players;
 
   // Evidence lives in a separate, lazy artifact so ordinary projection pages
   // do not pay for it. Trade evaluation needs it for every asset: a 20-point
@@ -303,8 +301,11 @@ const buildTrades = async (
 
   const assetFor = (playerId: string): TradeAsset | null => {
     const projection = artifact.players[playerId];
-    const market = values.get(playerId);
-    if (projection === undefined || market === undefined) return null;
+    const valuation = values.get(playerId);
+    // Only a missing projection disqualifies an asset. A zero price does not:
+    // the model prices every active player it projects, and zero means
+    // "freely available", which is a value judgement — not missing data.
+    if (projection === undefined || valuation === undefined) return null;
     const age = ages.get(playerId);
     const schemeFit = schemeFitFor(playerId, projection.position);
     const weeklyProjection = context.pool
@@ -330,10 +331,10 @@ const buildTrades = async (
     return {
       playerId: asPlayerId(playerId),
       kind: 'player',
-      name: projection.name || market.name,
+      name: projection.name,
       position: projection.position as Position,
-      value: market.value,
-      // Market value can still exist for a dynasty backup, but he is not an
+      value: valuation.value,
+      // A dynasty backup can still carry real four-year value, but he is not an
       // immediate lineup asset while the starter is healthy. Keep those two
       // currencies separate so a QB2 cannot look like a weekly starter in the
       // trade finder.
@@ -466,22 +467,28 @@ const buildTrades = async (
     .map((entry) => {
       const id = String(entry.playerId);
       const projection = artifact.players[id];
+      const valuation = values.get(id);
+      // Unpriced is not zero: a player the model cannot price (no projection)
+      // is excluded, not displayed at a fabricated 0.
+      if (valuation === undefined) return null;
       return {
         playerId: id,
         name: projection?.name ?? id,
         position: entry.position,
         marginal: entry.marginal,
         projected: entry.projected,
-        value: values.get(id)?.value ?? 0,
+        value: valuation.value,
       };
     })
+    .filter((entry) => entry !== null)
     .sort((a, b) => a.marginal - b.marginal);
 
   /*
-   * Market values are the only hard requirement.
+   * Prices are the only hard requirement.
    *
    * Fairness decides whether a proposal is plausible, and without values there
-   * is nothing to judge. Needs and surplus are different: a heuristic for
+   * is nothing to judge. The model prices every active player it projects, so
+   * this gate now fails only when the artifact itself is missing. Needs and surplus are different: a heuristic for
    * narrowing the search. Treating them as preconditions meant a balanced
    * roster — the normal case — got an empty page that read as "there are no
    * good trades" when in fact nothing had been searched.

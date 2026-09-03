@@ -21,7 +21,7 @@ import { requireSession } from '@/lib/session';
  *
  * This is the page that answers "where do I actually stand", and it answers it
  * six different ways because the honest answer depends on what you mean.
- * Projected points say one thing, market value another, simulated title odds a
+ * Projected points say one thing, model value another, simulated title odds a
  * third, and a roster that is strong and old is a different proposition from
  * one that is strong and young. Managers argue about all of it, so all of it is
  * here, on one scale each, next to each other.
@@ -54,7 +54,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
   const maxRoster = Math.max(...profiles.map((p) => p.totalPoints), 1);
 
   const drafted = profiles.some((profile) => profile.rosterSize > 0);
-  const hasMarket = profiles.some((profile) => profile.marketValue > 0);
+  const hasMarket = profiles.some((profile) => profile.value > 0);
   const hasHistory = profiles.some((profile) => profile.weeklyScores.length > 1);
   const hasAges = profiles.filter((profile) => profile.averageAge !== null).length >= 4;
 
@@ -331,7 +331,7 @@ export default async function PowerPage({ params }: { params: Promise<{ leagueId
                 title="Strength and age define each team’s window"
                 note={
                   <>
-                    Roster age against current strength. Age is weighted by market value, so a
+                    Roster age against current strength. Age is weighted by model value, so a
                     36-year-old kicker doesn&apos;t drag a young roster old. The quadrants are the
                     four real situations a team can be in — and the two on the right buy and sell
                     opposite things, which is where trades actually come from.

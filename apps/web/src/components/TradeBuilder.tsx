@@ -140,7 +140,7 @@ export const TradeBuilder = ({ league, myTeamId }: { league: WireLeague; myTeamI
             <Metric label="Your playoff odds" value={pct(grade.myPlayoffDelta)} good={grade.myPlayoffDelta > 0} />
             <Metric label="Their title odds" value={pct(grade.theirTitleDelta)} good={grade.theirTitleDelta > 0} />
             <Metric
-              label="Market value"
+              label="Model value"
               value={`${grade.myValueDelta >= 0 ? '+' : ''}${Math.round(grade.myValueDelta).toLocaleString()}`}
               good={grade.myValueDelta > 0}
             />

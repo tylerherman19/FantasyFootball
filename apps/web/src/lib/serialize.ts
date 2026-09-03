@@ -1,5 +1,9 @@
 import type { LeagueView } from './league-data';
-import type { MarketValue } from './values';
+/**
+ * Anything with a price: the model's own edge values normally, the market
+ * comparison feed where a caller explicitly wants it. Structural on purpose —
+ * serialization must not care whose price it is carrying.
+ */
 
 /**
  * Ship the league to the browser so evaluation is instant.
@@ -101,7 +105,7 @@ export interface WireLeague {
 
 export const serializeLeague = (
   view: LeagueView,
-  values: ReadonlyMap<string, MarketValue>,
+  values: ReadonlyMap<string, { readonly value: number }>,
   playerNames: Record<string, { name: string; position: string; team: string; byeWeek?: number | null }>,
   picks: readonly WirePick[] = [],
   freeAgents: readonly WirePlayer[] = [],
@@ -120,6 +124,12 @@ export const serializeLeague = (
   for (const id of rostered) {
     const projection = weekly?.get(id as never);
     const info = playerNames[id];
+    const valuation = values.get(id);
+    // Unpriced is not zero: a player the model cannot price is left off the
+    // wire rather than shown at a fabricated 0. In practice this only happens
+    // when the projection itself is missing — which the wire already reports
+    // as `projected: false`.
+    if (valuation === undefined) continue;
 
     players[id] = {
       id,
@@ -141,7 +151,7 @@ export const serializeLeague = (
       gameLoading: projection?.gameLoading ?? 0.3,
       active: projection?.active ?? false,
       byeWeek: info?.byeWeek ?? null,
-      value: values.get(id)?.value ?? 0,
+      value: valuation.value,
     };
   }
 

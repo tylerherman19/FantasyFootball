@@ -60,7 +60,7 @@ export default async function Home() {
               {[
                 ['Title odds, simulated', 'Ten thousand seasons with correlated player scoring, not a rating gap and a coin flip.'],
                 ['Usage behind every number', 'Targets, carries, shares and touchdown dependence — the volume that makes a projection repeatable.'],
-                ['Trades in one currency', 'Market value and championship probability side by side, never averaged into a grade.'],
+                ['Trades in one currency', 'Model value and championship probability side by side, never averaged into a grade.'],
                 ['Your own league’s rules', 'Scoring is applied per league, so a superflex dynasty and a redraft PPR get different answers.'],
               ].map(([title, body]) => (
                 <li key={title} className="p-4" style={{ background: 'var(--surface)' }}>

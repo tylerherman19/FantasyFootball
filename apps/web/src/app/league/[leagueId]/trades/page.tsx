@@ -124,7 +124,7 @@ export default async function TradesPage({
             <RailBlock title="Read a recommendation" note="Hover a metric for a short definition. Open a proposal to see the full evidence stack.">
               <p>Closed cards are the shortlist. The top card is the model&apos;s best starting point, not an instruction to accept blindly.</p>
               <div className="mt-3 space-y-1">
-                <RailStat label="Score" value="overall fit" hint="A weighted blend of roster impact, acceptance, market balance, and evidence confidence." />
+                <RailStat label="Score" value="overall fit" hint="A weighted blend of roster impact, acceptance, value balance, and evidence confidence." />
                 <RailStat label="Title odds" value="your swing" hint="The simulated change in your chance to win the league." />
                 <RailStat label="Acceptance" value="partner fit" hint="How well the offer matches the other manager's needs and incentives." />
                 <RailStat label="Evidence" value="confidence" hint="How much recent usage and role evidence supports the projection." />
@@ -153,7 +153,7 @@ export default async function TradesPage({
           <p className="deck mt-3 max-w-2xl">
             The model starts from your desired acquisition, not from a list of players you could
             theoretically move. Each recommendation pairs a target with a concrete offer, then
-            checks lineup impact, partner fit, market balance, and evidence quality.
+            checks lineup impact, partner fit, value balance, and evidence quality.
           </p>
         </header>
 
@@ -196,12 +196,12 @@ export default async function TradesPage({
 
         <Section
           title="What you should offer"
-          source="1,200 season simulations · market values · replacement-aware lineup analysis · v1-usage+offense+positional"
+          source="1,200 season simulations · model values · replacement-aware lineup analysis · v1-usage+offense+positional"
           note={
             <>
               These are target-first proposals. The right column is what you asked for; the left
               column is the package the model thinks you should offer. A proposal can be close in
-              market value and still be poor for your roster, so the ranking also prices title odds,
+              model value and still be poor for your roster, so the ranking also prices title odds,
               lineup contribution, partner acceptance, and evidence confidence.
             </>
           }
@@ -224,7 +224,7 @@ export default async function TradesPage({
                 No {requestLabel} package cleared the search.
               </h3>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-                There is no market-balanced package for this target in the current data. Try a
+                There is no value-balanced package for this target in the current data. Try a
                 specific player, switch from win now to balanced or rebuild, or choose another
                 position. The page will never fill this section with unrelated players just to make
                 the list look busy.
@@ -262,7 +262,7 @@ export default async function TradesPage({
                     <div className="grid grid-cols-2 gap-2 border-b px-4 py-3 sm:grid-cols-4" style={{ borderColor: 'var(--rule)', background: 'var(--ground)' }}>
                       <div title="Change in your simulated chance to win the league."><div className="axis-label">Title odds</div><div className="tabular mt-1 text-sm font-semibold">{pct(mine?.titleDelta ?? 0)}</div></div>
                       <div title="Estimated probability the partner sees this as a good roster move."><div className="axis-label">Acceptance</div><div className="tabular mt-1 text-sm font-semibold">{Math.round(evaluation.acceptanceScore * 100)}%</div></div>
-                      <div title="Distance from market balance. Lower is usually easier to send."><div className="axis-label">Market gap</div><div className="tabular mt-1 text-sm font-semibold">{formatPct(evaluation.fairness)}</div></div>
+                      <div title="Distance from value balance. Lower is usually easier to send."><div className="axis-label">Value gap</div><div className="tabular mt-1 text-sm font-semibold">{formatPct(evaluation.fairness)}</div></div>
                       <div title="Confidence in the underlying role and projection evidence."><div className="axis-label">Evidence</div><div className="tabular mt-1 text-sm font-semibold">{Math.round(evaluation.evidenceScore * 100)}%</div></div>
                     </div>
 
@@ -370,7 +370,7 @@ export default async function TradesPage({
                         />
                       </div>
                       <div>
-                        <div className="axis-label">Market gap</div>
+                        <div className="axis-label">Value gap</div>
                         <CellBar
                           value={evaluation.fairness}
                           max={0.3}
@@ -420,7 +420,7 @@ export default async function TradesPage({
                         </div>
                         <div className="border-l-2 pl-3" style={{ borderColor: 'var(--good)' }}>
                           <div className="eyebrow mb-1">Decision stack</div>
-                          <p style={{ color: 'var(--ink-muted)' }}>Starter replacement → title odds → partner acceptance → market gap → objective lens.</p>
+                          <p style={{ color: 'var(--ink-muted)' }}>Starter replacement → title odds → partner acceptance → value gap → objective lens.</p>
                         </div>
                       </div>
                     </details>
@@ -460,7 +460,7 @@ export default async function TradesPage({
               <div>
                 <strong className="text-[var(--ink)]">2. Find a credible offer.</strong>
                 <p className="mt-1">
-                  The engine tests what you can send against the partner&apos;s roster and market
+                  The engine tests what you can send against the partner&apos;s roster and model
                   value. It does not show a generic list of movable players as the answer.
                 </p>
               </div>

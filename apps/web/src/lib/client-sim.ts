@@ -207,7 +207,7 @@ export const evaluateTradeClient = (
   const mine = oddsDelta(context, changes, myTeamId);
   const theirs = oddsDelta(context, changes, partnerTeamId);
 
-  // Picks are priced by the market but play no games, so they move value
+  // Picks carry real value but play no games, so they move value
   // without moving this season's odds. Saying that plainly is more useful than
   // pretending a 2028 second changes your playoff chances in October.
   const pickValue = new Map(wire.picks.map((pick) => [pick.id, pick.value]));
@@ -225,13 +225,13 @@ export const evaluateTradeClient = (
       : theirs.titleDelta > 0
         ? 'Both sides improve. The rare genuinely mutual trade.'
         : fairness > 0.25
-          ? 'Helps you, but lopsided enough in market terms that they will likely refuse.'
+          ? 'Helps you, but lopsided enough in value terms that they will likely refuse.'
           : 'Improves your odds at their expense — worth proposing.';
 
   const includesPicks = [...iSend, ...iGet].some((id) => !isPlayer(id));
 
   const pickNote = includesPicks
-    ? " Picks move market value but play no games, so this season's odds reflect the players only."
+    ? " Picks move model value but play no games, so this season's odds reflect the players only."
     : '';
 
   return {

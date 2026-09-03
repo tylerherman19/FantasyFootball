@@ -138,25 +138,3 @@ export const valuePicks = (
     ];
   });
 };
-
-/**
- * Build a value source from a market feed keyed by pick label.
- *
- * FantasyCalc publishes exact slots for the next draft ("2026 Pick 1.04") and
- * tiers beyond it ("2027 1st (Early)"), so both shapes are looked up here and
- * the caller stays ignorant of the naming.
- */
-export const marketPickValues = (
-  byName: ReadonlyMap<string, number>,
-  nextSeason: number,
-): PickValueSource => ({
-  exactSlot: (round, slot) =>
-    byName.get(`${nextSeason} Pick ${round}.${String(slot).padStart(2, '0')}`) ??
-    byName.get(`${nextSeason} ${round === 1 ? '1st' : `${round}th`}`),
-
-  tier: (season, round, tier) => {
-    const ordinal = round === 1 ? '1st' : round === 2 ? '2nd' : round === 3 ? '3rd' : `${round}th`;
-    const label = tier.charAt(0).toUpperCase() + tier.slice(1);
-    return byName.get(`${season} ${ordinal} (${label})`) ?? byName.get(`${season} ${ordinal}`);
-  },
-});

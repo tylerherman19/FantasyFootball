@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Fragility } from '@/components/Fragility';
 import { RailBlock, RailLayout, RailStat } from '@/components/design/DrillRail';
 import { serializeLeague } from '@/lib/serialize';
-import { loadMarketValues } from '@/lib/values';
+import { loadEdgePlayerValues } from '@/lib/edge-values';
 import { loadPlayerInfo } from '@/lib/players';
 import { LeagueNav } from '@/components/LeagueNav';
 import { SchemeLine } from '@/components/SchemeLine';
@@ -50,10 +50,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
     await Promise.all([
       myTeamId === null ? Promise.resolve(null) : analyzeRoster(view, myTeamId),
       buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
-      loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-        teamCount: snapshot.league.teamCount,
-        ppr: snapshot.league.scoring.rec,
-      }),
+      loadEdgePlayerValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
       loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
       loadDefenses().catch(() => null),
       loadSchemeFinding().catch(() => null),
@@ -77,9 +74,9 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
   const maxMarginal = Math.max(...(analysis?.players.map((p) => p.marginal) ?? [1]), 1);
   const maxProjected = Math.max(...(analysis?.players.map((p) => p.projected) ?? [1]), 1);
-  const maxValue = Math.max(...(analysis?.players.map((p) => p.marketValue) ?? [1]), 1);
+  const maxValue = Math.max(...(analysis?.players.map((p) => p.value) ?? [1]), 1);
 
-  const priced = analysis?.players.filter((p) => p.marketValue > 0) ?? [];
+  const priced = analysis?.players.filter((p) => p.value > 0) ?? [];
 
   return (
     <>
@@ -122,7 +119,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
               <RailBlock
                 title="How value is priced"
-                note="Market value is what the field would pay; lineup loss is what he is worth to you. The gap between them is where trades are found."
+                note="Model value is what he produces above replacement; lineup loss is what he is worth to you. The gap between them is where trades are found."
               >
                 <RailStat
                   label="Lineup loss"
@@ -130,8 +127,8 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                   hint="Points the optimal lineup gives up without him — his marginal value, not his projection."
                 />
                 <RailStat
-                  label="Market"
-                  value="FantasyCalc"
+                  label="Model"
+                  value="Model"
                   hint="Dynasty or redraft, superflex-aware, matched to this league's format."
                 />
               </RailBlock>
@@ -220,7 +217,7 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                         TD-dep
                       </th>
                       <th className="text-right">Age</th>
-                      <th style={{ width: '6rem' }}>Market</th>
+                      <th style={{ width: '6rem' }}>Value</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -308,11 +305,11 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                           </td>
                           <td>
                             <CellBar
-                              value={player.marketValue}
+                              value={player.value}
                               max={maxValue}
                               width={40}
                               color="var(--pos-qb)"
-                              label={player.marketValue > 0 ? player.marketValue.toLocaleString() : '—'}
+                              label={player.value > 0 ? player.value.toLocaleString() : '—'}
                             />
                           </td>
                         </tr>
@@ -326,11 +323,11 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
             {/* ---- price against contribution -------------------------- */}
             {priced.length > 5 && (
               <Section
-                title="The market and your lineup disagree about value"
+                title="The price tag and your lineup disagree about value"
                 note={
                   <>
-                    Market value on one axis, what your lineup would lose on the other. The two
-                    disagree constantly, and the disagreement is the whole trade market. Bottom-right
+                    Model value on one axis, what your lineup would lose on the other. The two
+                    disagree constantly, and the disagreement is where trades live. Bottom-right
                     is a sell: expensive to everyone else, replaceable to you. Top-left is a keep, and
                     a template for who to buy.
                   </>
@@ -338,14 +335,14 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
               >
                 <div className="panel p-3">
                   <Scatter
-                    xLabel="Market value →"
+                    xLabel="Model value →"
                     yLabel="Points your lineup loses →"
                     quadrantLabels={['Underpriced — keep', 'Core', 'Sell high', 'Fringe']}
                     points={priced.map((player) => ({
                       key: player.playerId,
-                      x: player.marketValue,
+                      x: player.value,
                       y: player.marginal,
-                      label: `${player.name} (${player.position}) — ${player.marketValue.toLocaleString()} market, lineup loses ${player.marginal.toFixed(1)}`,
+                      label: `${player.name} (${player.position}) — ${player.value.toLocaleString()} value, lineup loses ${player.marginal.toFixed(1)}`,
                       color: positionColor(player.position),
                       radius: 4,
                       emphasis: player.starting,
@@ -437,11 +434,11 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                           bench · {player.projected.toFixed(1)} pts
                         </span>
                         <CellBar
-                          value={player.marketValue}
-                          max={Math.max(...analysis.sellCandidates.map((p) => p.marketValue), 1)}
+                          value={player.value}
+                          max={Math.max(...analysis.sellCandidates.map((p) => p.value), 1)}
                           width={70}
                           color="var(--good)"
-                          label={player.marketValue.toLocaleString()}
+                          label={player.value.toLocaleString()}
                         />
                       </div>
                     ))}
@@ -451,8 +448,8 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
 
               {analysis.undervalued.length > 0 && (
                 <Section
-                  title="Some players are worth more to you than the market"
-                  note="Cheap in market terms for what they do here. Keep, or buy more like them."
+                  title="Some players are worth more to you than their price"
+                  note="Priced cheap for what they do here. Keep, or buy more like them."
                 >
                   <div className="panel divide-y" style={{ borderColor: 'var(--rule)' }}>
                     {analysis.undervalued.map((player) => (
@@ -484,15 +481,15 @@ export default async function RosterPage({ params }: { params: Promise<{ leagueI
                 <div className="panel p-3">
                   <Scatter
                     xLabel="Age →"
-                    yLabel="Market value →"
+                    yLabel="Model value →"
                     quadrantLabels={['Young assets', 'Peak, aging', 'Declining', 'Young, cheap']}
                     points={analysis.players
-                      .filter((player) => player.age !== null && player.marketValue > 0)
+                      .filter((player) => player.age !== null && player.value > 0)
                       .map((player) => ({
                         key: player.playerId,
                         x: player.age ?? 0,
-                        y: player.marketValue,
-                        label: `${player.name} (${player.position}) — ${(player.age ?? 0).toFixed(1)} yrs, ${player.marketValue.toLocaleString()}`,
+                        y: player.value,
+                        label: `${player.name} (${player.position}) — ${(player.age ?? 0).toFixed(1)} yrs, ${player.value.toLocaleString()}`,
                         color: positionColor(player.position),
                         radius: 3.5 + Math.min(player.marginal, 8) * 0.35,
                         emphasis: player.starting,

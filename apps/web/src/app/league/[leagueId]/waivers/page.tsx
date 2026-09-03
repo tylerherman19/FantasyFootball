@@ -18,7 +18,7 @@ import { loadLeague, leagueMeta, lineupShape } from '@/lib/league-data';
 import { loadPlayerInfo } from '@/lib/players';
 import { loadFreeAgents, waiverBudgetFor } from '@/lib/waiver-data';
 import { serializeLeague } from '@/lib/serialize';
-import { loadMarketValues } from '@/lib/values';
+import { loadEdgePlayerValues } from '@/lib/edge-values';
 
 export default async function WaiversPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
@@ -33,10 +33,7 @@ export default async function WaiversPage({ params }: { params: Promise<{ league
   const { snapshot } = view;
 
   const [values, players, freeAgents, defenses, schemeFinding] = await Promise.all([
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadEdgePlayerValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
     loadPlayerInfo(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadFreeAgents(view, view.myTeamId),
     loadDefenses().catch(() => null),

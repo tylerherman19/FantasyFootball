@@ -38,7 +38,7 @@ export function TeamPowerExplorer({
     [profiles, selectedId],
   );
   const maxStarterPoints = Math.max(...profiles.map((profile) => profile.starterPoints), 1);
-  const maxTotalValue = Math.max(...profiles.map((profile) => profile.marketValue), 1);
+  const maxTotalValue = Math.max(...profiles.map((profile) => profile.value), 1);
   const standardError = (probability: number): number =>
     Math.sqrt(Math.max(probability * (1 - probability), 0) / Math.max(iterations, 1));
 
@@ -118,7 +118,7 @@ export function TeamPowerExplorer({
                   {hasMarket && (
                     <td className="tabular text-right">
                       <button type="button" className="metric-button" onClick={() => open(profile.teamId, 'value')}>
-                        <CellBar value={profile.marketValue} max={maxTotalValue} width={48} color="var(--pos-qb)" label={profile.marketValue.toLocaleString()} />
+                        <CellBar value={profile.value} max={maxTotalValue} width={48} color="var(--pos-qb)" label={profile.value.toLocaleString()} />
                       </button>
                     </td>
                   )}
@@ -201,7 +201,7 @@ export function TeamPowerExplorer({
                       </td>
                       <td><span className={player.starting ? 'role-chip role-chip-start' : 'role-chip'}>{player.starting ? 'Starter' : 'Bench'}</span></td>
                       <td className="tabular text-right">{player.age === null ? '—' : player.age.toFixed(1)}</td>
-                      <td className="tabular text-right font-medium">{player.marketValue > 0 ? player.marketValue.toLocaleString() : '—'}</td>
+                      <td className="tabular text-right font-medium">{player.value > 0 ? player.value.toLocaleString() : '—'}</td>
                       <td className="tabular text-right" style={{ color: 'var(--ink-faint)' }}>{player.basis === 'unprojected' ? '—' : player.p25.toFixed(1)}</td>
                       <td className="tabular text-right font-semibold">{player.basis === 'unprojected' ? '—' : player.p50.toFixed(1)}</td>
                       <td className="tabular text-right" style={{ color: 'var(--good)' }}>{player.basis === 'unprojected' ? '—' : player.p75.toFixed(1)}</td>

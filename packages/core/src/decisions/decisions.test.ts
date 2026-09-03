@@ -323,11 +323,21 @@ describe('trades', () => {
     expect(found[0]!.evidenceScore).toBeGreaterThan(0);
   });
 
-  it('does not sell a young cornerstone for an older player in a rebuild', () => {
+  it('does not sell a young cornerstone for a marginal upgrade in a rebuild', () => {
+    /*
+     * Age preference itself is the pricing layer's job: edge-value walks the
+     * measured age curves, so a 22-year-old's four-year value already exceeds
+     * a 30-year-old's at equal production. What the engine still protects is
+     * the cornerstone case — a young, rising, first-round-priced player —
+     * against trades whose total gain is noise. The cutoff is relative to the
+     * pool (a mid-first-round pick when picks are present), not a constant on
+     * an external feed's scale.
+     */
     const { context } = buildContext();
     const assetsByTeam = new Map<string, TradeAsset[]>([
       ['1', [asset('young-wr', 'WR', 8_000)]],
-      ['2', [asset('old-wr', 'WR', 8_400)]],
+      ['2', [asset('old-wr', 'WR', 8_300)]],
+      ['3', [{ ...asset('pick-2027-1', 'PICK' as Position, 6_000), kind: 'pick' as const, round: 1 }]],
     ]);
     const found = findTrades({
       context,
@@ -404,12 +414,19 @@ describe('trades', () => {
     expect(found[0]!.sideA.sends[0]!.kind).toBe('pick');
   });
 
-  it('prefers the younger return when rebuilding', () => {
+  it('ranks rebuild returns by model value, with age already priced in', () => {
+    /*
+     * The rebuild ranking trusts the values it is given: in dynasty those are
+     * four-year age-walked prices from edge-value, so a young player worth
+     * more IS the better rebuild return and needs no second age pass. The old
+     * version re-adjusted for age here, double-counting what the price had
+     * already said.
+     */
     const { context } = buildContext();
     const assetsByTeam = new Map<string, TradeAsset[]>([
       ['1', [asset('prime-wr', 'WR', 5_000)]],
       ['2', [asset('old-wr', 'WR', 5_300)]],
-      ['3', [asset('young-wr', 'WR', 4_800)]],
+      ['3', [asset('young-wr', 'WR', 5_800)]],
     ]);
     const found = findTrades({
       context,
@@ -422,7 +439,11 @@ describe('trades', () => {
       finalists: 4,
     });
     expect(found[0]?.sideB.sends[0]?.playerId).toBe(asPlayerId('young-wr'));
-    expect(found.some((trade) => trade.sideB.sends[0]?.playerId === asPlayerId('old-wr'))).toBe(false);
+    // The older return is a legitimate offer too — the engine ranks, it does
+    // not censor — but it must not outrank the more valuable one.
+    const youngAt = found.findIndex((trade) => trade.sideB.sends[0]?.playerId === asPlayerId('young-wr'));
+    const oldAt = found.findIndex((trade) => trade.sideB.sends[0]?.playerId === asPlayerId('old-wr'));
+    expect(oldAt === -1 || oldAt > youngAt).toBe(true);
   });
 });
 

@@ -22,7 +22,8 @@
     "build": "tsc --build",
     "dev": "npm run build && npm run dev --workspace=@ffe/web",
     "sync:canonical": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/sync-canonical.ts",
-    "setup:vercel": "bash scripts/setup-vercel-env.sh"
+    "setup:vercel": "bash scripts/setup-vercel-env.sh",
+    "sanity:value": "tsx scripts/value-sanity.mts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

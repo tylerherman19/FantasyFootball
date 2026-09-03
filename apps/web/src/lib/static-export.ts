@@ -2,7 +2,7 @@ import { loadDefenses, matchupFor, opponentFrom } from './defense';
 import { buildTeamProfiles } from './league-analytics';
 import { loadLeague } from './league-data';
 import { buildUsage } from './usage';
-import { loadMarketValues } from './values';
+import { loadEdgePlayerValues } from './edge-values';
 
 /**
  * Everything one league looks like, frozen into a single JSON payload.
@@ -50,10 +50,7 @@ export const buildStaticSite = async (leagueId: string, username: string): Promi
     buildTeamProfiles(view),
     buildUsage(snapshot.league.season, snapshot.asOfWeek, snapshot.league.scoring.raw),
     loadDefenses(),
-    loadMarketValues(snapshot.league.format, snapshot.league.superFlex, {
-      teamCount: snapshot.league.teamCount,
-      ppr: snapshot.league.scoring.rec,
-    }),
+    loadEdgePlayerValues(snapshot.league, snapshot.league.season, snapshot.asOfWeek),
   ]);
 
   const allDefenses = defenses === null ? [] : Object.values(defenses.teams);
@@ -142,7 +139,7 @@ export const buildStaticSite = async (leagueId: string, username: string): Promi
       mine: profile.isMine,
       start: round(profile.starterPoints, 1),
       bench: round(profile.benchPoints, 1),
-      value: profile.marketValue,
+      value: profile.value,
       playoff: round(profile.playoffPct, 3),
       title: round(profile.titlePct, 3),
       wins: round(profile.expectedWins, 1),

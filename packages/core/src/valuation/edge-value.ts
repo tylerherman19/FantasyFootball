@@ -190,7 +190,27 @@ const shareOfPeak = (curves: AgeCurveData, position: string, age: number): numbe
   const first = ages[0]!;
   const last = ages[ages.length - 1]!;
   if (age <= first) return curve[String(first)] ?? null;
-  if (age >= last) return curve[String(last)] ?? null;
+
+  if (age > last) {
+    /*
+     * Beyond the measured endpoint, follow the curve's own final segment —
+     * never above its final share.
+     *
+     * A flat clamp here inverted age preference exactly where the sample runs
+     * out: every year past the endpoint priced like the endpoint year, so a
+     * 36-year-old's four-season walk totalled more than a 30-year-old's. The
+     * final segment's slope is measured, not asserted; capping it at zero
+     * means "extend the decline the data showed," never "invent growth." A
+     * curve that ends flat (QB, where the sample thins) stays flat — the
+     * honest "we don't know," stated in the module docs.
+     */
+    const prev = ages[ages.length - 2] ?? first;
+    const lastShare = curve[String(last)];
+    const prevShare = curve[String(prev)];
+    if (lastShare === undefined || prevShare === undefined) return null;
+    const slope = Math.min(0, (lastShare - prevShare) / (last - prev));
+    return Math.max(0, lastShare + slope * (age - last));
+  }
 
   const upper = ages.find((n) => n >= age)!;
   const lower = ages[ages.indexOf(upper) - 1] ?? upper;
@@ -208,11 +228,11 @@ const shareOfPeak = (curves: AgeCurveData, position: string, age: number): numbe
  *
  * Walks the measured curve year by year: a 24-year-old back reads ~3.4 over
  * four years, a 28-year-old ~2.1, and the two are directly comparable. Years
- * the curve cannot reach (quarterbacks past 27, where the sample runs out) are
- * held flat rather than extrapolated — the QB curve's own documentation says
- * it cannot answer there, and a held-flat estimate says "I don't know" more
- * honestly than an invented decline. Positions with no curve at all (K, DEF,
- * IDP) are flat by the same argument.
+ * the curve cannot reach follow the curve's own final measured slope, capped
+ * so it can only fall (quarterbacks past 27, where the sample runs out, end
+ * flat and stay flat — the QB curve's own documentation says it cannot answer
+ * there). Positions with no curve at all (K, DEF, IDP) are flat by the same
+ * argument.
  *
  * Undiscounted, deliberately: how much sooner-is-better matters is a stance
  * decision the contend-or-rebuild read makes explicitly; baking a discount
@@ -320,11 +340,15 @@ export interface EdgePickChart {
 export const edgePickChart = (
   rookies: readonly { draftOverall: number; dynastyValue: number }[],
 ): EdgePickChart | null => {
-  const usable = rookies.filter((r) => r.draftOverall >= 1 && r.dynastyValue > 0);
+  // Zero-value rookies stay in: a projected bust at slot 40 is evidence about
+  // slot 40. Fitting only positive values would price late picks as if every
+  // rookie hits, which is exactly the optimism a pick chart exists to avoid.
+  // The fit runs on log1p so the zeros are representable.
+  const usable = rookies.filter((r) => r.draftOverall >= 1 && r.dynastyValue >= 0);
   if (usable.length < 8) return null;
 
   const xs = usable.map((r) => Math.log(r.draftOverall));
-  const ys = usable.map((r) => Math.log(r.dynastyValue));
+  const ys = usable.map((r) => Math.log1p(r.dynastyValue));
   const n = usable.length;
   const meanX = xs.reduce((a, b) => a + b, 0) / n;
   const meanY = ys.reduce((a, b) => a + b, 0) / n;
@@ -341,7 +365,7 @@ export const edgePickChart = (
 
   return {
     classSize: usable.length,
-    valueAtSlot: (slot) => Math.exp(intercept + slope * Math.log(Math.max(1, slot))),
+    valueAtSlot: (slot) => Math.max(0, Math.expm1(intercept + slope * Math.log(Math.max(1, slot)))),
   };
 };
 

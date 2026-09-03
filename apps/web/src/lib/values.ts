@@ -1,17 +1,20 @@
 import type { LeagueFormat } from '@ffe/core';
 
 /**
- * Market values.
+ * Market values — an OPTIONAL sanity comparison, never a dependency.
  *
- * FantasyCalc computes these from real trades executed in real Sleeper leagues,
- * which makes them a market price rather than one analyst's opinion. That is the
- * "will they accept" half of a trade — the half our simulation cannot answer,
- * because a manager's willingness depends on consensus, not on our model.
+ * The model prices players itself (lib/edge-values.ts); every decision path —
+ * trades, waivers, dynasty, picks — runs on that internal price. What remains
+ * here is the outside view: FantasyCalc computes values from real trades
+ * executed in real Sleeper leagues, which makes it a market price rather than
+ * one analyst's opinion. That is useful as a calibration check ("does the
+ * model's ordering look like the market's, and where do they disagree?") and
+ * as display context on the player page, and for nothing else. If this feed is
+ * down, nothing on the product degrades.
  *
  * Values are format-specific: a 24-year-old receiver is worth far more in
  * dynasty than in redraft, and superflex reprices every quarterback in the
- * league. Fetching the wrong variant produces confidently wrong fairness
- * judgements, so the league's own settings select it.
+ * league, so the league's own settings select the variant.
  */
 
 const API = 'https://api.fantasycalc.com/values/current';

@@ -60,7 +60,7 @@ export interface PortfolioPlayer {
   readonly sd: number;
   readonly gameId: string;
   readonly gameLoading: number;
-  readonly marketValue: number;
+  readonly value: number;
 }
 
 export interface Concentration {
@@ -188,7 +188,7 @@ const concentrations = (
   for (const player of players) {
     const key = keyOf(player) || '—';
     const group = groups.get(key) ?? { value: 0, names: [] };
-    group.value += player.marketValue;
+    group.value += player.value;
     group.names.push(player.name);
     groups.set(key, group);
   }
@@ -225,11 +225,11 @@ export const analysePortfolio = (
   const sd = Math.sqrt(Math.max(0, variance));
   const independentSd = Math.sqrt(Math.max(0, independentVariance));
 
-  const totalValue = players.reduce((sum, p) => sum + p.marketValue, 0);
+  const totalValue = players.reduce((sum, p) => sum + p.value, 0);
   const topTwo = [...players]
-    .sort((a, b) => b.marketValue - a.marketValue)
+    .sort((a, b) => b.value - a.value)
     .slice(0, 2)
-    .reduce((sum, p) => sum + p.marketValue, 0);
+    .reduce((sum, p) => sum + p.value, 0);
 
   return {
     expected,

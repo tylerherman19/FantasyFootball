@@ -106,11 +106,32 @@ describe('edgeValues', () => {
     expect(values.get(asPlayerId('a'))!.multiYear).toBeCloseTo(3.3, 6);
   });
 
-  it('holds years the curve cannot reach flat rather than inventing decline', () => {
+  it('extends the curve past its endpoint along its own final slope', () => {
     const curves: AgeCurveData = { curves: { RB: { '24': 1, '25': 0.9 } } };
-    // Curve stops at 25: years 26 and 27 are held at the last measured share.
+    // Final segment declines 0.1/yr: 26 -> 0.8, 27 -> 0.7. The old flat clamp
+    // would have read 0.9 for every later year and priced a 36-year-old like
+    // a 25-year-old.
     const mult = multiYearMultiplier(curves, 'RB', 24, 4);
-    expect(mult).toBeCloseTo(1 + 0.9 + 0.9 + 0.9, 6);
+    expect(mult).toBeCloseTo(1 + 0.9 + 0.8 + 0.7, 6);
+  });
+
+  it('prices age monotonically past the endpoint: older never exceeds younger', () => {
+    // A realistic declining tail, like the measured WR curve.
+    const curves: AgeCurveData = {
+      curves: { WR: { '28': 0.85, '29': 0.78, '30': 0.7, '31': 0.62, '32': 0.55, '33': 0.48 } },
+    };
+    const at = (age: number) => multiYearMultiplier(curves, 'WR', age, 4);
+    expect(at(30)).toBeGreaterThan(at(32));
+    expect(at(32)).toBeGreaterThan(at(36));
+  });
+
+  it('never invents growth past the endpoint: a flat tail stays flat', () => {
+    // QB curves end flat where the sample thins: extending the final slope
+    // must not manufacture a rise, and a genuinely flat tail stays flat.
+    const curves: AgeCurveData = { curves: { QB: { '26': 0.97, '27': 0.97 } } };
+    expect(multiYearMultiplier(curves, 'QB', 27, 4)).toBeCloseTo(4, 6);
+    const rising: AgeCurveData = { curves: { QB: { '26': 0.95, '27': 0.99 } } };
+    expect(multiYearMultiplier(rising, 'QB', 27, 4)).toBeCloseTo(4, 6);
   });
 
   it('without an age or a curve, the horizon multiplies flat', () => {
@@ -133,7 +154,9 @@ describe('edgePickChart', () => {
     }));
     const chart = edgePickChart(rookies)!;
     expect(chart).not.toBeNull();
-    expect(chart.valueAtSlot(1)).toBeCloseTo(1000, 0);
+    // log1p fit of a power-law class: the anchor slot lands within a few
+    // percent of the true curve — the fit is a smoother, not an interpolator.
+    expect(Math.abs(chart.valueAtSlot(1) / 1000 - 1)).toBeLessThan(0.05);
     expect(chart.valueAtSlot(1)).toBeGreaterThan(chart.valueAtSlot(12));
     expect(chart.valueAtSlot(12)).toBeGreaterThan(chart.valueAtSlot(36));
   });

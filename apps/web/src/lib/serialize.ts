@@ -124,6 +124,12 @@ export const serializeLeague = (
   for (const id of rostered) {
     const projection = weekly?.get(id as never);
     const info = playerNames[id];
+    const valuation = values.get(id);
+    // Unpriced is not zero: a player the model cannot price is left off the
+    // wire rather than shown at a fabricated 0. In practice this only happens
+    // when the projection itself is missing — which the wire already reports
+    // as `projected: false`.
+    if (valuation === undefined) continue;
 
     players[id] = {
       id,
@@ -145,7 +151,7 @@ export const serializeLeague = (
       gameLoading: projection?.gameLoading ?? 0.3,
       active: projection?.active ?? false,
       byeWeek: info?.byeWeek ?? null,
-      value: values.get(id)?.value ?? 0,
+      value: valuation.value,
     };
   }
 

@@ -40,7 +40,6 @@ export {
 
 // valuation
 export {
-  marketPickValues,
   pickInventory,
   valuePicks,
   type PickValueSource,
@@ -52,7 +51,19 @@ export {
   type PlayerEvaluation,
   type PlayerEvaluationInput,
 } from './valuation/player-evaluation.js';
-export { fundamentalPlayerValue, fundamentalPickValue, type FundamentalPlayerInput, type FundamentalValue } from './valuation/fundamental.js';
+export {
+  edgeValues,
+  edgePickChart,
+  edgePickValues,
+  multiYearMultiplier,
+  replacementLevels,
+  starterDemand,
+  type AgeCurveData,
+  type EdgePickChart,
+  type EdgeValuation,
+  type EdgeValueContext,
+  type EdgeValuePlayer,
+} from './valuation/edge-value.js';
 
 // metrics
 export { lineupEfficiencies, type EfficiencyResult } from './metrics/efficiency.js';

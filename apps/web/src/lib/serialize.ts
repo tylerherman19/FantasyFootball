@@ -1,5 +1,9 @@
 import type { LeagueView } from './league-data';
-import type { MarketValue } from './values';
+/**
+ * Anything with a price: the model's own edge values normally, the market
+ * comparison feed where a caller explicitly wants it. Structural on purpose —
+ * serialization must not care whose price it is carrying.
+ */
 
 /**
  * Ship the league to the browser so evaluation is instant.
@@ -101,7 +105,7 @@ export interface WireLeague {
 
 export const serializeLeague = (
   view: LeagueView,
-  values: ReadonlyMap<string, MarketValue>,
+  values: ReadonlyMap<string, { readonly value: number }>,
   playerNames: Record<string, { name: string; position: string; team: string; byeWeek?: number | null }>,
   picks: readonly WirePick[] = [],
   freeAgents: readonly WirePlayer[] = [],

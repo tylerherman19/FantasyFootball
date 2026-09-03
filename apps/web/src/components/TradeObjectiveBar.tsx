@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 const OBJECTIVES = [
   { key: 'balanced', label: 'Balanced', hint: 'Rank on title odds and starter points' },
   { key: 'winNow', label: 'Win now', hint: "Prefer this season's points and title odds" },
-  { key: 'rebuild', label: 'Rebuild', hint: 'Prefer youth and market value' },
+  { key: 'rebuild', label: 'Rebuild', hint: 'Prefer youth and model value' },
 ] as const;
 
 const POSITIONS = ['QB', 'RB', 'WR', 'TE'] as const;

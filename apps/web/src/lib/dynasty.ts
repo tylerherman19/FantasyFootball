@@ -381,7 +381,7 @@ export const buildDynastyView = async (
     .sort((a, b) => b.value - a.value)
     .slice(0, 6);
 
-  // Cheap relative to what they already do. The market is not paying for this
+  // Cheap relative to what they already do. The price is not paying for this
   // production, which is the definition of a buy.
   const buyLow = [...valued]
     .filter(

@@ -123,6 +123,20 @@ describe('edgeValues', () => {
     const at = (age: number) => multiYearMultiplier(curves, 'WR', age, 4);
     expect(at(30)).toBeGreaterThan(at(32));
     expect(at(32)).toBeGreaterThan(at(36));
+    // Past the zero crossing the walk is over: this season only, never a
+    // four-season fallback. With a 0.07/yr final slope the crossing lands at
+    // ~39.9; 34 still reads, 40 does not.
+    expect(at(34)).toBeGreaterThan(1);
+    expect(at(40)).toBe(1);
+    expect(at(40)).not.toBeGreaterThan(at(34));
+  });
+
+  it('prices a player at the curve zero crossing as this-season-only', () => {
+    const curves: AgeCurveData = { curves: { RB: { '32': 0.2, '33': 0.1 } } };
+    // Slope -0.1/yr: 34 -> 0.0. A share of zero is the end, not a fresh
+    // four-year horizon.
+    expect(multiYearMultiplier(curves, 'RB', 34, 4)).toBe(1);
+    expect(multiYearMultiplier(curves, 'RB', 33, 4)).toBeCloseTo(1, 6); // 33: 0.1, 34+: 0
   });
 
   it('never invents growth past the endpoint: a flat tail stays flat', () => {

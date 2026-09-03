@@ -59,6 +59,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Build the workspace packages first: snapshot.ts imports @ffe/core, and
+      # its dist/ only exists after a build. Without this step the job dies in
+      # seconds with ERR_MODULE_NOT_FOUND (every Tuesday run so far).
+      - run: npm run build
       - run: npm run snapshot:ci -- ${{ github.event.inputs.week }}
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}

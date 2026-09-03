@@ -34,7 +34,7 @@ const player = (over: Partial<PortfolioPlayer> & { playerId: string }): Portfoli
   sd: 7,
   gameId: 'g1',
   gameLoading: 0.4,
-  marketValue: 5000,
+  value: 5000,
   ...over,
 });
 
@@ -152,9 +152,9 @@ describe('analysePortfolio', () => {
 
   it('measures value concentration by offence', () => {
     const analysis = analysePortfolio([
-      player({ playerId: 'a', team: 'CIN', marketValue: 6000 }),
-      player({ playerId: 'b', team: 'CIN', marketValue: 2000 }),
-      player({ playerId: 'c', team: 'PHI', marketValue: 2000 }),
+      player({ playerId: 'a', team: 'CIN', value: 6000 }),
+      player({ playerId: 'b', team: 'CIN', value: 2000 }),
+      player({ playerId: 'c', team: 'PHI', value: 2000 }),
     ]);
 
     expect(analysis.byTeam[0]?.label).toBe('CIN');
@@ -163,10 +163,10 @@ describe('analysePortfolio', () => {
 
   it('measures how much rides on the top two assets', () => {
     const analysis = analysePortfolio([
-      player({ playerId: 'a', marketValue: 8000 }),
-      player({ playerId: 'b', marketValue: 6000 }),
-      player({ playerId: 'c', marketValue: 1000 }),
-      player({ playerId: 'd', marketValue: 1000 }),
+      player({ playerId: 'a', value: 8000 }),
+      player({ playerId: 'b', value: 6000 }),
+      player({ playerId: 'c', value: 1000 }),
+      player({ playerId: 'd', value: 1000 }),
     ]);
 
     expect(analysis.topTwoShare).toBeCloseTo(14 / 16, 6);
@@ -192,8 +192,8 @@ describe('portfolioRead', () => {
 
   it('names single-offence exposure', () => {
     const analysis = analysePortfolio([
-      player({ playerId: 'a', team: 'CIN', gameId: 'g1', marketValue: 9000 }),
-      player({ playerId: 'b', team: 'PHI', gameId: 'g2', marketValue: 1000 }),
+      player({ playerId: 'a', team: 'CIN', gameId: 'g1', value: 9000 }),
+      player({ playerId: 'b', team: 'PHI', gameId: 'g2', value: 1000 }),
     ]);
 
     expect(portfolioRead(analysis)).toMatch(/one offence \(CIN\)/);
@@ -204,7 +204,7 @@ describe('portfolioRead', () => {
     // weeks arrive separately, not that there is nothing to report.
     const analysis = analysePortfolio(
       ['a', 'b', 'c', 'd', 'e'].map((id, i) =>
-        player({ playerId: id, team: `T${i}`, gameId: `g${i}`, marketValue: 2000 }),
+        player({ playerId: id, team: `T${i}`, gameId: `g${i}`, value: 2000 }),
       ),
     );
 
@@ -216,12 +216,12 @@ describe('portfolioRead', () => {
   it('falls back to plain language when nothing crosses a threshold', () => {
     // Mild shared exposure: past the "spread" threshold, short of "stacked".
     const analysis = analysePortfolio([
-      player({ playerId: 'a', team: 'CIN', gameId: 'g1', gameLoading: 0.2, marketValue: 2000 }),
-      player({ playerId: 'b', team: 'PHI', gameId: 'g1', gameLoading: 0.2, marketValue: 2000 }),
-      player({ playerId: 'c', team: 'KC', gameId: 'g2', gameLoading: 0.3, marketValue: 2000 }),
-      player({ playerId: 'd', team: 'BUF', gameId: 'g3', gameLoading: 0.3, marketValue: 2000 }),
-      player({ playerId: 'e', team: 'LA', gameId: 'g4', gameLoading: 0.3, marketValue: 2000 }),
-      player({ playerId: 'f', team: 'DAL', gameId: 'g5', gameLoading: 0.3, marketValue: 2000 }),
+      player({ playerId: 'a', team: 'CIN', gameId: 'g1', gameLoading: 0.2, value: 2000 }),
+      player({ playerId: 'b', team: 'PHI', gameId: 'g1', gameLoading: 0.2, value: 2000 }),
+      player({ playerId: 'c', team: 'KC', gameId: 'g2', gameLoading: 0.3, value: 2000 }),
+      player({ playerId: 'd', team: 'BUF', gameId: 'g3', gameLoading: 0.3, value: 2000 }),
+      player({ playerId: 'e', team: 'LA', gameId: 'g4', gameLoading: 0.3, value: 2000 }),
+      player({ playerId: 'f', team: 'DAL', gameId: 'g5', gameLoading: 0.3, value: 2000 }),
     ]);
 
     // Between the two thresholds: neither notably stacked nor notably spread.

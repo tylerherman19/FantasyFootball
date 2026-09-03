@@ -467,15 +467,20 @@ const buildTrades = async (
     .map((entry) => {
       const id = String(entry.playerId);
       const projection = artifact.players[id];
+      const valuation = values.get(id);
+      // Unpriced is not zero: a player the model cannot price (no projection)
+      // is excluded, not displayed at a fabricated 0.
+      if (valuation === undefined) return null;
       return {
         playerId: id,
         name: projection?.name ?? id,
         position: entry.position,
         marginal: entry.marginal,
         projected: entry.projected,
-        value: values.get(id)?.value ?? 0,
+        value: valuation.value,
       };
     })
+    .filter((entry) => entry !== null)
     .sort((a, b) => a.marginal - b.marginal);
 
   /*

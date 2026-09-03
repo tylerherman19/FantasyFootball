@@ -74,14 +74,16 @@ from the map, and nothing conflates the two.
 for a canonical 12-team dynasty superflex PPR league. Measured 2026-09-03,
 week-1 artifact (2,516 projections), 327 players priced by both:
 
-- **Spearman ρ = 0.740** across all 327.
+- **Spearman ρ = 0.743** across all 327.
 - Top-25 overlap 14/25, top-50 36/50, top-100 81/100.
-- The systematic disagreement is *old producers*: the model prices Stafford,
-  Adams, Henry, Evans, Kittle well above the market. That is PAR doing its
-  job — production over replacement does not pay for name or hype — amplified
-  by the honest flat-tail choice on the QB curve. It is documented here
-  rather than tuned away, because tuning toward the market would just rebuild
-  the dependency with extra steps.
+- The systematic disagreement is *old producers*, and it is mostly the market
+  discounting them, not the model overrating them: with the curve's final
+  slope extended past its endpoint, 32-year-old receivers (Adams, Evans) read
+  a four-year multiple of 1.0 — the model agrees they are year-to-year. The
+  residue is quarterbacks: the measured QB curve ends flat at 27 where the
+  sample thins, so a 37-year-old Stafford holds a 3.9 multiple and the model
+  prices him #7 to the market's #76. That is the honest "we don't know"
+  documented in the module, not a number to tune toward the feed.
 
 Rerun it after any model or age-curve change; a collapsing ρ is the alarm,
 not a target to maximize.

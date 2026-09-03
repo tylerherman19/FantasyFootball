@@ -19,7 +19,7 @@ import {
   type PortfolioPlayer,
 } from '@/lib/portfolio';
 import { loadArtifact } from '@/lib/projections';
-import { loadMarketValues } from '@/lib/values';
+import { loadEdgePlayerValues } from '@/lib/edge-values';
 import { reliabilityLabel, trendLabel } from '@/lib/history';
 import { leagueMeta, lineupShape, loadLeague } from '@/lib/league-data';
 import { requireSession } from '@/lib/session';
@@ -57,10 +57,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
    */
   const [portfolioArtifact, portfolioValues, correlations] = await Promise.all([
     loadArtifact(view.snapshot.league.season, view.snapshot.asOfWeek),
-    loadMarketValues(view.snapshot.league.format, view.snapshot.league.superFlex, {
-      teamCount: view.snapshot.league.teamCount,
-      ppr: view.snapshot.league.scoring.rec,
-    }),
+    loadEdgePlayerValues(view.snapshot.league, view.snapshot.league.season, view.snapshot.asOfWeek),
     loadCorrelations().catch(() => null),
   ]);
   const myRoster = view.snapshot.rosters.find((r) => r.teamId === myTeamId);
@@ -82,7 +79,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
                 sd: p.sd,
                 gameId: p.gameId,
                 gameLoading: p.gameLoading,
-                marketValue: portfolioValues.get(id)?.value ?? 0,
+                value: portfolioValues.get(id)?.value ?? 0,
               },
             ];
           }),
@@ -187,13 +184,13 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {/* ---- team value ------------------------------------------------- */}
         <Section
           title="What your team is worth"
-            source="FantasyCalc market values · matched to this league's format"
+            source="Model value · points above replacement, priced from this league&apos;s own projections"
           note={
             <>
-              Market value is what other managers would actually pay, from trades executed in real
-              Sleeper leagues — not a ranking. It is the only currency a trade is settled in, which
-              is why it sits next to the age bands rather than on its own: the same total means very
-              different things depending on how old it is.
+              Model value is what a player produces above a freely available replacement, priced by
+              this league&apos;s own projections over four seasons with measured age curves. It sits next
+              to the age bands rather than on its own because the same total means very different
+              things depending on how old it is.
             </>
           }
         >
@@ -232,7 +229,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
               sub="of roster value"
             />
             <StatTile
-              label="4-year fundamental"
+              label="4-year model value"
               value={Math.round(dynasty.totalFundamentalValue).toLocaleString()}
               sub="survival-adjusted value over replacement"
             />
@@ -248,7 +245,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
             <div className="panel">
               <div className="panel-head">
                 <span className="eyebrow">By age band</span>
-                <span className="axis-label">market value</span>
+                <span className="axis-label">model value</span>
               </div>
               <div className="divide-y" style={{ borderColor: 'var(--rule)' }}>
                 {dynasty.valueByAge.map((band) => (
@@ -279,7 +276,7 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
             <div className="panel">
               <div className="panel-head">
                 <span className="eyebrow">By position</span>
-                <span className="axis-label">market value</span>
+                <span className="axis-label">model value</span>
               </div>
               <div className="divide-y" style={{ borderColor: 'var(--rule)' }}>
                 {dynasty.valueByPosition.map((entry) => (
@@ -305,13 +302,13 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         </Section>
 
         {/* ---- the window ------------------------------------------------- */}
-        {dynasty.assets.some((asset) => asset.age !== null && asset.marketValue > 0) && (
+        {dynasty.assets.some((asset) => asset.age !== null && asset.value > 0) && (
           <Section
             title="Your window, player by player"
-            source="FantasyCalc values · aging curves fitted 2016-2025 by the delta method"
+            source="Model values · aging curves fitted 2016-2025 by the delta method"
             note={
               <>
-                Age against market value, with each position&apos;s decline age as the dividing
+                Age against model value, with each position&apos;s decline age as the dividing
                 line —{' '}
                 {dynasty.declineAges
                   .map((d: { position: string; age: number; measured: boolean }) => `${d.position} ${d.age}${d.measured ? '' : '*'}`)
@@ -329,16 +326,16 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
             <div className="panel p-3">
               <Scatter
                 xLabel="Years until position decline age →"
-                yLabel="Market value →"
+                yLabel="Model value →"
                 quadrantLabels={['Aging, valuable', 'Young, valuable', 'Young, cheap', 'Aging, cheap']}
                 xMedian={0}
                 points={dynasty.assets
-                  .filter((asset) => asset.windowYears !== null && asset.marketValue > 0)
+                  .filter((asset) => asset.windowYears !== null && asset.value > 0)
                   .map((asset) => ({
                     key: asset.playerId,
                     x: asset.windowYears ?? 0,
-                    y: asset.marketValue,
-                    label: `${asset.name} (${asset.position}) — ${(asset.age ?? 0).toFixed(1)} yrs, ${asset.marketValue.toLocaleString()} value, ${asset.projected.toFixed(1)} projected`,
+                    y: asset.value,
+                    label: `${asset.name} (${asset.position}) — ${(asset.age ?? 0).toFixed(1)} yrs, ${asset.value.toLocaleString()} value, ${asset.projected.toFixed(1)} projected`,
                     color: positionColor(asset.position),
                     radius: 3.5 + Math.min(asset.projected, 20) * 0.22,
                     href: `/league/${leagueId}/player/${asset.playerId}`,
@@ -354,8 +351,8 @@ export default async function DynastyPage({ params }: { params: Promise<{ league
         {/* ---- act on it -------------------------------------------------- */}
         <div className="grid gap-3 lg:grid-cols-3">
           {([
-            ['Sell while there is a market', dynasty.sellHigh, 'var(--bad)', 'Past or nearly past the decline age for the position, and still carrying real market value. This is the value that disappears quietly.'],
-            ['Hold or buy more', dynasty.buyLow, 'var(--good)', 'Cheap relative to what they already produce, with years left. The market is not paying for this production yet.'],
+            ['Sell while there is a market', dynasty.sellHigh, 'var(--bad)', 'Past or nearly past the decline age for the position, and still carrying real value. This is the value that disappears quietly.'],
+            ['Hold or buy more', dynasty.buyLow, 'var(--good)', 'Cheap relative to what they already produce, with years left. The price is not paying for this production yet.'],
             ['Window risk', dynasty.windowRisk, 'var(--warn)', 'Genuine production sitting on players who will not be producing in two years. The reason a window closes.'],
           ] as const).map(([title, list, color, note]) =>
             list.length === 0 ? null : (
@@ -602,7 +599,7 @@ const AssetRow = ({ asset, accent }: { asset: DynastyAsset; accent: string }) =>
       <PositionChip position={asset.position} />
       <span className="min-w-0 flex-1 truncate text-xs font-medium">{asset.name}</span>
       <span className="tabular shrink-0 text-xs" style={{ color: accent }}>
-        {asset.marketValue.toLocaleString()}
+        {asset.value.toLocaleString()}
       </span>
     </div>
     <div className="tabular mt-0.5 flex flex-wrap gap-x-3 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
@@ -615,7 +612,7 @@ const AssetRow = ({ asset, accent }: { asset: DynastyAsset; accent: string }) =>
         </span>
       )}
       <span>{asset.projected.toFixed(1)} proj</span>
-      <span>{Math.round(asset.fundamentalValue).toLocaleString()} fundamental</span>
+      <span>{Math.round(asset.dynastyValue).toLocaleString()} 4-yr value</span>
       <span>{(asset.fourYearSurvival * 100).toFixed(0)}% year-4 survival</span>
       {asset.history !== null && <span>{asset.history.ppg.toFixed(1)} career PPG</span>}
     </div>

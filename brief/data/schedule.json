@@ -1,0 +1,85 @@
+{
+  "week": 1,
+  "games": [
+    {
+      "away": "NE",
+      "home": "SEA",
+      "label": "Wed 8:20pm"
+    },
+    {
+      "away": "SF",
+      "home": "LAR",
+      "label": "Thu 8:20pm"
+    },
+    {
+      "away": "TB",
+      "home": "CIN",
+      "label": "Sun"
+    },
+    {
+      "away": "NYJ",
+      "home": "TEN",
+      "label": "Sun"
+    },
+    {
+      "away": "BAL",
+      "home": "IND",
+      "label": "Sun"
+    },
+    {
+      "away": "ATL",
+      "home": "PIT",
+      "label": "Sun"
+    },
+    {
+      "away": "CHI",
+      "home": "CAR",
+      "label": "Sun"
+    },
+    {
+      "away": "CLE",
+      "home": "JAX",
+      "label": "Sun"
+    },
+    {
+      "away": "MIA",
+      "home": "LV",
+      "label": "Sun"
+    },
+    {
+      "away": "GB",
+      "home": "MIN",
+      "label": "Sun"
+    },
+    {
+      "away": "WAS",
+      "home": "PHI",
+      "label": "Sun"
+    },
+    {
+      "away": "ARI",
+      "home": "LAC",
+      "label": "Sun"
+    },
+    {
+      "away": "DAL",
+      "home": "NYG",
+      "label": "Sun night"
+    },
+    {
+      "away": "BUF",
+      "home": "HOU",
+      "label": "Sun"
+    },
+    {
+      "away": "NO",
+      "home": "DET",
+      "label": "Sun"
+    },
+    {
+      "away": "DEN",
+      "home": "KC",
+      "label": "Mon"
+    }
+  ]
+}

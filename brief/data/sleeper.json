@@ -6339,7 +6339,7 @@
           "roster_id": 1,
           "owner_id": "1133485985909645312",
           "owner_name": "gsell4096",
-          "is_mine": false,
+          "is_mine": true,
           "starters": [
             {
               "player_id": "12522",
@@ -10205,13 +10205,6 @@
               "name": "Kaelon Black",
               "position": "RB",
               "team": "SF",
-              "injury_status": null
-            },
-            {
-              "player_id": "10225",
-              "name": "Jonathan Mingo",
-              "position": "WR",
-              "team": "DAL",
               "injury_status": null
             },
             {

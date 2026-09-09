@@ -20,6 +20,12 @@ RAW_DIR = os.path.join(DATA_DIR, "raw")
 USERNAME = "tylerherman"
 SEASON = "2026"
 
+# Some of Tyler's teams live under a different Sleeper account than USERNAME.
+# Map league_id -> roster_id that should be treated as his.
+MY_ROSTER_OVERRIDE = {
+    "1312077150911733760": 1,  # DYNASTATION: "Griffinsell" is roster 1
+}
+
 API = "https://api.sleeper.app/v1"
 UA = {"User-Agent": "ffb-brief/1.0 (weekly fantasy brief)"}
 
@@ -126,12 +132,15 @@ def main():
             owner_id = r.get("owner_id")
             starters = r.get("starters") or []
             players = r.get("players") or []
+            is_mine = (owner_id == user_id) or (
+                MY_ROSTER_OVERRIDE.get(league_id) == r.get("roster_id")
+            )
             out_rosters.append(
                 {
                     "roster_id": r.get("roster_id"),
                     "owner_id": owner_id,
                     "owner_name": owner_names.get(owner_id),
-                    "is_mine": owner_id == user_id,
+                    "is_mine": is_mine,
                     "starters": [player_detail(pid, players_map) for pid in starters],
                     "players": [player_detail(pid, players_map) for pid in players],
                 }

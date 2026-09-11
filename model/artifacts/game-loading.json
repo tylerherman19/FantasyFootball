@@ -7,31 +7,31 @@
   },
   "caveat": "These numbers are NOT wired into GAME_LOADING. Every estimator here correlates one fantasy score against another, so all of them net the game effect against target competition and cannot separate the two. They establish that the asserted values are too high, not what the right values are. A correct estimate needs an exogenous game measure - the Vegas total, or drive-level simulation - per docs/PLAN.md v3.",
   "firstSeason": 2016,
-  "generatedAt": "2026-09-10T14:11:38.933194+00:00",
+  "generatedAt": "2026-09-11T14:10:38.616476+00:00",
   "method": "Squared correlation between a player's deviation from his own mean and his TEAM-MATES' deviation from theirs that week \u2014 leave-one-out, so a quarterback is not correlated against a total he dominates. The share of his weekly variance the game environment explains, which is what GAME_LOADING is defined to be.",
   "positions": {
     "QB": {
-      "gameTotalCorrelation": 0.4073,
-      "loading": 0.1777,
-      "observations": 6279,
-      "teamScoreCorrelation": 0.4215
+      "gameTotalCorrelation": 0.4071,
+      "loading": 0.1776,
+      "observations": 6281,
+      "teamScoreCorrelation": 0.4214
     },
     "RB": {
       "gameTotalCorrelation": 0.1419,
       "loading": 0.052,
-      "observations": 14938,
+      "observations": 14942,
       "teamScoreCorrelation": 0.228
     },
     "TE": {
-      "gameTotalCorrelation": 0.14,
+      "gameTotalCorrelation": 0.1399,
       "loading": 0.019,
-      "observations": 11810,
+      "observations": 11816,
       "teamScoreCorrelation": 0.1379
     },
     "WR": {
       "gameTotalCorrelation": 0.1736,
       "loading": 0.0309,
-      "observations": 23855,
+      "observations": 23865,
       "teamScoreCorrelation": 0.1758
     }
   }

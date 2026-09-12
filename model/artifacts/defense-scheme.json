@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-09-11T14:10:55.876545+00:00",
+ "generatedAt": "2026-09-12T13:29:26.158735+00:00",
  "leagueAverage": {
   "adotAllowed": 7.6956,
   "completionRateAllowed": 0.646,
@@ -37,9 +37,9 @@
    "sackRate": 0.057,
    "shellIndex": 0.569,
    "targetShareAllowed": {
-    "RB": 0.1806,
-    "TE": 0.2498,
-    "WR": 0.5695
+    "RB": 0.1808,
+    "TE": 0.2502,
+    "WR": 0.569
    },
    "team": "ARI",
    "yacShareAllowed": 0.4693,
@@ -89,9 +89,9 @@
    "sackRate": 0.057,
    "shellIndex": -1.103,
    "targetShareAllowed": {
-    "RB": 0.1939,
-    "TE": 0.1961,
-    "WR": 0.6101
+    "RB": 0.1945,
+    "TE": 0.1967,
+    "WR": 0.6087
    },
    "team": "BAL",
    "yacShareAllowed": 0.4372,
@@ -167,9 +167,9 @@
    "sackRate": 0.0652,
    "shellIndex": -0.555,
    "targetShareAllowed": {
-    "RB": 0.1768,
-    "TE": 0.2488,
-    "WR": 0.5744
+    "RB": 0.1773,
+    "TE": 0.2495,
+    "WR": 0.5732
    },
    "team": "CHI",
    "yacShareAllowed": 0.435,
@@ -271,9 +271,9 @@
    "sackRate": 0.1002,
    "shellIndex": -0.837,
    "targetShareAllowed": {
-    "RB": 0.1465,
-    "TE": 0.2504,
-    "WR": 0.6031
+    "RB": 0.1467,
+    "TE": 0.2507,
+    "WR": 0.6026
    },
    "team": "DEN",
    "yacShareAllowed": 0.4515,
@@ -297,9 +297,9 @@
    "sackRate": 0.0723,
    "shellIndex": -2.082,
    "targetShareAllowed": {
-    "RB": 0.1375,
-    "TE": 0.2246,
-    "WR": 0.6378
+    "RB": 0.1379,
+    "TE": 0.2252,
+    "WR": 0.637
    },
    "team": "DET",
    "yacShareAllowed": 0.3906,
@@ -349,9 +349,9 @@
    "sackRate": 0.0803,
    "shellIndex": -0.826,
    "targetShareAllowed": {
-    "RB": 0.1732,
-    "TE": 0.2325,
-    "WR": 0.5943
+    "RB": 0.1733,
+    "TE": 0.2326,
+    "WR": 0.5941
    },
    "team": "HOU",
    "yacShareAllowed": 0.482,
@@ -401,9 +401,9 @@
    "sackRate": 0.05,
    "shellIndex": -0.212,
    "targetShareAllowed": {
-    "RB": 0.1811,
-    "TE": 0.234,
-    "WR": 0.585
+    "RB": 0.1812,
+    "TE": 0.2341,
+    "WR": 0.5847
    },
    "team": "JAX",
    "yacShareAllowed": 0.4563,
@@ -453,9 +453,9 @@
    "sackRate": 0.0712,
    "shellIndex": -0.261,
    "targetShareAllowed": {
-    "RB": 0.1856,
-    "TE": 0.2446,
-    "WR": 0.5698
+    "RB": 0.1858,
+    "TE": 0.2449,
+    "WR": 0.5692
    },
    "team": "LA",
    "yacShareAllowed": 0.445,
@@ -557,9 +557,9 @@
    "sackRate": 0.0875,
    "shellIndex": 0.027,
    "targetShareAllowed": {
-    "RB": 0.1626,
-    "TE": 0.2304,
-    "WR": 0.607
+    "RB": 0.1636,
+    "TE": 0.2318,
+    "WR": 0.6046
    },
    "team": "MIN",
    "yacShareAllowed": 0.4772,
@@ -609,9 +609,9 @@
    "sackRate": 0.0762,
    "shellIndex": -0.299,
    "targetShareAllowed": {
-    "RB": 0.1544,
-    "TE": 0.2443,
-    "WR": 0.6013
+    "RB": 0.1545,
+    "TE": 0.2445,
+    "WR": 0.6011
    },
    "team": "NO",
    "yacShareAllowed": 0.4891,
@@ -687,9 +687,9 @@
    "sackRate": 0.0714,
    "shellIndex": -0.815,
    "targetShareAllowed": {
-    "RB": 0.1709,
-    "TE": 0.2017,
-    "WR": 0.6274
+    "RB": 0.172,
+    "TE": 0.203,
+    "WR": 0.625
    },
    "team": "PHI",
    "yacShareAllowed": 0.467,
@@ -765,9 +765,9 @@
    "sackRate": 0.0437,
    "shellIndex": 0.213,
    "targetShareAllowed": {
-    "RB": 0.1967,
-    "TE": 0.248,
-    "WR": 0.5553
+    "RB": 0.1968,
+    "TE": 0.2481,
+    "WR": 0.5551
    },
    "team": "SF",
    "yacShareAllowed": 0.469,

@@ -7,32 +7,32 @@
   },
   "caveat": "These numbers are NOT wired into GAME_LOADING. Every estimator here correlates one fantasy score against another, so all of them net the game effect against target competition and cannot separate the two. They establish that the asserted values are too high, not what the right values are. A correct estimate needs an exogenous game measure - the Vegas total, or drive-level simulation - per docs/PLAN.md v3.",
   "firstSeason": 2016,
-  "generatedAt": "2026-09-20T14:04:37.524945+00:00",
+  "generatedAt": "2026-09-21T16:22:16.802323+00:00",
   "method": "Squared correlation between a player's deviation from his own mean and his TEAM-MATES' deviation from theirs that week \u2014 leave-one-out, so a quarterback is not correlated against a total he dominates. The share of his weekly variance the game environment explains, which is what GAME_LOADING is defined to be.",
   "positions": {
     "QB": {
-      "gameTotalCorrelation": 0.4059,
-      "loading": 0.1764,
-      "observations": 6314,
-      "teamScoreCorrelation": 0.42
+      "gameTotalCorrelation": 0.406,
+      "loading": 0.1772,
+      "observations": 6347,
+      "teamScoreCorrelation": 0.4209
     },
     "RB": {
-      "gameTotalCorrelation": 0.1415,
-      "loading": 0.0517,
-      "observations": 15011,
-      "teamScoreCorrelation": 0.2274
+      "gameTotalCorrelation": 0.1427,
+      "loading": 0.052,
+      "observations": 15077,
+      "teamScoreCorrelation": 0.228
     },
     "TE": {
-      "gameTotalCorrelation": 0.1396,
-      "loading": 0.0189,
-      "observations": 11879,
-      "teamScoreCorrelation": 0.1375
+      "gameTotalCorrelation": 0.1393,
+      "loading": 0.019,
+      "observations": 11937,
+      "teamScoreCorrelation": 0.138
     },
     "WR": {
-      "gameTotalCorrelation": 0.1731,
-      "loading": 0.0307,
-      "observations": 23987,
-      "teamScoreCorrelation": 0.1753
+      "gameTotalCorrelation": 0.1728,
+      "loading": 0.0306,
+      "observations": 24097,
+      "teamScoreCorrelation": 0.175
     }
   }
 }

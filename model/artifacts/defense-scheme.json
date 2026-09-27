@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-09-26T14:17:20.539883+00:00",
+ "generatedAt": "2026-09-27T15:03:55.267526+00:00",
  "leagueAverage": {
   "adotAllowed": 7.6956,
   "completionRateAllowed": 0.646,
@@ -817,9 +817,9 @@
    "sackRate": 0.0716,
    "shellIndex": 0.229,
    "targetShareAllowed": {
-    "RB": 0.15,
+    "RB": 0.1507,
     "TE": 0.2347,
-    "WR": 0.6153
+    "WR": 0.6146
    },
    "team": "TEN",
    "yacShareAllowed": 0.4894,

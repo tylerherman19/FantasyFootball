@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-10T15:48:52.473769+00:00",
+ "generatedAt": "2026-10-11T16:13:10.136072+00:00",
  "leagueAverage": {
   "adotAllowed": 7.6956,
   "completionRateAllowed": 0.646,
@@ -63,9 +63,9 @@
    "sackRate": 0.0811,
    "shellIndex": -0.185,
    "targetShareAllowed": {
-    "RB": 0.1916,
-    "TE": 0.2037,
-    "WR": 0.6047
+    "RB": 0.1921,
+    "TE": 0.2036,
+    "WR": 0.6043
    },
    "team": "ATL",
    "yacShareAllowed": 0.4499,
@@ -271,9 +271,9 @@
    "sackRate": 0.1002,
    "shellIndex": -0.837,
    "targetShareAllowed": {
-    "RB": 0.1465,
-    "TE": 0.2504,
-    "WR": 0.6031
+    "RB": 0.147,
+    "TE": 0.2503,
+    "WR": 0.6027
    },
    "team": "DEN",
    "yacShareAllowed": 0.4515,
@@ -427,9 +427,9 @@
    "sackRate": 0.0643,
    "shellIndex": 0.589,
    "targetShareAllowed": {
-    "RB": 0.1695,
-    "TE": 0.2241,
-    "WR": 0.6064
+    "RB": 0.1723,
+    "TE": 0.2233,
+    "WR": 0.6044
    },
    "team": "KC",
    "yacShareAllowed": 0.5236,
@@ -505,9 +505,9 @@
    "sackRate": 0.0652,
    "shellIndex": 0.241,
    "targetShareAllowed": {
-    "RB": 0.1819,
-    "TE": 0.2149,
-    "WR": 0.6032
+    "RB": 0.1824,
+    "TE": 0.2147,
+    "WR": 0.6028
    },
    "team": "LV",
    "yacShareAllowed": 0.4782,
@@ -609,9 +609,9 @@
    "sackRate": 0.0762,
    "shellIndex": -0.299,
    "targetShareAllowed": {
-    "RB": 0.1544,
-    "TE": 0.2443,
-    "WR": 0.6013
+    "RB": 0.1549,
+    "TE": 0.2441,
+    "WR": 0.6009
    },
    "team": "NO",
    "yacShareAllowed": 0.4891,
@@ -635,9 +635,9 @@
    "sackRate": 0.0712,
    "shellIndex": 0.171,
    "targetShareAllowed": {
-    "RB": 0.1905,
-    "TE": 0.2022,
-    "WR": 0.6073
+    "RB": 0.1916,
+    "TE": 0.2019,
+    "WR": 0.6065
    },
    "team": "NYG",
    "yacShareAllowed": 0.4483,
@@ -817,9 +817,9 @@
    "sackRate": 0.0716,
    "shellIndex": 0.229,
    "targetShareAllowed": {
-    "RB": 0.1507,
-    "TE": 0.2347,
-    "WR": 0.6146
+    "RB": 0.1519,
+    "TE": 0.2344,
+    "WR": 0.6137
    },
    "team": "TEN",
    "yacShareAllowed": 0.4894,

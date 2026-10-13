@@ -1,29 +1,29 @@
 {
-  "generatedAt": "2026-10-12T19:43:18.271399+00:00",
+  "generatedAt": "2026-10-13T17:28:02.850730+00:00",
   "note": "playRate is the share of listed players who recorded a stat line. productionRatio is their output in listed weeks against their own baseline in unlisted weeks \u2014 a player compared to himself, because comparing hurt players to healthy ones mostly measures that better players get listed less often.",
   "season": 2026,
   "statuses": {
     "Doubtful": {
-      "observations": 542,
+      "observations": 543,
       "playRate": 0.0074,
       "playedObservations": 4,
       "productionRatio": null,
       "status": "Doubtful"
     },
     "Out": {
-      "observations": 3290,
+      "observations": 3318,
       "playRate": 0.0003,
       "playedObservations": 1,
       "productionRatio": null,
       "status": "Out"
     },
     "Questionable": {
-      "observations": 4542,
-      "playRate": 0.5918,
-      "playedObservations": 2378,
-      "productionRatio": 0.7761,
+      "observations": 4569,
+      "playRate": 0.592,
+      "playedObservations": 2390,
+      "productionRatio": 0.7758,
       "status": "Questionable"
     }
   },
-  "week": 5
+  "week": 6
 }

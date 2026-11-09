@@ -7,32 +7,32 @@
   },
   "caveat": "These numbers are NOT wired into GAME_LOADING. Every estimator here correlates one fantasy score against another, so all of them net the game effect against target competition and cannot separate the two. They establish that the asserted values are too high, not what the right values are. A correct estimate needs an exogenous game measure - the Vegas total, or drive-level simulation - per docs/PLAN.md v3.",
   "firstSeason": 2016,
-  "generatedAt": "2026-11-08T16:35:00.631550+00:00",
+  "generatedAt": "2026-11-09T20:34:11.677206+00:00",
   "method": "Squared correlation between a player's deviation from his own mean and his TEAM-MATES' deviation from theirs that week \u2014 leave-one-out, so a quarterback is not correlated against a total he dominates. The share of his weekly variance the game environment explains, which is what GAME_LOADING is defined to be.",
   "positions": {
     "QB": {
-      "gameTotalCorrelation": 0.4082,
-      "loading": 0.1792,
-      "observations": 6549,
-      "teamScoreCorrelation": 0.4233
+      "gameTotalCorrelation": 0.4078,
+      "loading": 0.179,
+      "observations": 6579,
+      "teamScoreCorrelation": 0.4231
     },
     "RB": {
-      "gameTotalCorrelation": 0.1428,
-      "loading": 0.0523,
-      "observations": 15557,
-      "teamScoreCorrelation": 0.2286
+      "gameTotalCorrelation": 0.1429,
+      "loading": 0.052,
+      "observations": 15638,
+      "teamScoreCorrelation": 0.228
     },
     "TE": {
-      "gameTotalCorrelation": 0.1409,
-      "loading": 0.0192,
-      "observations": 12346,
-      "teamScoreCorrelation": 0.1385
+      "gameTotalCorrelation": 0.1404,
+      "loading": 0.019,
+      "observations": 12413,
+      "teamScoreCorrelation": 0.1377
     },
     "WR": {
-      "gameTotalCorrelation": 0.172,
-      "loading": 0.0307,
-      "observations": 24852,
-      "teamScoreCorrelation": 0.1751
+      "gameTotalCorrelation": 0.1726,
+      "loading": 0.0308,
+      "observations": 25016,
+      "teamScoreCorrelation": 0.1756
     }
   }
 }

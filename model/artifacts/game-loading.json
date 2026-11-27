@@ -7,32 +7,32 @@
   },
   "caveat": "These numbers are NOT wired into GAME_LOADING. Every estimator here correlates one fantasy score against another, so all of them net the game effect against target competition and cannot separate the two. They establish that the asserted values are too high, not what the right values are. A correct estimate needs an exogenous game measure - the Vegas total, or drive-level simulation - per docs/PLAN.md v3.",
   "firstSeason": 2016,
-  "generatedAt": "2026-11-26T19:28:37.942989+00:00",
+  "generatedAt": "2026-11-27T19:25:04.282209+00:00",
   "method": "Squared correlation between a player's deviation from his own mean and his TEAM-MATES' deviation from theirs that week \u2014 leave-one-out, so a quarterback is not correlated against a total he dominates. The share of his weekly variance the game environment explains, which is what GAME_LOADING is defined to be.",
   "positions": {
     "QB": {
-      "gameTotalCorrelation": 0.4088,
-      "loading": 0.18,
-      "observations": 6653,
-      "teamScoreCorrelation": 0.4242
+      "gameTotalCorrelation": 0.4097,
+      "loading": 0.181,
+      "observations": 6666,
+      "teamScoreCorrelation": 0.4255
     },
     "RB": {
-      "gameTotalCorrelation": 0.1427,
+      "gameTotalCorrelation": 0.143,
       "loading": 0.0518,
-      "observations": 15865,
-      "teamScoreCorrelation": 0.2277
+      "observations": 15879,
+      "teamScoreCorrelation": 0.2276
     },
     "TE": {
-      "gameTotalCorrelation": 0.1401,
-      "loading": 0.0192,
-      "observations": 12574,
-      "teamScoreCorrelation": 0.1385
+      "gameTotalCorrelation": 0.1395,
+      "loading": 0.0191,
+      "observations": 12602,
+      "teamScoreCorrelation": 0.138
     },
     "WR": {
-      "gameTotalCorrelation": 0.1736,
-      "loading": 0.0311,
-      "observations": 25273,
-      "teamScoreCorrelation": 0.1764
+      "gameTotalCorrelation": 0.1743,
+      "loading": 0.0314,
+      "observations": 25301,
+      "teamScoreCorrelation": 0.1771
     }
   }
 }
